@@ -1,45 +1,47 @@
 
 import { useState } from "react";
-
-const faqs = [
-  {
-    question: "چگونه می‌توانم سرویس را فعال کنم؟",
-    answer: "کافی است از طریق ربات تلگرام ما اقدام کنید. فرآیند فعال‌سازی کمتر از ۲ دقیقه طول می‌کشد."
-  },
-  {
-    question: "آیا لاگ فعالیت‌ها نگهداری می‌شود؟",
-    answer: "خیر، ما هیچ لاگی از فعالیت کاربران نگهداری نمی‌کنیم. حریم خصوصی شما برای ما مقدس است."
-  },
-  {
-    question: "تفاوت پلن‌ها در چیست؟",
-    answer: "Lite برای استفاده عادی، Pro برای کسب‌وکار با IP های تمیز، و Pro Plus شامل تونل ایرانی اختصاصی است."
-  },
-  {
-    question: "آیا امکان تست رایگان وجود دارد؟",
-    answer: "بله، ۲۴ ساعت تست رایگان برای همه پلن‌ها در نظر گرفته شده است."
-  },
-  {
-    question: "سرعت اتصال چگونه است؟",
-    answer: "سرعت بر اساس پلن انتخابی متفاوت است. پلن Pro و Pro Plus سرعت فوق‌العاده ارائه می‌دهند."
-  },
-  {
-    question: "پشتیبانی چگونه انجام می‌شود؟",
-    answer: "تیم پشتیبانی ۲۴/۷ از طریق تلگرام در دسترس است. زمان پاسخ‌گویی کمتر از ۱۰ دقیقه."
-  }
-];
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const FAQSection = () => {
+  const { t } = useLanguage();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
+  const faqs = [
+    {
+      question: t('faq.question1'),
+      answer: t('faq.answer1')
+    },
+    {
+      question: t('faq.question2'),
+      answer: t('faq.answer2')
+    },
+    {
+      question: t('faq.question3'),
+      answer: t('faq.answer3')
+    },
+    {
+      question: t('faq.question4'),
+      answer: t('faq.answer4')
+    },
+    {
+      question: t('faq.question5'),
+      answer: t('faq.answer5')
+    },
+    {
+      question: t('faq.question6'),
+      answer: t('faq.answer6')
+    }
+  ];
+
   return (
-    <section className="py-24 px-4 bg-gradient-to-br from-white to-primary/5">
+    <section className="py-24 px-4 bg-gradient-to-br from-background to-primary/5">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-16 animate-fade-in">
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-            سوالات متداول
+          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
+            {t('faq.title')}
           </h2>
-          <p className="text-xl text-gray-600">
-            پاسخ سوالات رایج درباره سرویس‌های ما
+          <p className="text-xl text-muted-foreground">
+            {t('faq.subtitle')}
           </p>
         </div>
         
@@ -47,27 +49,27 @@ const FAQSection = () => {
           {faqs.map((faq, index) => (
             <div 
               key={index} 
-              className="bg-white rounded-2xl shadow-lg border border-gray-100 animate-slide-up"
+              className="bg-background rounded-2xl shadow-lg border border-border animate-slide-up"
               style={{animationDelay: `${index * 0.1}s`}}
             >
               <button
-                className="w-full p-6 text-right flex justify-between items-center hover:bg-gray-50 rounded-2xl transition-colors duration-200"
+                className="w-full p-6 text-right flex justify-between items-center hover:bg-muted/50 rounded-2xl transition-colors duration-200"
                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
               >
-                <span className="text-lg font-semibold text-gray-900 flex-1">
+                <span className="text-lg font-semibold text-foreground flex-1">
                   {faq.question}
                 </span>
                 <div className={`transform transition-transform duration-200 ${
                   openIndex === index ? 'rotate-180' : ''
                 }`}>
-                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
               </button>
               
               {openIndex === index && (
-                <div className="px-6 pb-6 text-gray-600 leading-relaxed animate-fade-in">
+                <div className="px-6 pb-6 text-muted-foreground leading-relaxed animate-fade-in">
                   {faq.answer}
                 </div>
               )}
