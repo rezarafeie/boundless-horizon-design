@@ -1,7 +1,7 @@
 
 import { Card } from "@/components/ui/card";
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Shield, Zap, Tunnel, Lock, Brain, MessageSquare } from 'lucide-react';
+import { Shield, Zap, Network, Lock, Brain, MessageSquare } from 'lucide-react';
 
 const FeaturesSection = () => {
   const { t } = useLanguage();
@@ -20,7 +20,7 @@ const FeaturesSection = () => {
     {
       title: t('features.tunnel'),
       description: t('features.tunnel-desc'),
-      icon: Tunnel
+      icon: Network
     },
     {
       title: t('features.no-logs'),
