@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useState, ReactNode } from 'react';
 
 type Language = 'en' | 'fa';
@@ -129,9 +130,19 @@ const translations = {
     'why.global': 'کاوریج جهانی',
     'why.global-desc': 'دسترسی به بهترین سرورهای دنیا',
     'why.quality': 'کیفیت مطمئن',
-    'why.quality-desc': 'تست شده توسط تیم‌های فنی حرفه‌ای'
+    'why.quality-desc': 'تست شده توسط تیم‌های فنی حرفه‌ای',
     
-    // Footer and other translations remain the same
+    // Footer
+    'footer.description': 'امن، سریع و بدون محدودیت – برای کاربران حرفه‌ای که به بهترین کیفیت اعتماد دارند.',
+    'footer.services': 'سرویس‌ها',
+    'footer.support': 'پشتیبانی',
+    'footer.telegram-bot': 'ربات تلگرام',
+    'footer.setup-guide': 'راهنمای نصب',
+    'footer.faq': 'سوالات متداول',
+    'footer.contact': 'تماس با ما',
+    'footer.rights': '© ۲۰۲۴ BNETS.CO - تمامی حقوق محفوظ است',
+    'footer.terms': 'قوانین و مقررات',
+    'footer.privacy': 'حریم خصوصی'
   }
 };
 
@@ -146,7 +157,9 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>
-      {children}
+      <div className={language === 'fa' ? 'rtl' : 'ltr'} dir={language === 'fa' ? 'rtl' : 'ltr'}>
+        {children}
+      </div>
     </LanguageContext.Provider>
   );
 };

@@ -9,6 +9,7 @@ const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isRTL = language === 'fa';
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -22,7 +23,7 @@ const Navigation = () => {
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8 space-x-reverse">
+          <div className={`hidden md:flex items-center gap-8 ${isRTL ? 'space-x-reverse' : ''}`}>
             <a href="#features" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.features')}
             </a>
@@ -38,7 +39,7 @@ const Navigation = () => {
           </div>
 
           {/* Controls */}
-          <div className="flex items-center space-x-4 space-x-reverse">
+          <div className={`flex items-center gap-4 ${isRTL ? 'space-x-reverse' : ''}`}>
             {/* Theme Toggle */}
             <Button
               variant="ghost"

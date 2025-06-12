@@ -5,6 +5,7 @@ import { ArrowRight, Play } from 'lucide-react';
 
 const HeroSection = () => {
   const { t, language } = useLanguage();
+  const isRTL = language === 'fa';
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
@@ -33,22 +34,23 @@ const HeroSection = () => {
             {t('hero.subtitle')}
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-slide-up">
+          <div className={`flex flex-col sm:flex-row gap-4 justify-center items-center animate-slide-up ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
             <Button 
               size="lg" 
               className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
               onClick={() => window.open('https://t.me/getbnbot', '_blank')}
             >
               {t('hero.cta')}
-              <ArrowRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${language === 'fa' ? 'rotate-180' : ''}`} />
+              <ArrowRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${isRTL ? 'rotate-180 mr-2' : 'ml-2'}`} />
             </Button>
             
             <Button 
               variant="outline" 
               size="lg"
               className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group"
+              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
             >
-              <Play className="w-5 h-5 mr-2" />
+              <Play className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
               {language === 'fa' ? 'مشاهده دمو' : 'Watch Demo'}
             </Button>
           </div>
