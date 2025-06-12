@@ -5,7 +5,6 @@ import Navigation from "@/components/Navigation";
 import HeroSection from "@/components/HeroSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import WhyBoundlessSection from "@/components/WhyBoundlessSection";
-import TestimonialsSection from "@/components/TestimonialsSection";
 import FAQSection from "@/components/FAQSection";
 import FooterSection from "@/components/FooterSection";
 
@@ -18,7 +17,6 @@ const Index = () => {
           <HeroSection />
           <FeaturesSection />
           <WhyBoundlessSection />
-          <TestimonialsSection />
           <FAQSection />
           <FooterSection />
         </div>
