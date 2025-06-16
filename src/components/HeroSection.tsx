@@ -79,14 +79,15 @@ const HeroSection = () => {
               </Link>
             </Button>
 
-            <Button 
-              variant="hero-secondary" 
-              size="xl" 
-              onClick={() => setShowFreeTrial(true)}
-              className="w-full sm:w-auto"
-            >
-              {language === 'fa' ? 'تست رایگان' : 'Free Trial'}
-            </Button>
+            <FreeTrialDialog>
+              <Button 
+                variant="hero-secondary" 
+                size="xl" 
+                className="w-full sm:w-auto"
+              >
+                {language === 'fa' ? 'تست رایگان' : 'Free Trial'}
+              </Button>
+            </FreeTrialDialog>
 
             <Button asChild variant="hero-accent" size="xl" className="w-full sm:w-auto">
               <Link to="/renewal" className="group">
@@ -119,11 +120,6 @@ const HeroSection = () => {
           </div>
         </div>
       </div>
-
-      <FreeTrialDialog 
-        open={showFreeTrial} 
-        onOpenChange={setShowFreeTrial}
-      />
     </section>
   );
 };
