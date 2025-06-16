@@ -186,7 +186,12 @@ const MarzbanSubscriptionForm = () => {
         data_limit: dataLimitBytes,
         data_limit_reset_strategy: 'no_reset',
         inbounds: {
-          vless: [FIXED_INBOUND]
+          vless: 
+      "VLESSTCP",
+      "Israel",
+      "USAC",
+      "info_protocol",
+      "Dubai"
         },
         proxies: {
           vless: {
