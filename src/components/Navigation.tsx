@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,7 +12,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon, Menu, X, Globe, ChevronDown, Send, ShoppingCart, Gift, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import FreeTrialButton from './FreeTrialButton';
-import SubscriptionRenewalDialog from './SubscriptionRenewalDialog';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
@@ -28,22 +28,6 @@ const Navigation = () => {
             <Link to="/" className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
               {language === 'fa' ? 'شبکه بدون مرز' : 'BNETS.CO'}
             </Link>
-          </div>
-
-          {/* Desktop Navigation */}
-          <div className={`hidden md:flex items-center gap-8 ${isRTL ? 'space-x-reverse' : ''}`}>
-            <a href="#features" className="text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.features')}
-            </a>
-            <Link to="/subscription" className="text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.subscription')}
-            </Link>
-            <a href="#about" className="text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.about')}
-            </a>
-            <a href="#contact" className="text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.contact')}
-            </a>
           </div>
 
           {/* Controls */}
@@ -101,11 +85,8 @@ const Navigation = () => {
                 </DropdownMenuItem>
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
-                  <div className={`w-full p-4 bg-gradient-to-r from-purple-500 via-pink-600 to-rose-600 hover:from-purple-600 hover:via-pink-700 hover:to-rose-700 transition-all duration-300 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] ${isRTL ? 'text-right' : 'text-left'}`}>
-                    <div className={`flex items-center ${isRTL ? 'justify-end' : 'justify-start'}`}>
-                      <Gift className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-purple-100`} />
-                      <FreeTrialButton />
-                    </div>
+                  <div className="w-full p-2">
+                    <FreeTrialButton />
                   </div>
                 </DropdownMenuItem>
                 
@@ -132,55 +113,41 @@ const Navigation = () => {
           </div>
         </div>
 
-        {/* Mobile Menu */}
+        {/* Mobile Menu - Simplified */}
         {isMenuOpen && (
-          <div className="md:hidden py-4 space-y-4 border-t border-border">
-            <a href="#features" className="block text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.features')}
-            </a>
-            <Link to="/subscription" className="block text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.subscription')}
-            </Link>
-            <a href="#about" className="block text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.about')}
-            </a>
-            <a href="#contact" className="block text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.contact')}
-            </a>
-            <div className="space-y-3 pt-4 border-t border-border">
+          <div className="md:hidden py-4 space-y-3 border-t border-border">
+            <Button 
+              onClick={() => window.open('https://t.me/bnets_support', '_blank')}
+              variant="outline"
+              className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-blue-200 dark:border-blue-700 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
+            >
+              <Send className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-blue-600 dark:text-blue-400`} />
+              <span className="text-blue-800 dark:text-blue-200 font-medium">{t('nav.telegram')}</span>
+            </Button>
+            
+            <Link to="/subscription">
               <Button 
-                onClick={() => window.open('https://t.me/bnets_support', '_blank')}
                 variant="outline"
-                className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-blue-200 dark:border-blue-700 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
+                className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 border-green-200 dark:border-green-700 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
               >
-                <Send className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-blue-600 dark:text-blue-400`} />
-                <span className="text-blue-800 dark:text-blue-200 font-medium">{t('nav.telegram')}</span>
+                <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-green-600 dark:text-green-400`} />
+                <span className="text-green-800 dark:text-green-200 font-medium">{t('nav.purchase')}</span>
               </Button>
-              
-              <Link to="/subscription">
-                <Button 
-                  variant="outline"
-                  className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 border-green-200 dark:border-green-700 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
-                >
-                  <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-green-600 dark:text-green-400`} />
-                  <span className="text-green-800 dark:text-green-200 font-medium">{t('nav.purchase')}</span>
-                </Button>
-              </Link>
-              
-              <div className={`p-4 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 border border-purple-200 dark:border-purple-700 rounded-lg shadow-md ${isRTL ? 'text-right' : 'text-left'}`}>
-                <FreeTrialButton />
-              </div>
-              
-              <Link to="/renewal">
-                <Button 
-                  variant="outline"
-                  className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 border-orange-200 dark:border-orange-700 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
-                >
-                  <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-orange-600 dark:text-orange-400`} />
-                  <span className="text-orange-800 dark:text-orange-200 font-medium">{t('nav.renew')}</span>
-                </Button>
-              </Link>
+            </Link>
+            
+            <div className="px-2">
+              <FreeTrialButton />
             </div>
+            
+            <Link to="/renewal">
+              <Button 
+                variant="outline"
+                className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 border-orange-200 dark:border-orange-700 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
+              >
+                <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-orange-600 dark:text-orange-400`} />
+                <span className="text-orange-800 dark:text-orange-200 font-medium">{t('nav.renew')}</span>
+              </Button>
+            </Link>
           </div>
         )}
       </div>
