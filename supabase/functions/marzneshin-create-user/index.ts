@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -44,7 +43,7 @@ interface MarzneshinServicesResponse {
 interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
-  expire?: number;
+  expire_after?: number;
   usage_duration: number;
   data_limit: number;
   service_ids: number[];
@@ -139,33 +138,18 @@ async function createMarzneshinUser(
   serviceIds: number[]
 ): Promise<MarzneshinUserResponse> {
   
-  // Calculate expiration timestamp (current time + duration in days)
-  const currentTimeSeconds = Math.floor(Date.now() / 1000);
-  const durationSeconds = userData.durationDays * 24 * 60 * 60; // Convert days to seconds
-  const expirationTimestamp = currentTimeSeconds + durationSeconds;
-
-  // Validate timestamp
-  if (expirationTimestamp <= currentTimeSeconds) {
-    throw new Error('Invalid expiration timestamp - must be in the future');
-  }
-
-  console.log(`Current time: ${currentTimeSeconds} (${new Date(currentTimeSeconds * 1000).toISOString()})`);
-  console.log(`Duration: ${userData.durationDays} days (${durationSeconds} seconds)`);
-  console.log(`Calculated expiration: ${expirationTimestamp} (${new Date(expirationTimestamp * 1000).toISOString()})`);
-
-  // Start with minimal required fields for testing
   const userRequest: MarzneshinUserRequest = {
     username: userData.username,
-    expire_strategy: 'fixed_date',
-    expire: expirationTimestamp,
-    usage_duration: durationSeconds, // Use seconds consistently
+    expire_strategy: 'expire_after',
+    expire_after: userData.durationDays,
+    usage_duration: userData.durationDays * 86400, // Convert days to seconds
     data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
     service_ids: serviceIds,
     note: `Purchased via bnets.co - ${userData.notes}`,
     data_limit_reset_strategy: 'no_reset'
   };
 
-  console.log('Creating user with request:', JSON.stringify(userRequest, null, 2));
+  console.log('Creating user with request:', userRequest);
 
   const response = await fetch(`${baseUrl}/api/users`, {
     method: 'POST',
@@ -176,64 +160,16 @@ async function createMarzneshinUser(
     body: JSON.stringify(userRequest)
   });
 
-  console.log(`User creation response status: ${response.status}`);
-
   if (!response.ok) {
-    let errorData: any;
-    const contentType = response.headers.get('content-type');
-    
-    try {
-      if (contentType && contentType.includes('application/json')) {
-        errorData = await response.json();
-        console.error('Marzneshin API error response (JSON):', JSON.stringify(errorData, null, 2));
-      } else {
-        const errorText = await response.text();
-        console.error('Marzneshin API error response (Text):', errorText);
-        errorData = { detail: errorText };
-      }
-    } catch (parseError) {
-      console.error('Failed to parse error response:', parseError);
-      errorData = { detail: 'Unknown error - failed to parse response' };
-    }
-
-    // Handle specific error cases
+    const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
     if (response.status === 409) {
       throw new Error('This username is already taken. Please choose a different one');
     }
-    
-    if (response.status === 422) {
-      // Validation error - provide more specific feedback
-      let errorMessage = 'Validation error';
-      
-      if (errorData.detail) {
-        if (typeof errorData.detail === 'string') {
-          errorMessage = `Validation error: ${errorData.detail}`;
-        } else if (errorData.detail.body) {
-          errorMessage = `Validation error: ${errorData.detail.body}`;
-        } else if (Array.isArray(errorData.detail)) {
-          const validationErrors = errorData.detail.map((err: any) => 
-            `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
-          ).join(', ');
-          errorMessage = `Validation error: ${validationErrors}`;
-        } else {
-          errorMessage = `Validation error: ${JSON.stringify(errorData.detail)}`;
-        }
-      }
-      
-      throw new Error(errorMessage);
-    }
-
-    if (response.status === 400) {
-      throw new Error(`Bad request: ${errorData.detail || 'Invalid request parameters'}`);
-    }
-
-    // Generic error with detailed logging
-    const errorMessage = errorData.detail || errorData.message || `HTTP ${response.status} error`;
-    throw new Error(`Failed to create user on Marzneshin: ${errorMessage}`);
+    throw new Error(errorData.detail || `Failed to create user on Marzneshin: ${response.status}`);
   }
 
   const result = await response.json();
-  console.log('User created successfully:', JSON.stringify(result, null, 2));
+  console.log('User created successfully:', result);
   return result;
 }
 
@@ -244,70 +180,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('Received request, parsing body...');
-    const requestBody = await req.json();
-    console.log('Raw request body:', JSON.stringify(requestBody, null, 2));
-
-    // Extract parameters with support for both old and new parameter names
-    const {
-      username,
-      dataLimitGB,
-      dataLimit,
-      durationDays,
-      duration,
-      notes
-    } = requestBody;
-
-    // Use the new parameter names if available, otherwise fall back to old ones
-    const finalDataLimitGB = dataLimitGB || dataLimit;
-    const finalDurationDays = durationDays || duration;
-
-    console.log('Extracted parameters:', {
-      username,
-      finalDataLimitGB,
-      finalDurationDays,
-      notes: notes ? 'provided' : 'empty'
-    });
-
-    // Validate required parameters
-    if (!username) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Username is required' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!finalDataLimitGB || typeof finalDataLimitGB !== 'number' || finalDataLimitGB <= 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Valid data limit (in GB) is required and must be a positive number' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!finalDurationDays || typeof finalDurationDays !== 'number' || finalDurationDays <= 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Valid duration (in days) is required and must be a positive number' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    const { username, dataLimitGB, durationDays, notes } = await req.json();
 
     // Get secrets from environment
     const baseUrl = Deno.env.get('MARZNESHIN_BASE_URL');
@@ -318,7 +191,6 @@ Deno.serve(async (req) => {
       console.error('Missing required environment variables');
       return new Response(
         JSON.stringify({ 
-          success: false,
           error: 'Server configuration error. Please contact support.' 
         }),
         { 
@@ -344,16 +216,11 @@ Deno.serve(async (req) => {
       throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
     }
 
-    // Create the user with normalized parameters
+    // Create the user
     const result = await createMarzneshinUser(
       baseUrl,
       token,
-      { 
-        username, 
-        dataLimitGB: finalDataLimitGB, 
-        durationDays: finalDurationDays, 
-        notes: notes || '' 
-      },
+      { username, dataLimitGB, durationDays, notes },
       requiredServiceIds
     );
 
@@ -371,9 +238,7 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Marzneshin API Error Details:');
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error('Marzneshin API Error:', error);
     
     return new Response(
       JSON.stringify({ 
