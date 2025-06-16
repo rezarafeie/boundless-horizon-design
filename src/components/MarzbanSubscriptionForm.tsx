@@ -349,7 +349,7 @@ const MarzbanSubscriptionForm = () => {
       });
 
       addDebugInfo({
-        endpoint: 'marzneshin-api',
+        endpoint: 'marzneshin-edge-function',
         status: 200,
         request: { username: formData.username, dataLimit: formData.dataLimit, duration: formData.duration },
         response: result,
@@ -364,7 +364,7 @@ const MarzbanSubscriptionForm = () => {
       };
     } catch (error) {
       addDebugInfo({
-        endpoint: 'marzneshin-api',
+        endpoint: 'marzneshin-edge-function',
         status: 0,
         request: { username: formData.username, dataLimit: formData.dataLimit, duration: formData.duration },
         response: { error: error.message },
