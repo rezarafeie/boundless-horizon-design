@@ -153,12 +153,12 @@ async function createMarzneshinUser(
   console.log(`Duration: ${userData.durationDays} days (${durationSeconds} seconds)`);
   console.log(`Calculated expiration: ${expirationTimestamp} (${new Date(expirationTimestamp * 1000).toISOString()})`);
 
-  // Start with minimal required fields for testing
+  // Use fixed_date strategy with proper timestamp
   const userRequest: MarzneshinUserRequest = {
     username: userData.username,
     expire_strategy: 'fixed_date',
     expire: expirationTimestamp,
-    usage_duration: durationSeconds, // Use seconds consistently
+    usage_duration: durationSeconds,
     data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
     service_ids: serviceIds,
     note: `Purchased via bnets.co - ${userData.notes}`,
