@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -14,6 +13,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { SubscriptionPlan } from '@/types/subscription';
 import { MarzneshinApiService } from '@/services/marzneshinApi';
 import PlanSelector from '@/components/PlanSelector';
+import DiscountField from '@/components/DiscountField';
+import { DiscountCode } from '@/types/subscription';
 
 interface MarzbanFormData {
   username: string;
@@ -69,6 +70,7 @@ const MarzbanSubscriptionForm = () => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
 
   // Marzban configuration (for Lite plan)
   const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
@@ -112,7 +114,20 @@ const MarzbanSubscriptionForm = () => {
 
   const calculatePrice = () => {
     if (!formData.selectedPlan) return 0;
-    return formData.dataLimit * formData.selectedPlan.pricePerGB;
+    const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
+    
+    if (appliedDiscount) {
+      const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
+      return Math.max(0, basePrice - discountAmount);
+    }
+    
+    return basePrice;
+  };
+
+  const calculateDiscount = () => {
+    if (!formData.selectedPlan || !appliedDiscount) return 0;
+    const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
+    return (basePrice * appliedDiscount.percentage) / 100;
   };
 
   const generateUsername = () => {
@@ -577,6 +592,10 @@ const MarzbanSubscriptionForm = () => {
     setFormData(prev => ({ ...prev, username: generated }));
   };
 
+  const handleDiscountApply = (discount: DiscountCode | null) => {
+    setAppliedDiscount(discount);
+  };
+
   // Enhanced Debug Component
   const DebugSection = () => {
     if (!debugMode || debugInfo.length === 0) return null;
@@ -973,24 +992,47 @@ const MarzbanSubscriptionForm = () => {
                 )}
               </div>
 
+              {/* Discount Field */}
+              <DiscountField
+                onDiscountApply={handleDiscountApply}
+                appliedDiscount={appliedDiscount}
+              />
+
               {/* Price Calculation */}
               {formData.selectedPlan && (
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-semibold text-blue-800 dark:text-blue-200">
-                        {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
-                      </h4>
-                      <p className="text-sm text-blue-600 dark:text-blue-400">
-                        {language === 'fa' ? 
-                          `${formData.dataLimit} گیگابایت × ${formData.selectedPlan.pricePerGB.toLocaleString()} تومان` : 
-                          `${formData.dataLimit} GB × ${formData.selectedPlan.pricePerGB.toLocaleString()} Toman`
-                        }
-                      </p>
-                    </div>
-                    <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
-                      {calculatePrice().toLocaleString()} 
-                      {language === 'fa' ? ' تومان' : ' Toman'}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-blue-800 dark:text-blue-200">
+                          {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
+                        </h4>
+                        <p className="text-sm text-blue-600 dark:text-blue-400">
+                          {language === 'fa' ? 
+                            `${formData.dataLimit} گیگابایت × ${formData.selectedPlan.pricePerGB.toLocaleString()} تومان` : 
+                            `${formData.dataLimit} GB × ${formData.selectedPlan.pricePerGB.toLocaleString()} Toman`
+                          }
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        {appliedDiscount && (
+                          <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
+                            {(formData.dataLimit * formData.selectedPlan.pricePerGB).toLocaleString()}
+                            {language === 'fa' ? ' تومان' : ' Toman'}
+                          </div>
+                        )}
+                        <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
+                          {calculatePrice().toLocaleString()} 
+                          {language === 'fa' ? ' تومان' : ' Toman'}
+                        </div>
+                        {appliedDiscount && (
+                          <div className="text-sm text-green-600 dark:text-green-400">
+                            {language === 'fa' ? 'صرفه‌جویی: ' : 'You save: '}
+                            {calculateDiscount().toLocaleString()}
+                            {language === 'fa' ? ' تومان' : ' Toman'}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1037,10 +1079,13 @@ const MarzbanSubscriptionForm = () => {
               ) : (
                 <>
                   <CreditCard className="w-5 h-5 mr-2" />
-                  {language === 'fa' ? 
-                    `پرداخت ${calculatePrice().toLocaleString()} تومان` : 
-                    `Pay ${calculatePrice().toLocaleString()} Toman`
-                  }
+                  {calculatePrice() === 0 ? (
+                    language === 'fa' ? 'دریافت رایگان' : 'Get Free'
+                  ) : (
+                    language === 'fa' ? 
+                      `پرداخت ${calculatePrice().toLocaleString()} تومان` : 
+                      `Pay ${calculatePrice().toLocaleString()} Toman`
+                  )}
                 </>
               )}
             </Button>
