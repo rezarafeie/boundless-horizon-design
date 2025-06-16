@@ -12,11 +12,11 @@ const PricingSection = () => {
       name: t('pricing.lite'),
       price: language === 'fa' ? "۹۹,۰۰۰" : "$12",
       period: t('pricing.monthly'),
-      description: t('pricing.lite-desc'),
+      description: language === 'fa' ? "برای کاربران عادی" : "For casual users",
       features: [
-        language === 'fa' ? "آلمان، فنلاند، هلند" : "Germany, Finland, Netherlands",
-        language === 'fa' ? "سرعت متوسط" : "Moderate speed",
-        language === 'fa' ? "مناسب برای مرور پایه" : "Suitable for basic browsing",
+        language === 'fa' ? "آلمان، فنلاند، آمریکا" : "Germany, Finland, USA",
+        language === 'fa' ? "سرعت استاندارد" : "Standard speed",
+        language === 'fa' ? "بدون لاگ" : "No logs",
         language === 'fa' ? "پشتیبانی ۲۴/۷" : "24/7 support"
       ],
       popular: false,
@@ -26,11 +26,11 @@ const PricingSection = () => {
       name: t('pricing.pro'),
       price: language === 'fa' ? "۱۹۹,۰۰۰" : "$24",
       period: t('pricing.monthly'),
-      description: t('pricing.pro-desc'),
+      description: language === 'fa' ? "برای کسب و کار" : "For business",
       features: [
         language === 'fa' ? "فنلاند، آلمان، هلند، ترکیه، انگلیس، آمریکا" : "Finland, Germany, Netherlands, Turkey, UK, USA",
         language === 'fa' ? "سرعت فوق‌العاده" : "Ultra-fast speed",
-        language === 'fa' ? "بهینه برای استریمینگ" : "Optimized for streaming",
+        language === 'fa' ? "IP های تمیز اختصاصی" : "Dedicated clean IPs",
         language === 'fa' ? "مسیریابی هوشمند" : "Smart routing",
         language === 'fa' ? "پشتیبانی اولویت‌دار" : "Priority support"
       ],
