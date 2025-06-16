@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -133,6 +134,21 @@ function formatDateToMMDDYYYY(date: Date): string {
   return `${month}/${day}/${year}`;
 }
 
+function formatDateToISO(date: Date): string {
+  return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD
+}
+
+function formatDateToYYYYMMDD(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function validateDuration(durationDays: number): boolean {
+  return durationDays > 0 && durationDays <= 365; // Max 1 year
+}
+
 async function createMarzneshinUser(
   baseUrl: string,
   token: string,
@@ -147,21 +163,35 @@ async function createMarzneshinUser(
   
   console.log('Starting user creation with data:', userData);
   
+  // Validate duration
+  if (!validateDuration(userData.durationDays)) {
+    throw new Error(`Invalid duration: ${userData.durationDays} days. Must be between 1 and 365 days.`);
+  }
+  
   // Calculate expiration date
   const expirationDate = new Date();
   expirationDate.setDate(expirationDate.getDate() + userData.durationDays);
-  const formattedExpireDate = formatDateToMMDDYYYY(expirationDate);
   
-  console.log(`Calculated expiration date: ${formattedExpireDate} (${userData.durationDays} days from now)`);
+  // Ensure the date is in the future
+  if (expirationDate <= new Date()) {
+    throw new Error('Calculated expiration date is not in the future');
+  }
   
-  // Try multiple strategies with fixed_date as priority
+  const formattedExpireDateMM = formatDateToMMDDYYYY(expirationDate);
+  const formattedExpireDateISO = formatDateToISO(expirationDate);
+  const formattedExpireDateYYYY = formatDateToYYYYMMDD(expirationDate);
+  
+  console.log(`Calculated expiration date: ${formattedExpireDateMM} (${userData.durationDays} days from now)`);
+  console.log(`Alternative formats: ISO=${formattedExpireDateISO}, YYYY-MM-DD=${formattedExpireDateYYYY}`);
+  
+  // Focus only on fixed_date strategy with different formats and field names
   const strategies = [
     {
-      name: 'fixed_date',
+      name: 'fixed_date_expire_date_mmddyyyy',
       createRequest: () => ({
         username: userData.username,
         expire_strategy: 'fixed_date',
-        expire_date: formattedExpireDate, // Try expire_date field first
+        expire_date: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
         note: `Purchased via bnets.co - ${userData.notes}`,
@@ -169,11 +199,11 @@ async function createMarzneshinUser(
       })
     },
     {
-      name: 'fixed_date_alt',
+      name: 'fixed_date_expire_mmddyyyy',
       createRequest: () => ({
         username: userData.username,
         expire_strategy: 'fixed_date',
-        expire: formattedExpireDate, // Try expire field as alternative
+        expire: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
         note: `Purchased via bnets.co - ${userData.notes}`,
@@ -181,11 +211,11 @@ async function createMarzneshinUser(
       })
     },
     {
-      name: 'start_on_first_use',
+      name: 'fixed_date_expire_date_iso',
       createRequest: () => ({
         username: userData.username,
-        expire_strategy: 'start_on_first_use',
-        usage_duration: userData.durationDays * 24 * 60 * 60, // Add usage_duration for this strategy
+        expire_strategy: 'fixed_date',
+        expire_date: formattedExpireDateISO,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
         note: `Purchased via bnets.co - ${userData.notes}`,
@@ -193,11 +223,47 @@ async function createMarzneshinUser(
       })
     },
     {
-      name: 'never',
+      name: 'fixed_date_expire_iso',
       createRequest: () => ({
         username: userData.username,
-        expire_strategy: 'never',
-        usage_duration: userData.durationDays * 24 * 60 * 60,
+        expire_strategy: 'fixed_date',
+        expire: formattedExpireDateISO,
+        data_limit: userData.dataLimitGB * 1073741824,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes}`,
+        data_limit_reset_strategy: 'no_reset'
+      })
+    },
+    {
+      name: 'fixed_date_expire_date_yyyymmdd',
+      createRequest: () => ({
+        username: userData.username,
+        expire_strategy: 'fixed_date',
+        expire_date: formattedExpireDateYYYY,
+        data_limit: userData.dataLimitGB * 1073741824,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes}`,
+        data_limit_reset_strategy: 'no_reset'
+      })
+    },
+    {
+      name: 'fixed_date_expire_yyyymmdd',
+      createRequest: () => ({
+        username: userData.username,
+        expire_strategy: 'fixed_date',
+        expire: formattedExpireDateYYYY,
+        data_limit: userData.dataLimitGB * 1073741824,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes}`,
+        data_limit_reset_strategy: 'no_reset'
+      })
+    },
+    {
+      name: 'fixed_date_expiration_date',
+      createRequest: () => ({
+        username: userData.username,
+        expire_strategy: 'fixed_date',
+        expiration_date: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
         note: `Purchased via bnets.co - ${userData.notes}`,
@@ -229,16 +295,23 @@ async function createMarzneshinUser(
       if (response.ok) {
         const result = await response.json();
         console.log(`Strategy ${strategy.name} succeeded:`, result);
-        console.log(`✅ User created successfully with ${strategy.name} strategy and expiration: ${formattedExpireDate}`);
+        console.log(`✅ User created successfully with ${strategy.name} strategy`);
+        console.log(`📅 Requested expiration format: ${JSON.stringify(userRequest).match(/"expire[^"]*":"[^"]*"/g)}`);
+        console.log(`📋 Full API response:`, JSON.stringify(result, null, 2));
         return result;
       } else {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        console.error(`Strategy ${strategy.name} failed:`, errorData);
+        console.error(`Strategy ${strategy.name} failed with status ${response.status}:`, errorData);
         lastError = errorData;
         
         // If it's a username conflict, don't try other strategies
         if (response.status === 409) {
           throw new Error('This username is already taken. Please choose a different one');
+        }
+        
+        // Log detailed error information
+        if (errorData.detail) {
+          console.error(`Detailed error for ${strategy.name}:`, JSON.stringify(errorData.detail, null, 2));
         }
         
         // Continue to next strategy for other errors
@@ -257,11 +330,13 @@ async function createMarzneshinUser(
     }
   }
 
-  // If all strategies failed, throw the last error
+  // If all strategies failed, throw the last error with comprehensive details
+  console.error('❌ All fixed_date strategies failed. Last error details:', lastError);
+  
   if (lastError) {
     if (lastError.detail) {
       if (typeof lastError.detail === 'string') {
-        throw new Error(`All creation strategies failed. Last error: ${lastError.detail}`);
+        throw new Error(`All fixed_date strategies failed. API error: ${lastError.detail}`);
       } else if (Array.isArray(lastError.detail)) {
         const validationErrors = lastError.detail.map((err: any) => 
           `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
@@ -274,7 +349,7 @@ async function createMarzneshinUser(
     throw new Error(`Failed to create user: ${lastError.message || 'Unknown error'}`);
   }
 
-  throw new Error('Failed to create user with any strategy');
+  throw new Error('Failed to create user with fixed_date strategy - all format attempts failed');
 }
 
 Deno.serve(async (req) => {
