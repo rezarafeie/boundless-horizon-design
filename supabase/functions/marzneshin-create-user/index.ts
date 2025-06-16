@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -127,6 +126,13 @@ function getRequiredServiceIds(services: MarzneshinService[]): number[] {
   return serviceIds;
 }
 
+function formatDateToMMDDYYYY(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${month}/${day}/${year}`;
+}
+
 async function createMarzneshinUser(
   baseUrl: string,
   token: string,
@@ -141,14 +147,45 @@ async function createMarzneshinUser(
   
   console.log('Starting user creation with data:', userData);
   
-  // Try multiple strategies to handle API requirements
+  // Calculate expiration date
+  const expirationDate = new Date();
+  expirationDate.setDate(expirationDate.getDate() + userData.durationDays);
+  const formattedExpireDate = formatDateToMMDDYYYY(expirationDate);
+  
+  console.log(`Calculated expiration date: ${formattedExpireDate} (${userData.durationDays} days from now)`);
+  
+  // Try multiple strategies with fixed_date as priority
   const strategies = [
+    {
+      name: 'fixed_date',
+      createRequest: () => ({
+        username: userData.username,
+        expire_strategy: 'fixed_date',
+        expire_date: formattedExpireDate, // Try expire_date field first
+        data_limit: userData.dataLimitGB * 1073741824,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes}`,
+        data_limit_reset_strategy: 'no_reset'
+      })
+    },
+    {
+      name: 'fixed_date_alt',
+      createRequest: () => ({
+        username: userData.username,
+        expire_strategy: 'fixed_date',
+        expire: formattedExpireDate, // Try expire field as alternative
+        data_limit: userData.dataLimitGB * 1073741824,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes}`,
+        data_limit_reset_strategy: 'no_reset'
+      })
+    },
     {
       name: 'start_on_first_use',
       createRequest: () => ({
         username: userData.username,
         expire_strategy: 'start_on_first_use',
-        expire_after: userData.durationDays * 24 * 60 * 60, // Duration in seconds
+        usage_duration: userData.durationDays * 24 * 60 * 60, // Add usage_duration for this strategy
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
         note: `Purchased via bnets.co - ${userData.notes}`,
@@ -166,22 +203,6 @@ async function createMarzneshinUser(
         note: `Purchased via bnets.co - ${userData.notes}`,
         data_limit_reset_strategy: 'no_reset'
       })
-    },
-    {
-      name: 'fixed_date_iso',
-      createRequest: () => {
-        const expirationDate = new Date();
-        expirationDate.setDate(expirationDate.getDate() + userData.durationDays);
-        return {
-          username: userData.username,
-          expire_strategy: 'fixed_date',
-          expire: Math.floor(expirationDate.getTime() / 1000),
-          data_limit: userData.dataLimitGB * 1073741824,
-          service_ids: serviceIds,
-          note: `Purchased via bnets.co - ${userData.notes}`,
-          data_limit_reset_strategy: 'no_reset'
-        };
-      }
     }
   ];
 
@@ -208,6 +229,7 @@ async function createMarzneshinUser(
       if (response.ok) {
         const result = await response.json();
         console.log(`Strategy ${strategy.name} succeeded:`, result);
+        console.log(`✅ User created successfully with ${strategy.name} strategy and expiration: ${formattedExpireDate}`);
         return result;
       } else {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
