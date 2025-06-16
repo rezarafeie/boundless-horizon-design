@@ -1,5 +1,4 @@
 
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -245,7 +244,70 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { username, dataLimitGB, durationDays, notes } = await req.json();
+    console.log('Received request, parsing body...');
+    const requestBody = await req.json();
+    console.log('Raw request body:', JSON.stringify(requestBody, null, 2));
+
+    // Extract parameters with support for both old and new parameter names
+    const {
+      username,
+      dataLimitGB,
+      dataLimit,
+      durationDays,
+      duration,
+      notes
+    } = requestBody;
+
+    // Use the new parameter names if available, otherwise fall back to old ones
+    const finalDataLimitGB = dataLimitGB || dataLimit;
+    const finalDurationDays = durationDays || duration;
+
+    console.log('Extracted parameters:', {
+      username,
+      finalDataLimitGB,
+      finalDurationDays,
+      notes: notes ? 'provided' : 'empty'
+    });
+
+    // Validate required parameters
+    if (!username) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Username is required' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!finalDataLimitGB || typeof finalDataLimitGB !== 'number' || finalDataLimitGB <= 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Valid data limit (in GB) is required and must be a positive number' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!finalDurationDays || typeof finalDurationDays !== 'number' || finalDurationDays <= 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Valid duration (in days) is required and must be a positive number' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Get secrets from environment
     const baseUrl = Deno.env.get('MARZNESHIN_BASE_URL');
@@ -256,6 +318,7 @@ Deno.serve(async (req) => {
       console.error('Missing required environment variables');
       return new Response(
         JSON.stringify({ 
+          success: false,
           error: 'Server configuration error. Please contact support.' 
         }),
         { 
@@ -266,7 +329,6 @@ Deno.serve(async (req) => {
     }
 
     console.log('Starting Marzneshin user creation process');
-    console.log('Request parameters:', { username, dataLimitGB, durationDays, notes: notes ? 'provided' : 'empty' });
 
     // Get authentication token
     const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
@@ -282,11 +344,16 @@ Deno.serve(async (req) => {
       throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
     }
 
-    // Create the user
+    // Create the user with normalized parameters
     const result = await createMarzneshinUser(
       baseUrl,
       token,
-      { username, dataLimitGB, durationDays, notes },
+      { 
+        username, 
+        dataLimitGB: finalDataLimitGB, 
+        durationDays: finalDurationDays, 
+        notes: notes || '' 
+      },
       requiredServiceIds
     );
 
