@@ -1,15 +1,28 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Sun, Moon, Menu, X, Globe } from 'lucide-react';
+import { Sun, Moon, Menu, X, Globe, ChevronDown } from 'lucide-react';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isRTL = language === 'fa';
+
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -60,13 +73,26 @@ const Navigation = () => {
               <Globe className="w-4 h-4" />
             </Button>
 
-            {/* CTA Button */}
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="hidden sm:inline-flex"
-            >
-              {t('hero.cta')}
-            </Button>
+            {/* Dropdown Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="hidden sm:inline-flex">
+                  {t('nav.dropdown')}
+                  <ChevronDown className={`w-4 h-4 ${isRTL ? 'mr-2' : 'ml-2'}`} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align={isRTL ? "start" : "end"} className="w-56">
+                <DropdownMenuItem onClick={() => window.open('https://t.me/getbnbot', '_blank')}>
+                  {t('nav.telegram')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => scrollToSection('purchase')}>
+                  {t('nav.purchase')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => scrollToSection('free-trial')}>
+                  {t('nav.free-trial')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Mobile Menu Toggle */}
             <Button
@@ -95,12 +121,28 @@ const Navigation = () => {
             <a href="#contact" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.contact')}
             </a>
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="w-full sm:hidden"
-            >
-              {t('hero.cta')}
-            </Button>
+            <div className="pt-4 space-y-2">
+              <Button 
+                onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+                className="w-full sm:hidden"
+                variant="outline"
+              >
+                {t('nav.telegram')}
+              </Button>
+              <Button 
+                onClick={() => scrollToSection('purchase')}
+                className="w-full sm:hidden"
+              >
+                {t('nav.purchase')}
+              </Button>
+              <Button 
+                onClick={() => scrollToSection('free-trial')}
+                className="w-full sm:hidden"
+                variant="outline"
+              >
+                {t('nav.free-trial')}
+              </Button>
+            </div>
           </div>
         )}
       </div>
