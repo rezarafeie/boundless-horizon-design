@@ -14,6 +14,7 @@ const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Subscription = lazy(() => import("./pages/Subscription"));
 const Renewal = lazy(() => import("./pages/Renewal"));
+const DeliveryPage = lazy(() => import("./pages/DeliveryPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +46,7 @@ const App = () => {
                   <Route path="/" element={<Index />} />
                   <Route path="/subscription" element={<Subscription />} />
                   <Route path="/renewal" element={<Renewal />} />
+                  <Route path="/delivery" element={<DeliveryPage />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>

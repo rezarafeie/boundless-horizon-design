@@ -1,11 +1,12 @@
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, Copy, Download, AlertCircle } from 'lucide-react';
+import { CheckCircle, Copy, Download, AlertCircle, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCodeCanvas from 'qrcode';
 
@@ -23,6 +24,7 @@ interface SubscriptionSuccessProps {
 const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
   const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
@@ -30,6 +32,8 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
   useEffect(() => {
     if (result?.subscription_url) {
       generateQRCode(result.subscription_url);
+      // Store data for delivery page
+      localStorage.setItem('deliverySubscriptionData', JSON.stringify(result));
     }
   }, [result]);
 
@@ -73,6 +77,10 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
     URL.revokeObjectURL(url);
   };
 
+  const goToDeliveryPage = () => {
+    navigate('/delivery', { state: { subscriptionData: result } });
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800">
@@ -92,7 +100,35 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
         </CardHeader>
         
         <CardContent className="space-y-6">
-          {/* Subscription Details */}
+          {/* Quick Actions */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button onClick={goToDeliveryPage} variant="default" size="lg" className="flex-1 sm:flex-none">
+              <ArrowRight className="w-5 h-5 mr-2" />
+              {language === 'fa' ? 'مشاهده جزئیات کامل' : 'View Full Details'}
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => copyToClipboard(result.subscription_url)}
+              className="flex-1 sm:flex-none"
+            >
+              <Copy className="w-5 h-5 mr-2" />
+              {language === 'fa' ? 'کپی لینک' : 'Copy Link'}
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={downloadConfig}
+              className="flex-1 sm:flex-none"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              {language === 'fa' ? 'دانلود' : 'Download'}
+            </Button>
+          </div>
+
+          {/* Quick Preview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
               <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'نام کاربری' : 'Username'}</Label>
@@ -116,7 +152,7 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
               </Label>
               <div className="flex justify-center">
                 <div className="p-4 bg-white rounded-lg shadow-lg">
-                  <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-64 h-64" />
+                  <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-48 h-48" />
                 </div>
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -127,59 +163,6 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
               </p>
             </div>
           )}
-
-          {/* Subscription URL */}
-          <div className="space-y-4">
-            <Label className="text-lg font-semibold">
-              {language === 'fa' ? 'لینک اشتراک VLESS' : 'VLESS Subscription Link'}
-            </Label>
-            
-            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {language === 'fa' ? 'لینک پیکربندی' : 'Configuration Link'}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => copyToClipboard(result.subscription_url)}
-                  >
-                    <Copy className="w-4 h-4 mr-1" />
-                    {language === 'fa' ? 'کپی' : 'Copy'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={downloadConfig}
-                  >
-                    <Download className="w-4 h-4 mr-1" />
-                    {language === 'fa' ? 'دانلود' : 'Download'}
-                  </Button>
-                </div>
-              </div>
-              <code className="text-xs break-all text-gray-800 dark:text-gray-200 block p-2 bg-white dark:bg-gray-900 rounded">
-                {result.subscription_url}
-              </code>
-            </div>
-          </div>
-
-          {/* Server Info */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-            <div className="flex flex-wrap gap-2 mb-2">
-              {MARZBAN_INBOUND_TAGS.map(tag => (
-                <Badge key={tag} variant="outline" className="text-blue-700 dark:text-blue-300">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-            <p className="text-sm text-blue-600 dark:text-blue-400">
-              {language === 'fa' ? 
-                'تمام سرورها برای شما فعال شده‌اند' : 
-                'All servers are activated for you'
-              }
-            </p>
-          </div>
 
           {/* Important Notes */}
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
@@ -192,8 +175,8 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
                 <ul className="space-y-1 text-blue-700 dark:text-blue-300">
                   <li>
                     {language === 'fa' ? 
-                      '• از V2Ray یا کلاینت‌های سازگار با VLESS استفاده کنید' : 
-                      '• Use V2Ray or VLESS-compatible clients'
+                      '• برای راهنمای کامل و دانلود اپ‌ها روی "مشاهده جزئیات کامل" کلیک کنید' : 
+                      '• Click "View Full Details" for complete guide and app downloads'
                     }
                   </li>
                   <li>
@@ -202,26 +185,9 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
                       '• Keep this link in a secure place'
                     }
                   </li>
-                  <li>
-                    {language === 'fa' ? 
-                      '• برای پشتیبانی با تلگرام ما تماس بگیرید' : 
-                      '• Contact our Telegram support for help'
-                    }
-                  </li>
                 </ul>
               </div>
             </div>
-          </div>
-
-          {/* Support Button */}
-          <div className="flex justify-center pt-4">
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')} 
-              variant="hero-primary"
-              size="lg"
-            >
-              {language === 'fa' ? 'دریافت پشتیبانی' : 'Get Support'}
-            </Button>
           </div>
         </CardContent>
       </Card>
