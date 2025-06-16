@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     let updatePayload: any;
     
     if (currentUser.expire_strategy === 'fixed_date') {
-      // Handle fixed_date strategy
+      // Handle fixed_date strategy - DO NOT include expire_after or usage_duration
       console.log('[MARZNESHIN-UPDATE-USER] Using fixed_date strategy');
       
       // Calculate new expire_date by adding days to current expire_date
@@ -146,31 +146,66 @@ Deno.serve(async (req) => {
 
     console.log('[MARZNESHIN-UPDATE-USER] Final update payload:', updatePayload);
 
-    // Step 4: Send PATCH request
-    console.log('[MARZNESHIN-UPDATE-USER] Sending PATCH request...');
-    const updateResponse = await fetch(`${baseUrl}/api/users/${username}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(updatePayload),
-    });
+    // Step 4: Try different HTTP methods and endpoints
+    const updateEndpoints = [
+      { method: 'PUT', url: `${baseUrl}/api/users/${username}` },
+      { method: 'PATCH', url: `${baseUrl}/api/users/${username}` },
+      { method: 'PUT', url: `${baseUrl}/api/user/${username}` },
+      { method: 'PATCH', url: `${baseUrl}/api/user/${username}` }
+    ];
 
-    if (!updateResponse.ok) {
-      const errorText = await updateResponse.text();
-      console.error('[MARZNESHIN-UPDATE-USER] PATCH failed:', {
+    let updateResponse;
+    let updateResult;
+    let requestDetails = {};
+
+    for (const endpoint of updateEndpoints) {
+      console.log(`[MARZNESHIN-UPDATE-USER] Trying ${endpoint.method} ${endpoint.url}...`);
+      
+      requestDetails = {
+        method: endpoint.method,
+        url: endpoint.url,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        payload: updatePayload
+      };
+
+      updateResponse = await fetch(endpoint.url, {
+        method: endpoint.method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatePayload),
+      });
+
+      console.log(`[MARZNESHIN-UPDATE-USER] ${endpoint.method} response:`, {
         status: updateResponse.status,
         statusText: updateResponse.statusText,
-        body: errorText
+        url: endpoint.url
       });
-      throw new Error(`Update failed: ${updateResponse.statusText} - ${errorText}`);
+
+      if (updateResponse.ok) {
+        updateResult = await updateResponse.json();
+        console.log('[MARZNESHIN-UPDATE-USER] Update successful:', updateResult);
+        break;
+      } else {
+        const errorText = await updateResponse.text();
+        console.error(`[MARZNESHIN-UPDATE-USER] ${endpoint.method} ${endpoint.url} failed:`, {
+          status: updateResponse.status,
+          statusText: updateResponse.statusText,
+          body: errorText
+        });
+        
+        // If this is the last endpoint, throw the error
+        if (endpoint === updateEndpoints[updateEndpoints.length - 1]) {
+          throw new Error(`All update methods failed. Last error: ${updateResponse.status} ${updateResponse.statusText} - ${errorText}`);
+        }
+      }
     }
 
-    const updateResult = await updateResponse.json();
-    console.log('[MARZNESHIN-UPDATE-USER] Update successful:', updateResult);
-
-    // Return success response with detailed info
+    // Return success response with detailed info including request details
     const response = {
       success: true,
       data: {
@@ -181,6 +216,12 @@ Deno.serve(async (req) => {
         total_data_limit: totalDataLimit,
         duration_days_added: durationDays,
         payload_sent: updatePayload,
+        request_details: requestDetails,
+        api_response: {
+          status_code: updateResponse?.status,
+          status_text: updateResponse?.statusText,
+          data: updateResult
+        },
         update_response: updateResult,
         previous_expire_info: currentUser.expire_strategy === 'fixed_date' 
           ? { expire_date: currentUser.expire_date }
@@ -201,6 +242,11 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       success: false,
       error: error.message,
+      error_details: {
+        type: 'marzneshin_update_error',
+        timestamp: new Date().toISOString(),
+        function: 'marzneshin-update-user'
+      },
       timestamp: new Date().toISOString()
     }), {
       status: 500,
