@@ -22,7 +22,6 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       description: language === 'fa' ? 
         'اتصال پایه با آلمان، فنلاند، هلند - مناسب برای کاربری روزمره' : 
         'Basic connection with Germany, Finland, Netherlands - suitable for daily use',
-      price: 0, // Base price, will be calculated based on data limit
       pricePerGB: 3200,
       apiType: 'marzban'
     },
@@ -32,7 +31,6 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       description: language === 'fa' ? 
         'پریمیوم با تمام مکان‌های جهانی و اتصالات تونلی - بهترین عملکرد' : 
         'Premium with all global locations and tunnel connections - best performance',
-      price: 0, // Base price, will be calculated based on data limit
       pricePerGB: 4200,
       apiType: 'marzneshin'
     }

@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,7 +49,6 @@ const RenewalSubscriptionForm = () => {
           id: 'pro',
           name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
           description: language === 'fa' ? 'دسترسی کامل به همه سرورها' : 'Full access to all servers',
-          price: 0,
           pricePerGB: 800,
           apiType: 'marzneshin'
         });
@@ -57,7 +57,6 @@ const RenewalSubscriptionForm = () => {
           id: 'lite',
           name: language === 'fa' ? 'شبکه بدون مرز لایت' : 'Boundless Network Lite',
           description: language === 'fa' ? 'دسترسی به سرورهای اصلی' : 'Access to main servers',
-          price: 0,
           pricePerGB: 500,
           apiType: 'marzban'
         });
@@ -69,11 +68,9 @@ const RenewalSubscriptionForm = () => {
     if (!selectedPlan) return 0;
     const basePrice = dataLimit * selectedPlan.pricePerGB;
     
-    if (appliedDiscount && appliedDiscount.type === 'percentage') {
-      const discountAmount = (basePrice * appliedDiscount.value) / 100;
+    if (appliedDiscount) {
+      const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
       return Math.max(0, basePrice - discountAmount);
-    } else if (appliedDiscount && appliedDiscount.type === 'fixed') {
-      return Math.max(0, basePrice - appliedDiscount.value);
     }
     
     return basePrice;
@@ -82,14 +79,7 @@ const RenewalSubscriptionForm = () => {
   const calculateDiscount = () => {
     if (!selectedPlan || !appliedDiscount) return 0;
     const basePrice = dataLimit * selectedPlan.pricePerGB;
-    
-    if (appliedDiscount.type === 'percentage') {
-      return (basePrice * appliedDiscount.value) / 100;
-    } else if (appliedDiscount.type === 'fixed') {
-      return appliedDiscount.value;
-    }
-    
-    return 0;
+    return (basePrice * appliedDiscount.percentage) / 100;
   };
 
   const validateForm = (): boolean => {

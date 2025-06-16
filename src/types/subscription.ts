@@ -3,7 +3,6 @@ export interface SubscriptionPlan {
   id: 'lite' | 'pro';
   name: string;
   description: string;
-  price: number; // Added missing price property
   pricePerGB: number;
   apiType: 'marzban' | 'marzneshin';
   durationDays?: number;
@@ -11,8 +10,7 @@ export interface SubscriptionPlan {
 
 export interface DiscountCode {
   code: string;
-  type: 'percentage' | 'fixed'; // Added type property
-  value: number; // Changed from percentage to value
+  percentage: number;
   description: string;
 }
 
