@@ -2,7 +2,7 @@
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import Navigation from "@/components/Navigation";
-import MarzbanSubscriptionForm from "@/components/MarzbanSubscriptionForm";
+import ModernSubscriptionForm from "@/components/ModernSubscriptionForm";
 import FooterSection from "@/components/FooterSection";
 
 const Subscription = () => {
@@ -12,7 +12,7 @@ const Subscription = () => {
         <div className="min-h-screen bg-background">
           <Navigation />
           <div className="pt-20">
-            <MarzbanSubscriptionForm />
+            <ModernSubscriptionForm />
           </div>
           <FooterSection />
         </div>
