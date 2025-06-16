@@ -145,11 +145,21 @@ async function createMarzneshinUser(
   const durationSeconds = userData.durationDays * 24 * 60 * 60; // Convert days to seconds
   const expirationTimestamp = currentTimeSeconds + durationSeconds;
 
+  // Validate timestamp
+  if (expirationTimestamp <= currentTimeSeconds) {
+    throw new Error('Invalid expiration timestamp - must be in the future');
+  }
+
+  console.log(`Current time: ${currentTimeSeconds} (${new Date(currentTimeSeconds * 1000).toISOString()})`);
+  console.log(`Duration: ${userData.durationDays} days (${durationSeconds} seconds)`);
+  console.log(`Calculated expiration: ${expirationTimestamp} (${new Date(expirationTimestamp * 1000).toISOString()})`);
+
+  // Start with minimal required fields for testing
   const userRequest: MarzneshinUserRequest = {
     username: userData.username,
     expire_strategy: 'fixed_date',
     expire: expirationTimestamp,
-    usage_duration: userData.durationDays * 86400, // Convert days to seconds
+    usage_duration: durationSeconds, // Use seconds consistently
     data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
     service_ids: serviceIds,
     note: `Purchased via bnets.co - ${userData.notes}`,
@@ -157,7 +167,6 @@ async function createMarzneshinUser(
   };
 
   console.log('Creating user with request:', JSON.stringify(userRequest, null, 2));
-  console.log(`Expiration will be: ${new Date(expirationTimestamp * 1000).toISOString()} (${userData.durationDays} days from now)`);
 
   const response = await fetch(`${baseUrl}/api/users`, {
     method: 'POST',
@@ -195,14 +204,24 @@ async function createMarzneshinUser(
     
     if (response.status === 422) {
       // Validation error - provide more specific feedback
-      if (errorData.detail && Array.isArray(errorData.detail)) {
-        const validationErrors = errorData.detail.map((err: any) => 
-          `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
-        ).join(', ');
-        throw new Error(`Validation error: ${validationErrors}`);
-      } else if (errorData.detail) {
-        throw new Error(`Validation error: ${errorData.detail}`);
+      let errorMessage = 'Validation error';
+      
+      if (errorData.detail) {
+        if (typeof errorData.detail === 'string') {
+          errorMessage = `Validation error: ${errorData.detail}`;
+        } else if (errorData.detail.body) {
+          errorMessage = `Validation error: ${errorData.detail.body}`;
+        } else if (Array.isArray(errorData.detail)) {
+          const validationErrors = errorData.detail.map((err: any) => 
+            `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
+          ).join(', ');
+          errorMessage = `Validation error: ${validationErrors}`;
+        } else {
+          errorMessage = `Validation error: ${JSON.stringify(errorData.detail)}`;
+        }
       }
+      
+      throw new Error(errorMessage);
     }
 
     if (response.status === 400) {
