@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -72,20 +71,19 @@ const Navigation = () => {
             {/* Dropdown Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="hidden sm:inline-flex bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
+                <Button className="hidden sm:inline-flex bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
                   {t('nav.get-network')}
                   <ChevronDown className={`w-4 h-4 ${isRTL ? 'mr-2' : 'ml-2'}`} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent 
                 align={isRTL ? "start" : "end"} 
-                className="w-64 bg-background/95 backdrop-blur-lg border border-border shadow-2xl p-3 rounded-xl"
-                dir={isRTL ? 'rtl' : 'ltr'}
+                className="w-72 bg-gradient-to-br from-white/95 via-blue-50/95 to-purple-50/95 dark:from-gray-900/95 dark:via-blue-900/95 dark:to-purple-900/95 backdrop-blur-xl border-2 border-blue-200/50 dark:border-blue-700/50 shadow-2xl p-4 rounded-2xl"
               >
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
                   <Button
                     onClick={() => window.open('https://t.me/bnets_support', '_blank')} 
-                    className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 h-auto rounded-xl`}
+                    className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-blue-500 via-blue-600 to-cyan-600 hover:from-blue-600 hover:via-blue-700 hover:to-cyan-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 h-auto rounded-xl`}
                     variant="ghost"
                   >
                     <Send className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-blue-100`} />
@@ -95,7 +93,7 @@ const Navigation = () => {
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
                   <Link to="/subscription" className="w-full">
-                    <Button className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 h-auto rounded-xl`} variant="ghost">
+                    <Button className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-green-500 via-emerald-600 to-teal-600 hover:from-green-600 hover:via-emerald-700 hover:to-teal-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 h-auto rounded-xl`} variant="ghost">
                       <ShoppingCart className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-green-100`} />
                       <span className="font-semibold text-white">{t('nav.purchase')}</span>
                     </Button>
@@ -103,7 +101,7 @@ const Navigation = () => {
                 </DropdownMenuItem>
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
-                  <div className={`w-full p-4 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 transition-all duration-200 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] ${isRTL ? 'text-right' : 'text-left'}`}>
+                  <div className={`w-full p-4 bg-gradient-to-r from-purple-500 via-pink-600 to-rose-600 hover:from-purple-600 hover:via-pink-700 hover:to-rose-700 transition-all duration-300 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] ${isRTL ? 'text-right' : 'text-left'}`}>
                     <div className={`flex items-center ${isRTL ? 'justify-end' : 'justify-start'}`}>
                       <Gift className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-purple-100`} />
                       <FreeTrialButton />
@@ -113,7 +111,7 @@ const Navigation = () => {
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 border-0">
                   <Link to="/renewal" className="w-full">
-                    <Button className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 h-auto rounded-xl`} variant="ghost">
+                    <Button className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-orange-500 via-amber-600 to-yellow-600 hover:from-orange-600 hover:via-amber-700 hover:to-yellow-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 h-auto rounded-xl`} variant="ghost">
                       <RefreshCw className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-orange-100`} />
                       <span className="font-semibold text-white">{t('nav.renew')}</span>
                     </Button>
