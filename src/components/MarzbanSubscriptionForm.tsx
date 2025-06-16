@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -783,7 +784,7 @@ const MarzbanSubscriptionForm = () => {
             {/* Server Info */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
               <div className="flex flex-wrap gap-2 mb-2">
-                {INBOUND_TAGS.map(tag => (
+                {MARZBAN_INBOUND_TAGS.map(tag => (
                   <Badge key={tag} variant="outline" className="text-blue-700 dark:text-blue-300">
                     {tag}
                   </Badge>
