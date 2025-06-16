@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -6,14 +7,16 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDown, ChevronUp, Bug } from 'lucide-react';
+import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDown, ChevronUp, Bug, CreditCard, Phone } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import QRCodeCanvas from 'qrcode';
 
 interface MarzbanFormData {
   username: string;
   dataLimit: number; // in GB
   duration: number; // in days
   notes: string;
+  mobile: string;
 }
 
 interface MarzbanResponse {
@@ -21,6 +24,12 @@ interface MarzbanResponse {
   subscription_url: string;
   expire: number;
   data_limit: number;
+}
+
+interface PaymanResponse {
+  payman_authority: string;
+  signature?: string;
+  status: string;
 }
 
 interface DebugInfo {
@@ -38,25 +47,63 @@ const MarzbanSubscriptionForm = () => {
     username: '',
     dataLimit: 10,
     duration: 30,
-    notes: ''
+    notes: '',
+    mobile: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<MarzbanResponse | null>(null);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(1); // 1: Form, 2: Payment, 3: Success
   const [debugMode, setDebugMode] = useState(false);
   const [debugInfo, setDebugInfo] = useState<DebugInfo[]>([]);
   const [showDebug, setShowDebug] = useState(false);
   const [rateLimitMap, setRateLimitMap] = useState<Map<string, number>>(new Map());
+  const [paymanData, setPaymanData] = useState<PaymanResponse | null>(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
   // Fixed configuration
-  const FIXED_INBOUND = 'fanland';
-  const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f'; // Fixed UUID for Dubai server
+  const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
+  const MERCHANT_ID = '10f6ea92-fb53-468c-bcc9-36ef4d9f539c';
+  const PRICE_PER_GB = 3200; // Toman per GB
+  const INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
 
   useEffect(() => {
     // Check for debug mode in URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     setDebugMode(urlParams.get('debug') === 'true');
+    
+    // Check for payment callback
+    const status = urlParams.get('Status');
+    const authority = urlParams.get('Authority');
+    if (status && authority) {
+      handlePaymentCallback(status, authority);
+    }
   }, []);
+
+  useEffect(() => {
+    if (result?.subscription_url) {
+      generateQRCode(result.subscription_url);
+    }
+  }, [result]);
+
+  const generateQRCode = async (url: string) => {
+    try {
+      const qrDataUrl = await QRCodeCanvas.toDataURL(url, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      setQrCodeDataUrl(qrDataUrl);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
+  };
+
+  const calculatePrice = () => {
+    return formData.dataLimit * PRICE_PER_GB;
+  };
 
   const generateUsername = () => {
     const prefix = 'bnets_';
@@ -70,11 +117,11 @@ const MarzbanSubscriptionForm = () => {
   };
 
   const checkRateLimit = (): boolean => {
-    const clientIP = 'user_ip'; // In a real app, you'd get this from the server
+    const clientIP = 'user_ip';
     const now = Date.now();
     const lastRequest = rateLimitMap.get(clientIP) || 0;
     
-    if (now - lastRequest < 30000) { // 30 seconds rate limit
+    if (now - lastRequest < 30000) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
@@ -98,6 +145,19 @@ const MarzbanSubscriptionForm = () => {
         description: language === 'fa' ? 
           'نام کاربری فقط می‌تواند شامل حروف انگلیسی کوچک، اعداد و زیرخط باشد' : 
           'Username can only contain lowercase letters, numbers, and underscores',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    // Mobile validation
+    const mobileRegex = /^09[0-9]{9}$/;
+    if (!formData.mobile || !mobileRegex.test(formData.mobile)) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'شماره موبایل باید با 09 شروع شده و 11 رقم باشد' : 
+          'Mobile number must start with 09 and be 11 digits',
         variant: 'destructive'
       });
       return false;
@@ -132,6 +192,121 @@ const MarzbanSubscriptionForm = () => {
 
   const sanitizeInput = (input: string): string => {
     return input.replace(/[<>'"]/g, '').trim();
+  };
+
+  const createPaymanContract = async (): Promise<string> => {
+    const expireAt = new Date();
+    expireAt.setDate(expireAt.getDate() + 30);
+    
+    const paymanRequest = {
+      merchant_id: MERCHANT_ID,
+      mobile: formData.mobile,
+      expire_at: Math.floor(expireAt.getTime() / 1000),
+      max_daily_count: "100",
+      max_monthly_count: "1000",
+      max_amount: calculatePrice() * 10, // Convert Toman to Rial
+      callback_url: "https://bnets.co/subscription?payment_callback=1"
+    };
+
+    const response = await fetch('https://api.zarinpal.com/pg/v4/payman/request.json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(paymanRequest)
+    });
+
+    addDebugInfo({
+      endpoint: 'https://api.zarinpal.com/pg/v4/payman/request.json',
+      status: response.status,
+      request: paymanRequest,
+      response: response.ok ? 'Contract created' : 'Contract failed'
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      addDebugInfo({
+        endpoint: 'https://api.zarinpal.com/pg/v4/payman/request.json',
+        status: response.status,
+        request: paymanRequest,
+        response: errorData,
+        error: 'Contract creation failed'
+      });
+      throw new Error('Failed to create payment contract');
+    }
+
+    const responseData = await response.json();
+    return responseData.data.payman_authority;
+  };
+
+  const handlePaymentCallback = async (status: string, authority: string) => {
+    if (status === 'OK') {
+      try {
+        // Verify payment
+        const verifyResponse = await fetch('https://api.zarinpal.com/pg/v4/payman/verify.json', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            merchant_id: MERCHANT_ID,
+            authority: authority
+          })
+        });
+
+        const verifyData = await verifyResponse.json();
+        
+        if (verifyData.data.code === 100) {
+          // Checkout
+          const checkoutResponse = await fetch('https://api.zarinpal.com/pg/v4/payman/checkout.json', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              merchant_id: MERCHANT_ID,
+              authority: authority,
+              signature: verifyData.data.signature
+            })
+          });
+
+          const checkoutData = await checkoutResponse.json();
+          
+          if (checkoutData.data.code === 100) {
+            // Payment successful, create user
+            const userData = JSON.parse(localStorage.getItem('pendingUserData') || '{}');
+            const result = await createMarzbanUser(userData);
+            setResult(result);
+            setStep(3);
+            localStorage.removeItem('pendingUserData');
+            
+            toast({
+              title: language === 'fa' ? 'موفق' : 'Success',
+              description: language === 'fa' ? 
+                'پرداخت موفق و اشتراک ایجاد شد' : 
+                'Payment successful and subscription created',
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Payment verification error:', error);
+        toast({
+          title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
+          description: language === 'fa' ? 
+            'خطا در تأیید پرداخت' : 
+            'Payment verification failed',
+          variant: 'destructive'
+        });
+      }
+    } else {
+      toast({
+        title: language === 'fa' ? 'پرداخت ناموفق' : 'Payment Failed',
+        description: language === 'fa' ? 
+          'پرداخت لغو شد یا ناموفق بود' : 
+          'Payment was cancelled or failed',
+        variant: 'destructive'
+      });
+    }
   };
 
   const createMarzbanUser = async (formData: MarzbanFormData): Promise<MarzbanResponse> => {
@@ -174,7 +349,7 @@ const MarzbanSubscriptionForm = () => {
       const tokenData = await tokenResponse.json();
       const accessToken = tokenData.access_token;
 
-      // Step 2: Create user with fixed inbound
+      // Step 2: Create user with all inbounds
       const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.duration * 86400);
       const dataLimitBytes = formData.dataLimit * 1073741824; // Convert GB to bytes
 
@@ -185,14 +360,14 @@ const MarzbanSubscriptionForm = () => {
         data_limit: dataLimitBytes,
         data_limit_reset_strategy: 'no_reset',
         inbounds: {
-          vless: ["VLESSTCP", "Israel", "USAC", "info_protocol", "Dubai"]
+          vless: INBOUND_TAGS
         },
         proxies: {
           vless: {
             id: FIXED_UUID
           }
         },
-        note: `From bnets.co form - ${sanitizeInput(formData.notes)}`,
+        note: `From bnets.co form - ${sanitizeInput(formData.notes)} - Mobile: ${formData.mobile}`,
         next_plan: {
           add_remaining_traffic: false,
           data_limit: 0,
@@ -271,27 +446,26 @@ const MarzbanSubscriptionForm = () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
-    setDebugInfo([]); // Clear previous debug info
+    setDebugInfo([]);
     
     try {
-      const result = await createMarzbanUser(formData);
-      setResult(result);
-      setStep(2);
+      // Store form data for after payment
+      localStorage.setItem('pendingUserData', JSON.stringify(formData));
       
-      toast({
-        title: language === 'fa' ? 'موفق' : 'Success',
-        description: language === 'fa' ? 
-          'اشتراک VPN شما با موفقیت ایجاد شد' : 
-          'Your VPN subscription has been created successfully',
-      });
+      // Create Payman contract
+      const paymanAuthority = await createPaymanContract();
+      
+      // Redirect to Zarinpal payment page
+      window.location.href = `https://www.zarinpal.com/pg/StartPayman/${paymanAuthority}/1`;
+      
     } catch (error) {
-      console.error('Marzban API Error:', error);
+      console.error('Payment initiation error:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: error instanceof Error ? error.message : (
           language === 'fa' ? 
-            'خطا در ایجاد اشتراک. لطفاً دوباره تلاش کنید' : 
-            'Failed to create subscription. Please try again'
+            'خطا در شروع پرداخت. لطفاً دوباره تلاش کنید' : 
+            'Failed to initiate payment. Please try again'
         ),
         variant: 'destructive'
       });
@@ -390,48 +564,62 @@ const MarzbanSubscriptionForm = () => {
     );
   };
 
-  // Success page
-  if (step === 2 && result) {
+  // Success page with animation
+  if (step === 3 && result) {
     return (
-      <div className="max-w-2xl mx-auto p-6 space-y-6">
-        <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+      <div className="max-w-2xl mx-auto p-6 space-y-6 animate-fade-in">
+        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800">
           <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+            <div className="mx-auto w-20 h-20 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mb-4 animate-scale-in">
+              <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400 animate-pulse" />
             </div>
-            <CardTitle className="text-green-800 dark:text-green-200">
-              {language === 'fa' ? 'اشتراک VPN آماده است!' : 'VPN Subscription Ready!'}
+            <CardTitle className="text-2xl text-green-800 dark:text-green-200">
+              {language === 'fa' ? '🎉 اشتراک VPN آماده است!' : '🎉 VPN Subscription Ready!'}
             </CardTitle>
-            <CardDescription className="text-green-600 dark:text-green-400">
+            <CardDescription className="text-green-600 dark:text-green-400 text-lg">
               {language === 'fa' ? 
-                'پیکربندی VLESS شما با موفقیت ایجاد شد' : 
-                'Your VLESS configuration has been created successfully'
+                'پرداخت موفق و پیکربندی VLESS شما ایجاد شد' : 
+                'Payment successful and your VLESS configuration is ready'
               }
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <Label>{language === 'fa' ? 'نام کاربری' : 'Username'}</Label>
-                <p className="font-mono text-lg">{result.username}</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'نام کاربری' : 'Username'}</Label>
+                <p className="font-mono text-lg font-bold">{result.username}</p>
               </div>
-              <div>
-                <Label>{language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}</Label>
-                <p>{new Date(result.expire * 1000).toLocaleDateString()}</p>
+              <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}</Label>
+                <p className="font-bold">{new Date(result.expire * 1000).toLocaleDateString()}</p>
               </div>
-            </div>
-
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <Badge variant="outline" className="text-blue-700 dark:text-blue-300">
-                  {language === 'fa' ? 'سرور: دبی' : 'Server: Dubai'}
-                </Badge>
-                <Badge variant="outline" className="text-blue-700 dark:text-blue-300">
-                  VLESS
-                </Badge>
+              <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'حجم' : 'Volume'}</Label>
+                <p className="font-bold">{Math.round(result.data_limit / 1073741824)} GB</p>
               </div>
             </div>
 
+            {/* QR Code Section */}
+            {qrCodeDataUrl && (
+              <div className="text-center space-y-4">
+                <Label className="text-lg font-semibold">
+                  {language === 'fa' ? 'کد QR اشتراک' : 'Subscription QR Code'}
+                </Label>
+                <div className="flex justify-center">
+                  <div className="p-4 bg-white rounded-lg shadow-lg">
+                    <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-64 h-64" />
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {language === 'fa' ? 
+                    'این کد را با اپ V2Ray اسکن کنید' : 
+                    'Scan this QR code with your V2Ray app'
+                  }
+                </p>
+              </div>
+            )}
+
+            {/* Subscription URL */}
             <div className="space-y-4">
               <Label className="text-lg font-semibold">
                 {language === 'fa' ? 'لینک اشتراک VLESS' : 'VLESS Subscription Link'}
@@ -467,6 +655,24 @@ const MarzbanSubscriptionForm = () => {
               </div>
             </div>
 
+            {/* Server Info */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+              <div className="flex flex-wrap gap-2 mb-2">
+                {INBOUND_TAGS.map(tag => (
+                  <Badge key={tag} variant="outline" className="text-blue-700 dark:text-blue-300">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                {language === 'fa' ? 
+                  'تمام سرورها برای شما فعال شده‌اند' : 
+                  'All servers are activated for you'
+                }
+              </p>
+            </div>
+
+            {/* Important Notes */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
@@ -499,7 +705,7 @@ const MarzbanSubscriptionForm = () => {
             </div>
 
             <div className="flex justify-center pt-4">
-              <Button onClick={() => window.open('https://t.me/getbnbot', '_blank')}>
+              <Button onClick={() => window.open('https://t.me/getbnbot', '_blank')} size="lg">
                 {language === 'fa' ? 'دریافت پشتیبانی' : 'Get Support'}
               </Button>
             </div>
@@ -521,8 +727,8 @@ const MarzbanSubscriptionForm = () => {
           </CardTitle>
           <CardDescription>
             {language === 'fa' ? 
-              'اشتراک VLESS سفارشی خود را ایجاد کنید - سرور دبی' : 
-              'Create your custom VLESS subscription - Dubai Server'
+              'اشتراک VLESS سفارشی خود را ایجاد کنید' : 
+              'Create your custom VLESS subscription'
             }
           </CardDescription>
         </CardHeader>
@@ -536,27 +742,43 @@ const MarzbanSubscriptionForm = () => {
                 {language === 'fa' ? 'اطلاعات کاربری' : 'User Information'}
               </h3>
               
-              <div className="space-y-2">
-                <Label htmlFor="username">
-                  {language === 'fa' ? 'نام کاربری' : 'Username'} *
-                </Label>
-                <div className="flex gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username">
+                    {language === 'fa' ? 'نام کاربری' : 'Username'} *
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="username"
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) => handleInputChange('username', e.target.value.toLowerCase())}
+                      placeholder={language === 'fa' ? 'نام کاربری (a-z, 0-9, _)' : 'Username (a-z, 0-9, _)'}
+                      className="flex-1"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={autoGenerateUsername}
+                    >
+                      {language === 'fa' ? 'تولید' : 'Generate'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="mobile">
+                    {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'} *
+                  </Label>
                   <Input
-                    id="username"
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value.toLowerCase())}
-                    placeholder={language === 'fa' ? 'نام کاربری (a-z, 0-9, _)' : 'Username (a-z, 0-9, _)'}
-                    className="flex-1"
+                    id="mobile"
+                    type="tel"
+                    value={formData.mobile}
+                    onChange={(e) => handleInputChange('mobile', e.target.value)}
+                    placeholder={language === 'fa' ? '09123456789' : '09123456789'}
                     required
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={autoGenerateUsername}
-                  >
-                    {language === 'fa' ? 'تولید خودکار' : 'Auto Generate'}
-                  </Button>
                 </div>
               </div>
 
@@ -568,7 +790,7 @@ const MarzbanSubscriptionForm = () => {
                   id="notes"
                   value={formData.notes}
                   onChange={(e) => handleInputChange('notes', e.target.value)}
-                  placeholder={language === 'fa' ? 'شناسه تلگرام، ایمیل یا سایر اطلاعات' : 'Telegram ID, email, or other info'}
+                  placeholder={language === 'fa' ? 'توضیحات اضافی' : 'Additional description'}
                   rows={3}
                 />
               </div>
@@ -615,16 +837,42 @@ const MarzbanSubscriptionForm = () => {
                 </div>
               </div>
 
-              {/* Server Info */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-blue-700 dark:text-blue-300">
-                    {language === 'fa' ? 'سرور: دبی (VLESS WS)' : 'Server: Dubai (VLESS WS)'}
-                  </Badge>
-                  <span className="text-sm text-blue-600 dark:text-blue-400">
-                    {language === 'fa' ? 'بهینه‌شده برای سرعت بالا' : 'Optimized for high speed'}
-                  </span>
+              {/* Price Calculation */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-blue-800 dark:text-blue-200">
+                      {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
+                    </h4>
+                    <p className="text-sm text-blue-600 dark:text-blue-400">
+                      {language === 'fa' ? 
+                        `${formData.dataLimit} گیگابایت × ${PRICE_PER_GB.toLocaleString()} تومان` : 
+                        `${formData.dataLimit} GB × ${PRICE_PER_GB.toLocaleString()} Toman`
+                      }
+                    </p>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
+                    {calculatePrice().toLocaleString()} 
+                    {language === 'fa' ? ' تومان' : ' Toman'}
+                  </div>
                 </div>
+              </div>
+
+              {/* Server Info */}
+              <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {INBOUND_TAGS.map(tag => (
+                    <Badge key={tag} variant="outline" className="text-green-700 dark:text-green-300">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-sm text-green-600 dark:text-green-400">
+                  {language === 'fa' ? 
+                    'تمام سرورها برای شما فعال خواهد شد' : 
+                    'All servers will be activated for you'
+                  }
+                </p>
               </div>
             </div>
 
@@ -635,18 +883,21 @@ const MarzbanSubscriptionForm = () => {
               disabled={isSubmitting}
               size="lg"
             >
+              <CreditCard className="w-5 h-5 mr-2" />
               {isSubmitting ? (
-                language === 'fa' ? 'در حال ایجاد اشتراک...' : 'Creating Subscription...'
+                language === 'fa' ? 'در حال انتقال به درگاه پرداخت...' : 'Redirecting to Payment...'
               ) : (
-                language === 'fa' ? 'ایجاد اشتراک VPN' : 'Create VPN Subscription'
+                language === 'fa' ? 
+                  `پرداخت ${calculatePrice().toLocaleString()} تومان` : 
+                  `Pay ${calculatePrice().toLocaleString()} Toman`
               )}
             </Button>
 
             {/* Terms */}
             <p className="text-sm text-muted-foreground text-center">
               {language === 'fa' ? 
-                'با ایجاد اشتراک، شما با قوانین و مقررات شبکه بدون مرز موافقت می‌کنید' : 
-                'By creating a subscription, you agree to Boundless Network terms and conditions'
+                'با ادامه، شما با قوانین و مقررات شبکه بدون مرز موافقت می‌کنید' : 
+                'By continuing, you agree to Boundless Network terms and conditions'
               }
             </p>
           </form>
