@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDown, ChevronUp, Bug, CreditCard, Phone, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCodeCanvas from 'qrcode';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MarzbanFormData {
   username: string;
@@ -62,6 +63,7 @@ const MarzbanSubscriptionForm = () => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [user, setUser] = useState(null);
 
   // Fixed configuration
   const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
@@ -80,6 +82,13 @@ const MarzbanSubscriptionForm = () => {
     if (status && authority) {
       handlePaymentCallback(status, authority);
     }
+
+    // Get current user
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getCurrentUser();
   }, []);
 
   useEffect(() => {
@@ -215,7 +224,7 @@ const MarzbanSubscriptionForm = () => {
     const paymanRequest = {
       merchant_id: MERCHANT_ID,
       mobile: formData.mobile,
-      expire_at: Math.floor(expireAt.getTime() / 1000), // Keep as timestamp for backend conversion
+      expire_at: Math.floor(expireAt.getTime() / 1000),
       max_daily_count: 100,
       max_monthly_count: 1000,
       max_amount: calculatePrice() * 10, // Convert Toman to Rial
@@ -223,71 +232,31 @@ const MarzbanSubscriptionForm = () => {
     };
 
     try {
-      const response = await fetch('/api/zarinpal/contract', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(paymanRequest)
+      const { data, error } = await supabase.functions.invoke('zarinpal-contract', {
+        body: paymanRequest
       });
-
-      let responseData;
-      let rawResponse = '';
-      
-      try {
-        const responseText = await response.text();
-        rawResponse = responseText;
-        responseData = JSON.parse(responseText);
-      } catch (parseError) {
-        // Handle HTML or non-JSON responses
-        addDebugInfo({
-          endpoint: '/api/zarinpal/contract',
-          status: response.status,
-          request: paymanRequest,
-          response: { error: 'Non-JSON response', rawResponse: rawResponse.substring(0, 500) },
-          error: `JSON Parse Error: ${parseError.message}`,
-          type: 'error'
-        });
-
-        const errorMessage = language === 'fa' ? 
-          'سرویس پرداخت در دسترس نیست. لطفاً بعداً تلاش کنید.' : 
-          'Payment service is unavailable. Please try again later.';
-
-        toast({
-          title: language === 'fa' ? 'خطا در اتصال' : 'Connection Error',
-          description: errorMessage,
-          variant: 'destructive'
-        });
-
-        throw new Error(errorMessage);
-      }
 
       addDebugInfo({
-        endpoint: '/api/zarinpal/contract',
-        status: response.status,
+        endpoint: 'zarinpal-contract',
+        status: error ? 500 : 200,
         request: paymanRequest,
-        response: responseData,
-        type: response.ok ? 'success' : 'error'
+        response: data || error,
+        type: error ? 'error' : 'success'
       });
 
-      if (!response.ok || !responseData.success) {
-        const errorDetails = responseData.details || responseData.error || 'Unknown error';
-        
-        addDebugInfo({
-          endpoint: '/api/zarinpal/contract',
-          status: response.status,
-          request: paymanRequest,
-          response: responseData,
-          error: `API Error: ${JSON.stringify(errorDetails)}`,
-          type: 'error'
-        });
+      if (error) {
+        throw new Error(error.message || 'Failed to create contract');
+      }
 
+      if (!data.success) {
+        const errorDetails = data.details || data.error || 'Unknown error';
+        
         let userMessage;
-        if (response.status === 502) {
+        if (data.status === 502) {
           userMessage = language === 'fa' ? 
             'خطا در برقراری ارتباط با درگاه پرداخت' : 
             'Error connecting to payment gateway';
-        } else if (response.status >= 400 && response.status < 500) {
+        } else if (data.status >= 400 && data.status < 500) {
           userMessage = language === 'fa' ? 
             'اطلاعات پرداخت نامعتبر است' : 
             'Invalid payment information';
@@ -306,28 +275,19 @@ const MarzbanSubscriptionForm = () => {
         throw new Error(userMessage);
       }
 
-      if (!responseData.data?.data?.payman_authority) {
-        addDebugInfo({
-          endpoint: '/api/zarinpal/contract',
-          status: response.status,
-          request: paymanRequest,
-          response: responseData,
-          error: 'Missing payman_authority in response',
-          type: 'error'
-        });
-
+      if (!data.data?.data?.payman_authority) {
         throw new Error(language === 'fa' ? 
           'پاسخ نامعتبر از درگاه پرداخت' : 
           'Invalid response from payment gateway');
       }
 
-      return responseData.data.data.payman_authority;
+      return data.data.data.payman_authority;
     } catch (error) {
       console.error('Contract creation error:', error);
       
-      if (!error.message.includes('fetch')) {
+      if (!error.message.includes('service') && !error.message.includes('gateway')) {
         addDebugInfo({
-          endpoint: '/api/zarinpal/contract',
+          endpoint: 'zarinpal-contract',
           status: 0,
           request: paymanRequest,
           response: { error: error.message },
@@ -347,54 +307,42 @@ const MarzbanSubscriptionForm = () => {
       
       try {
         // Verify payment
-        const verifyResponse = await fetch('/api/zarinpal/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        const { data: verifyData, error: verifyError } = await supabase.functions.invoke('zarinpal-verify', {
+          body: {
             merchant_id: MERCHANT_ID,
             authority: authority
-          })
+          }
         });
-
-        const verifyData = await verifyResponse.json();
         
         addDebugInfo({
-          endpoint: '/api/zarinpal/verify',
-          status: verifyResponse.status,
+          endpoint: 'zarinpal-verify',
+          status: verifyError ? 500 : 200,
           request: { merchant_id: MERCHANT_ID, authority },
-          response: verifyData,
-          type: verifyResponse.ok ? 'success' : 'error'
+          response: verifyData || verifyError,
+          type: verifyError ? 'error' : 'success'
         });
 
-        if (verifyData.success && verifyData.data?.data?.code === 100) {
+        if (verifyData?.success && verifyData?.data?.data?.code === 100) {
           // Checkout
           setLoadingMessage(language === 'fa' ? 'در حال تکمیل پرداخت...' : 'Completing payment...');
           
-          const checkoutResponse = await fetch('/api/zarinpal/checkout', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
+          const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke('zarinpal-checkout', {
+            body: {
               merchant_id: MERCHANT_ID,
               authority: authority,
               signature: verifyData.data.data.signature
-            })
+            }
           });
 
-          const checkoutData = await checkoutResponse.json();
-          
           addDebugInfo({
-            endpoint: '/api/zarinpal/checkout',
-            status: checkoutResponse.status,
+            endpoint: 'zarinpal-checkout',
+            status: checkoutError ? 500 : 200,
             request: { merchant_id: MERCHANT_ID, authority, signature: verifyData.data.data.signature },
-            response: checkoutData,
-            type: checkoutResponse.ok ? 'success' : 'error'
+            response: checkoutData || checkoutError,
+            type: checkoutError ? 'error' : 'success'
           });
           
-          if (checkoutData.success && checkoutData.data?.data?.code === 100) {
+          if (checkoutData?.success && checkoutData?.data?.data?.code === 100) {
             // Payment successful, create user
             setLoadingMessage(language === 'fa' ? 'در حال ایجاد اشتراک...' : 'Creating subscription...');
             
@@ -577,6 +525,17 @@ const MarzbanSubscriptionForm = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!user) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً ابتدا وارد شوید' : 
+          'Please sign in first',
+        variant: 'destructive'
+      });
+      return;
+    }
     
     if (!checkRateLimit()) return;
     if (!validateForm()) return;
@@ -930,6 +889,20 @@ const MarzbanSubscriptionForm = () => {
         </CardHeader>
         
         <CardContent>
+          {!user && (
+            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
+                <AlertCircle className="w-5 h-5" />
+                <p className="font-medium">
+                  {language === 'fa' ? 
+                    'برای ادامه باید وارد شوید' : 
+                    'You need to sign in to continue'
+                  }
+                </p>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* User Information */}
             <div className="space-y-4">
@@ -1076,7 +1049,7 @@ const MarzbanSubscriptionForm = () => {
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting || isLoading}
+              disabled={isSubmitting || isLoading || !user}
               size="lg"
             >
               {isSubmitting || isLoading ? (

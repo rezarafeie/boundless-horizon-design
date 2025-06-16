@@ -9,7 +9,107 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      payment_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          operation_type: string
+          request_data: Json
+          response_data: Json | null
+          status_code: number | null
+          subscription_id: string | null
+          success: boolean | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          operation_type: string
+          request_data: Json
+          response_data?: Json | null
+          status_code?: number | null
+          subscription_id?: string | null
+          success?: boolean | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          operation_type?: string
+          request_data?: Json
+          response_data?: Json | null
+          status_code?: number | null
+          subscription_id?: string | null
+          success?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_logs_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          data_limit_gb: number
+          duration_days: number
+          expire_at: string | null
+          id: string
+          marzban_user_created: boolean | null
+          mobile: string
+          notes: string | null
+          price_toman: number
+          status: string
+          subscription_url: string | null
+          updated_at: string
+          user_id: string | null
+          username: string
+          zarinpal_authority: string | null
+          zarinpal_ref_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          data_limit_gb: number
+          duration_days: number
+          expire_at?: string | null
+          id?: string
+          marzban_user_created?: boolean | null
+          mobile: string
+          notes?: string | null
+          price_toman: number
+          status?: string
+          subscription_url?: string | null
+          updated_at?: string
+          user_id?: string | null
+          username: string
+          zarinpal_authority?: string | null
+          zarinpal_ref_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          data_limit_gb?: number
+          duration_days?: number
+          expire_at?: string | null
+          id?: string
+          marzban_user_created?: boolean | null
+          mobile?: string
+          notes?: string | null
+          price_toman?: number
+          status?: string
+          subscription_url?: string | null
+          updated_at?: string
+          user_id?: string | null
+          username?: string
+          zarinpal_authority?: string | null
+          zarinpal_ref_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

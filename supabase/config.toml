@@ -1,1 +1,11 @@
+
 project_id = "feamvyruipxtafzhptkh"
+
+[functions.zarinpal-contract]
+verify_jwt = true
+
+[functions.zarinpal-verify]
+verify_jwt = false
+
+[functions.zarinpal-checkout]
+verify_jwt = false
