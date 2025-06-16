@@ -72,46 +72,50 @@ const Navigation = () => {
             {/* Dropdown Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="hidden sm:inline-flex">
+                <Button className="hidden sm:inline-flex bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
                   {t('nav.get-network')}
                   <ChevronDown className={`w-4 h-4 ${isRTL ? 'mr-2' : 'ml-2'}`} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-background border border-border shadow-lg p-2">
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg p-0 mb-2">
+              <DropdownMenuContent 
+                align={isRTL ? "start" : "end"} 
+                className="w-64 bg-background/95 backdrop-blur-lg border border-border shadow-2xl p-3 rounded-xl"
+                dir={isRTL ? 'rtl' : 'ltr'}
+              >
+                <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
                   <Button
                     onClick={() => window.open('https://t.me/bnets_support', '_blank')} 
-                    className="w-full justify-start p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 transition-all duration-200 border border-blue-200 dark:border-blue-700 h-auto"
+                    className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 h-auto rounded-xl`}
                     variant="ghost"
                   >
-                    <Send className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-blue-600 dark:text-blue-400`} />
-                    <span className="font-medium text-blue-800 dark:text-blue-200">{t('nav.telegram')}</span>
+                    <Send className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-blue-100`} />
+                    <span className="font-semibold text-white">{t('nav.telegram')}</span>
                   </Button>
                 </DropdownMenuItem>
                 
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg p-0 mb-2">
+                <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
                   <Link to="/subscription" className="w-full">
-                    <Button className="w-full justify-start p-3 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50 transition-all duration-200 border border-green-200 dark:border-green-700 h-auto" variant="ghost">
-                      <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-green-600 dark:text-green-400`} />
-                      <span className="font-medium text-green-800 dark:text-green-200">{t('nav.purchase')}</span>
+                    <Button className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 h-auto rounded-xl`} variant="ghost">
+                      <ShoppingCart className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-green-100`} />
+                      <span className="font-semibold text-white">{t('nav.purchase')}</span>
                     </Button>
                   </Link>
                 </DropdownMenuItem>
                 
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg p-0 mb-2">
-                  <div className="w-full p-3 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-900/50 dark:hover:to-purple-800/50 transition-all duration-200 border border-purple-200 dark:border-purple-700 rounded-lg">
-                    <div className="flex items-center">
-                      <Gift className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-purple-600 dark:text-purple-400`} />
+                <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
+                  <div className={`w-full p-4 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 transition-all duration-200 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <div className={`flex items-center ${isRTL ? 'justify-end' : 'justify-start'}`}>
+                      <Gift className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-purple-100`} />
                       <FreeTrialButton />
                     </div>
                   </div>
                 </DropdownMenuItem>
                 
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg p-0">
+                <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 border-0">
                   <Link to="/renewal" className="w-full">
-                    <Button className="w-full justify-start p-3 bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/50 transition-all duration-200 border border-orange-200 dark:border-orange-700 h-auto" variant="ghost">
-                      <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-orange-600 dark:text-orange-400`} />
-                      <span className="font-medium text-orange-800 dark:text-orange-200">{t('nav.renew')}</span>
+                    <Button className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} p-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 h-auto rounded-xl`} variant="ghost">
+                      <RefreshCw className={`w-5 h-5 ${isRTL ? 'ml-3' : 'mr-3'} text-orange-100`} />
+                      <span className="font-semibold text-white">{t('nav.renew')}</span>
                     </Button>
                   </Link>
                 </DropdownMenuItem>
@@ -149,33 +153,33 @@ const Navigation = () => {
               <Button 
                 onClick={() => window.open('https://t.me/bnets_support', '_blank')}
                 variant="outline"
-                className="w-full justify-start bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-blue-200 dark:border-blue-700 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50"
+                className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-blue-200 dark:border-blue-700 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
               >
                 <Send className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-blue-600 dark:text-blue-400`} />
-                <span className="text-blue-800 dark:text-blue-200">{t('nav.telegram')}</span>
+                <span className="text-blue-800 dark:text-blue-200 font-medium">{t('nav.telegram')}</span>
               </Button>
               
               <Link to="/subscription">
                 <Button 
                   variant="outline"
-                  className="w-full justify-start bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 border-green-200 dark:border-green-700 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50"
+                  className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 border-green-200 dark:border-green-700 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
                 >
                   <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-green-600 dark:text-green-400`} />
-                  <span className="text-green-800 dark:text-green-200">{t('nav.purchase')}</span>
+                  <span className="text-green-800 dark:text-green-200 font-medium">{t('nav.purchase')}</span>
                 </Button>
               </Link>
               
-              <div className="p-3 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 border border-purple-200 dark:border-purple-700 rounded-lg">
+              <div className={`p-4 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 border border-purple-200 dark:border-purple-700 rounded-lg shadow-md ${isRTL ? 'text-right' : 'text-left'}`}>
                 <FreeTrialButton />
               </div>
               
               <Link to="/renewal">
                 <Button 
                   variant="outline"
-                  className="w-full justify-start bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 border-orange-200 dark:border-orange-700 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/50"
+                  className={`w-full ${isRTL ? 'justify-end' : 'justify-start'} bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 border-orange-200 dark:border-orange-700 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/50 shadow-md hover:shadow-lg transition-all duration-200`}
                 >
                   <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'} text-orange-600 dark:text-orange-400`} />
-                  <span className="text-orange-800 dark:text-orange-200">{t('nav.renew')}</span>
+                  <span className="text-orange-800 dark:text-orange-200 font-medium">{t('nav.renew')}</span>
                 </Button>
               </Link>
             </div>

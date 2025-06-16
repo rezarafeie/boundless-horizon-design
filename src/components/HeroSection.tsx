@@ -70,11 +70,11 @@ const HeroSection = () => {
           </div>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-md mx-auto">
-            <Button asChild variant="hero-primary" size="xl" className="w-full sm:w-auto">
-              <Link to="/subscription" className="group">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-4xl mx-auto">
+            <Button asChild variant="hero-primary" size="xl" className="w-full sm:w-auto group">
+              <Link to="/subscription">
                 {language === 'fa' ? 'خرید اشتراک' : 'Buy Subscription'}
-                <ArrowLeft className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                <ArrowLeft className={`w-5 h-5 group-hover:translate-x-1 transition-transform duration-200 ${language === 'fa' ? 'mr-2' : 'ml-2'}`} />
               </Link>
             </Button>
 
@@ -82,10 +82,10 @@ const HeroSection = () => {
               <FreeTrialButton />
             </div>
 
-            <Button asChild variant="hero-accent" size="xl" className="w-full sm:w-auto">
-              <Link to="/renewal" className="group">
+            <Button asChild variant="hero-accent" size="xl" className="w-full sm:w-auto group">
+              <Link to="/renewal">
                 {language === 'fa' ? 'تمدید اشتراک' : 'Renew Subscription'}
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                <ArrowRight className={`w-5 h-5 group-hover:translate-x-1 transition-transform duration-200 ${language === 'fa' ? 'mr-2' : 'ml-2'}`} />
               </Link>
             </Button>
           </div>

@@ -257,11 +257,11 @@ const FreeTrialButton = () => {
     <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
       <DialogTrigger asChild>
         <Button 
-          size="lg" 
-          className="w-full max-w-md mx-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg"
+          size="xl"
+          className="w-full sm:w-auto group bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300 font-semibold px-8"
           disabled={hasUsedTrial}
         >
-          <Gift className="w-5 h-5 mr-2" />
+          <Gift className={`w-5 h-5 group-hover:rotate-12 transition-transform duration-200 ${language === 'fa' ? 'ml-2' : 'mr-2'}`} />
           {hasUsedTrial ? (
             language === 'fa' ? 'امروز استفاده شده' : "Used Today"
           ) : (
