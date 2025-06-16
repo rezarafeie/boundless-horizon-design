@@ -3,13 +3,27 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Sun, Moon, Menu, X, Globe } from 'lucide-react';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator 
+} from '@/components/ui/dropdown-menu';
+import { Sun, Moon, Menu, X, Globe, ChevronDown, MessageCircle, CreditCard, Gift } from 'lucide-react';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isRTL = language === 'fa';
+
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -60,13 +74,30 @@ const Navigation = () => {
               <Globe className="w-4 h-4" />
             </Button>
 
-            {/* CTA Button */}
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="hidden sm:inline-flex"
-            >
-              {t('hero.cta')}
-            </Button>
+            {/* Action Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="hidden sm:inline-flex">
+                  {language === 'fa' ? 'عملیات' : 'Actions'}
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => scrollToSection('free-trial')}>
+                  <Gift className="w-4 h-4 mr-2" />
+                  {language === 'fa' ? 'آزمایش رایگان' : 'Free Trial'}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => scrollToSection('purchase')}>
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  {language === 'fa' ? 'خرید اشتراک' : 'Buy Subscription'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => window.open('https://t.me/getbnbot', '_blank')}>
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  {language === 'fa' ? 'تلگرام پشتیبانی' : 'Telegram Support'}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Mobile Menu Toggle */}
             <Button
@@ -95,12 +126,31 @@ const Navigation = () => {
             <a href="#contact" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.contact')}
             </a>
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="w-full sm:hidden"
-            >
-              {t('hero.cta')}
-            </Button>
+            
+            <div className="pt-4 border-t border-border space-y-2">
+              <Button 
+                onClick={() => scrollToSection('free-trial')}
+                className="w-full justify-start bg-green-600 hover:bg-green-700"
+              >
+                <Gift className="w-4 h-4 mr-2" />
+                {language === 'fa' ? 'آزمایش رایگان' : 'Free Trial'}
+              </Button>
+              <Button 
+                onClick={() => scrollToSection('purchase')}
+                className="w-full justify-start"
+              >
+                <CreditCard className="w-4 h-4 mr-2" />
+                {language === 'fa' ? 'خرید اشتراک' : 'Buy Subscription'}
+              </Button>
+              <Button 
+                onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                {language === 'fa' ? 'تلگرام پشتیبانی' : 'Telegram Support'}
+              </Button>
+            </div>
           </div>
         )}
       </div>
