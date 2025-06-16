@@ -23,7 +23,8 @@ const DiscountField = ({ onDiscountApply, appliedDiscount }: DiscountFieldProps)
   const availableDiscounts: DiscountCode[] = [
     {
       code: 'bnetsrez',
-      percentage: 100,
+      type: 'percentage',
+      value: 100,
       description: language === 'fa' ? 'تخفیف ۱۰۰ درصدی' : '100% Discount'
     }
   ];
@@ -69,7 +70,7 @@ const DiscountField = ({ onDiscountApply, appliedDiscount }: DiscountFieldProps)
                 {appliedDiscount.code}
               </span>
               <Badge variant="secondary" className="bg-green-100 text-green-800">
-                {appliedDiscount.percentage}% {language === 'fa' ? 'تخفیف' : 'OFF'}
+                {appliedDiscount.value}% {language === 'fa' ? 'تخفیف' : 'OFF'}
               </Badge>
             </div>
             <Button
