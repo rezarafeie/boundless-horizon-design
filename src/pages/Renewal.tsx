@@ -2,7 +2,7 @@
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import Navigation from "@/components/Navigation";
-import StepByStepRenewalForm from "@/components/StepByStepRenewalForm";
+import RenewalSubscriptionForm from "@/components/RenewalSubscriptionForm";
 import FooterSection from "@/components/FooterSection";
 
 const Renewal = () => {
@@ -12,7 +12,7 @@ const Renewal = () => {
         <div className="min-h-screen bg-background">
           <Navigation />
           <div className="pt-20">
-            <StepByStepRenewalForm />
+            <RenewalSubscriptionForm />
           </div>
           <FooterSection />
         </div>
