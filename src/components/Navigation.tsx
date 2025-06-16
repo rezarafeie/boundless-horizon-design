@@ -3,7 +3,13 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Sun, Moon, Menu, X, Globe } from 'lucide-react';
+import { Sun, Moon, Menu, X, Globe, ChevronDown } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
@@ -60,13 +66,26 @@ const Navigation = () => {
               <Globe className="w-4 h-4" />
             </Button>
 
-            {/* CTA Button */}
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="hidden sm:inline-flex"
-            >
-              {t('hero.cta')}
-            </Button>
+            {/* Network Access Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="hidden sm:inline-flex bg-primary hover:bg-primary/90 text-primary-foreground">
+                  {t('nav.network-access')}
+                  <ChevronDown className={`w-4 h-4 ${isRTL ? 'mr-2' : 'ml-2'}`} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56 bg-background border border-border shadow-lg">
+                <DropdownMenuItem onClick={() => window.open('https://t.me/getbnbot', '_blank')}>
+                  {t('nav.telegram')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.location.href = '/subscription'}>
+                  {t('nav.purchase')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.location.href = '/subscription'}>
+                  {t('nav.free-trial')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Mobile Menu Toggle */}
             <Button
@@ -95,12 +114,28 @@ const Navigation = () => {
             <a href="#contact" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.contact')}
             </a>
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="w-full sm:hidden"
-            >
-              {t('hero.cta')}
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button 
+                onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+                variant="outline"
+                className="w-full"
+              >
+                {t('nav.telegram')}
+              </Button>
+              <Button 
+                onClick={() => window.location.href = '/subscription'}
+                className="w-full bg-primary hover:bg-primary/90"
+              >
+                {t('nav.purchase')}
+              </Button>
+              <Button 
+                onClick={() => window.location.href = '/subscription'}
+                variant="outline"
+                className="w-full"
+              >
+                {t('nav.free-trial')}
+              </Button>
+            </div>
           </div>
         )}
       </div>

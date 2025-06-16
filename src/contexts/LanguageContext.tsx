@@ -17,11 +17,17 @@ const translations = {
     'nav.about': 'About',
     'nav.contact': 'Contact',
     'nav.subscription': 'Subscribe',
+    'nav.network-access': 'Get Boundless Network',
+    'nav.telegram': 'Telegram Bot',
+    'nav.purchase': 'Purchase',
+    'nav.free-trial': 'Free Trial',
     
     // Hero Section
     'hero.title': 'Boundless Network',
     'hero.subtitle': 'Secure, fast, and unlimited – for professional users',
     'hero.cta': 'Join Telegram Bot',
+    'hero.purchase': 'Purchase Subscription',
+    'hero.free-trial': 'Start Free Trial',
     
     // Features
     'features.title': 'Unique Features',
@@ -99,9 +105,11 @@ const translations = {
     'faq.answer6': '24/7 support team available via Telegram. Response time is less than 10 minutes.',
     
     // Subscription Form
-    'subscription.title': 'VPN Subscription Purchase',
+    'subscription.title': 'Network Access Purchase',
     'subscription.subtitle': 'Choose your Boundless Network subscription',
+    'subscription.plan-selection': 'Plan Selection',
     'subscription.user-info': 'User Information',
+    'subscription.config': 'Subscription Configuration',
     'subscription.email': 'Email',
     'subscription.username': 'Username',
     'subscription.data-volume': 'Data Volume',
@@ -111,6 +119,9 @@ const translations = {
     'subscription.promo-code': 'Promo Code (Optional)',
     'subscription.purchase': 'Purchase Subscription',
     'subscription.terms': 'By purchasing a subscription, you agree to our terms and conditions',
+    'subscription.next': 'Next',
+    'subscription.previous': 'Previous',
+    'subscription.confirm': 'Confirm Purchase',
     
     // Footer
     'footer.description': 'Secure, fast and unlimited – for professional users who trust the best quality.',
@@ -131,11 +142,17 @@ const translations = {
     'nav.about': 'درباره ما',
     'nav.contact': 'تماس',
     'nav.subscription': 'اشتراک',
+    'nav.network-access': 'دریافت شبکه بدون مرز',
+    'nav.telegram': 'ربات تلگرام',
+    'nav.purchase': 'خرید',
+    'nav.free-trial': 'تست رایگان',
     
     // Hero Section
     'hero.title': 'شبکه بدون مرز',
     'hero.subtitle': 'امن، سریع و بدون محدودیت – برای کاربران حرفه‌ای',
     'hero.cta': 'ورود به ربات تلگرام',
+    'hero.purchase': 'خرید اشتراک',
+    'hero.free-trial': 'شروع تست رایگان',
     
     // Features
     'features.title': 'ویژگی‌های منحصر به فرد',
@@ -156,9 +173,9 @@ const translations = {
     // Pricing
     'pricing.title': 'پلن‌های قیمت‌گذاری',
     'pricing.subtitle': 'بهترین پلن را برای نیازهای خود انتخاب کنید',
-    'pricing.lite': 'Lite',
-    'pricing.pro': 'Pro',
-    'pricing.pro-plus': 'Pro Plus',
+    'pricing.lite': 'لایت',
+    'pricing.pro': 'پرو',
+    'pricing.pro-plus': 'پرو پلاس',
     'pricing.monthly': 'ماهانه',
     'pricing.most-popular': 'محبوب‌ترین',
     'pricing.choose-plan': 'انتخاب پلن',
@@ -204,18 +221,20 @@ const translations = {
     'faq.question2': 'آیا لاگ فعالیت‌ها نگهداری می‌شود؟',
     'faq.answer2': 'خیر، ما هیچ لاگی از فعالیت کاربران نگهداری نمی‌کنیم. حریم خصوصی شما برای ما مقدس است.',
     'faq.question3': 'تفاوت پلن‌ها در چیست؟',
-    'faq.answer3': 'Lite برای استفاده عادی، Pro برای کسب‌وکار با IP های تمیز، و Pro Plus شامل تونل ایرانی اختصاصی است.',
+    'faq.answer3': 'لایت برای استفاده عادی، پرو برای کسب‌وکار با IP های تمیز، و پرو پلاس شامل تونل ایرانی اختصاصی است.',
     'faq.question4': 'آیا امکان تست رایگان وجود دارد؟',
     'faq.answer4': 'بله، ۲۴ ساعت تست رایگان برای همه پلن‌ها در نظر گرفته شده است.',
     'faq.question5': 'سرعت اتصال چگونه است؟',
-    'faq.answer5': 'سرعت بر اساس پلن انتخابی متفاوت است. پلن Pro و Pro Plus سرعت فوق‌العاده ارائه می‌دهند.',
+    'faq.answer5': 'سرعت بر اساس پلن انتخابی متفاوت است. پلن پرو و پرو پلاس سرعت فوق‌العاده ارائه می‌دهند.',
     'faq.question6': 'پشتیبانی چگونه انجام می‌شود؟',
     'faq.answer6': 'تیم پشتیبانی ۲۴/۷ از طریق تلگرام در دسترس است. زمان پاسخ‌گویی کمتر از ۱۰ دقیقه.',
     
     // Subscription Form
-    'subscription.title': 'خرید اشتراک VPN',
+    'subscription.title': 'خرید دسترسی شبکه',
     'subscription.subtitle': 'اشتراک شبکه بدون مرز خود را انتخاب کنید',
+    'subscription.plan-selection': 'انتخاب پلن',
     'subscription.user-info': 'اطلاعات کاربری',
+    'subscription.config': 'پیکربندی اشتراک',
     'subscription.email': 'ایمیل',
     'subscription.username': 'نام کاربری',
     'subscription.data-volume': 'حجم داده',
@@ -225,6 +244,9 @@ const translations = {
     'subscription.promo-code': 'کد تخفیف (اختیاری)',
     'subscription.purchase': 'خرید اشتراک',
     'subscription.terms': 'با خرید اشتراک، شما با قوانین و مقررات ما موافقت می‌کنید',
+    'subscription.next': 'بعدی',
+    'subscription.previous': 'قبلی',
+    'subscription.confirm': 'تایید خرید',
     
     // Footer
     'footer.description': 'امن، سریع و بدون محدودیت – برای کاربران حرفه‌ای که به بهترین کیفیت اعتماد دارند.',
