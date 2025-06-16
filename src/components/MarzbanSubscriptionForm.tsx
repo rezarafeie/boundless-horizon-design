@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDown, ChevronUp, Bug, CreditCard, Phone } from 'lucide-react';
+import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDown, ChevronUp, Bug, CreditCard, Phone, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCodeCanvas from 'qrcode';
 
@@ -26,18 +25,14 @@ interface MarzbanResponse {
   data_limit: number;
 }
 
-interface PaymanResponse {
-  payman_authority: string;
-  signature?: string;
-  status: string;
-}
-
 interface DebugInfo {
   endpoint: string;
   status: number;
   request: any;
   response: any;
   error?: string;
+  timestamp: string;
+  type: 'success' | 'error' | 'info';
 }
 
 const MarzbanSubscriptionForm = () => {
@@ -59,6 +54,8 @@ const MarzbanSubscriptionForm = () => {
   const [rateLimitMap, setRateLimitMap] = useState<Map<string, number>>(new Map());
   const [paymanData, setPaymanData] = useState<PaymanResponse | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
 
   // Fixed configuration
   const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
@@ -112,8 +109,17 @@ const MarzbanSubscriptionForm = () => {
     return `${prefix}${timestamp}_${random}`;
   };
 
-  const addDebugInfo = (info: DebugInfo) => {
-    setDebugInfo(prev => [...prev, info]);
+  const addDebugInfo = (info: Omit<DebugInfo, 'timestamp'>) => {
+    const debugEntry: DebugInfo = {
+      ...info,
+      timestamp: new Date().toISOString()
+    };
+    setDebugInfo(prev => [...prev, debugEntry]);
+    
+    // Auto-show debug panel on errors
+    if (info.type === 'error') {
+      setShowDebug(true);
+    }
   };
 
   const checkRateLimit = (): boolean => {
@@ -195,6 +201,8 @@ const MarzbanSubscriptionForm = () => {
   };
 
   const createPaymanContract = async (): Promise<string> => {
+    setLoadingMessage(language === 'fa' ? 'در حال ایجاد قرارداد پرداخت...' : 'Creating payment contract...');
+    
     const expireAt = new Date();
     expireAt.setDate(expireAt.getDate() + 30);
     
@@ -205,45 +213,71 @@ const MarzbanSubscriptionForm = () => {
       max_daily_count: "100",
       max_monthly_count: "1000",
       max_amount: calculatePrice() * 10, // Convert Toman to Rial
-      callback_url: "https://bnets.co/subscription?payment_callback=1"
+      callback_url: `${window.location.origin}/subscription?payment_callback=1`
     };
 
-    const response = await fetch('https://api.zarinpal.com/pg/v4/payman/request.json', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(paymanRequest)
-    });
+    try {
+      const response = await fetch('/api/zarinpal/contract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(paymanRequest)
+      });
 
-    addDebugInfo({
-      endpoint: 'https://api.zarinpal.com/pg/v4/payman/request.json',
-      status: response.status,
-      request: paymanRequest,
-      response: response.ok ? 'Contract created' : 'Contract failed'
-    });
+      const responseData = await response.json();
 
-    if (!response.ok) {
-      const errorData = await response.json();
       addDebugInfo({
-        endpoint: 'https://api.zarinpal.com/pg/v4/payman/request.json',
+        endpoint: '/api/zarinpal/contract',
         status: response.status,
         request: paymanRequest,
-        response: errorData,
-        error: 'Contract creation failed'
+        response: responseData,
+        type: response.ok ? 'success' : 'error'
       });
-      throw new Error('Failed to create payment contract');
-    }
 
-    const responseData = await response.json();
-    return responseData.data.payman_authority;
+      if (!response.ok || !responseData.success) {
+        throw new Error(responseData.error || 'Contract creation failed');
+      }
+
+      if (!responseData.data?.data?.payman_authority) {
+        throw new Error('Invalid response: missing payman_authority');
+      }
+
+      return responseData.data.data.payman_authority;
+    } catch (error) {
+      console.error('Contract creation error:', error);
+      
+      addDebugInfo({
+        endpoint: '/api/zarinpal/contract',
+        status: 0,
+        request: paymanRequest,
+        response: { error: error.message },
+        error: error.message,
+        type: 'error'
+      });
+
+      const errorMessage = error.message.includes('fetch') 
+        ? (language === 'fa' ? 'اتصال به زرین‌پال انجام نشد. لطفاً مجدد تلاش کنید.' : 'Zarinpal connection failed. Please try again.')
+        : error.message;
+
+      toast({
+        title: language === 'fa' ? 'خطا در ایجاد قرارداد' : 'Contract Creation Error',
+        description: errorMessage,
+        variant: 'destructive'
+      });
+
+      throw error;
+    }
   };
 
   const handlePaymentCallback = async (status: string, authority: string) => {
     if (status === 'OK') {
+      setIsLoading(true);
+      setLoadingMessage(language === 'fa' ? 'در حال تأیید پرداخت...' : 'Verifying payment...');
+      
       try {
         // Verify payment
-        const verifyResponse = await fetch('https://api.zarinpal.com/pg/v4/payman/verify.json', {
+        const verifyResponse = await fetch('/api/zarinpal/verify', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -256,9 +290,19 @@ const MarzbanSubscriptionForm = () => {
 
         const verifyData = await verifyResponse.json();
         
-        if (verifyData.data.code === 100) {
+        addDebugInfo({
+          endpoint: '/api/zarinpal/verify',
+          status: verifyResponse.status,
+          request: { merchant_id: MERCHANT_ID, authority },
+          response: verifyData,
+          type: verifyResponse.ok ? 'success' : 'error'
+        });
+
+        if (verifyData.success && verifyData.data?.data?.code === 100) {
           // Checkout
-          const checkoutResponse = await fetch('https://api.zarinpal.com/pg/v4/payman/checkout.json', {
+          setLoadingMessage(language === 'fa' ? 'در حال تکمیل پرداخت...' : 'Completing payment...');
+          
+          const checkoutResponse = await fetch('/api/zarinpal/checkout', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -266,14 +310,24 @@ const MarzbanSubscriptionForm = () => {
             body: JSON.stringify({
               merchant_id: MERCHANT_ID,
               authority: authority,
-              signature: verifyData.data.signature
+              signature: verifyData.data.data.signature
             })
           });
 
           const checkoutData = await checkoutResponse.json();
           
-          if (checkoutData.data.code === 100) {
+          addDebugInfo({
+            endpoint: '/api/zarinpal/checkout',
+            status: checkoutResponse.status,
+            request: { merchant_id: MERCHANT_ID, authority, signature: verifyData.data.data.signature },
+            response: checkoutData,
+            type: checkoutResponse.ok ? 'success' : 'error'
+          });
+          
+          if (checkoutData.success && checkoutData.data?.data?.code === 100) {
             // Payment successful, create user
+            setLoadingMessage(language === 'fa' ? 'در حال ایجاد اشتراک...' : 'Creating subscription...');
+            
             const userData = JSON.parse(localStorage.getItem('pendingUserData') || '{}');
             const result = await createMarzbanUser(userData);
             setResult(result);
@@ -286,7 +340,11 @@ const MarzbanSubscriptionForm = () => {
                 'پرداخت موفق و اشتراک ایجاد شد' : 
                 'Payment successful and subscription created',
             });
+          } else {
+            throw new Error('Payment checkout failed');
           }
+        } else {
+          throw new Error('Payment verification failed');
         }
       } catch (error) {
         console.error('Payment verification error:', error);
@@ -297,6 +355,9 @@ const MarzbanSubscriptionForm = () => {
             'Payment verification failed',
           variant: 'destructive'
         });
+      } finally {
+        setIsLoading(false);
+        setLoadingMessage('');
       }
     } else {
       toast({
@@ -331,7 +392,8 @@ const MarzbanSubscriptionForm = () => {
         endpoint: tokenEndpoint,
         status: tokenResponse.status,
         request: tokenRequestData,
-        response: tokenResponse.ok ? 'Token received' : 'Token failed'
+        response: tokenResponse.ok ? 'Token received' : 'Token failed',
+        type: tokenResponse.ok ? 'success' : 'error'
       });
 
       if (!tokenResponse.ok) {
@@ -341,7 +403,8 @@ const MarzbanSubscriptionForm = () => {
           status: tokenResponse.status,
           request: tokenRequestData,
           response: errorData,
-          error: 'Authentication failed'
+          error: 'Authentication failed',
+          type: 'error'
         });
         throw new Error('Failed to authenticate with Marzban API');
       }
@@ -390,7 +453,8 @@ const MarzbanSubscriptionForm = () => {
         endpoint: userEndpoint,
         status: userResponse.status,
         request: userData,
-        response: userResponse.ok ? 'User created' : 'User creation failed'
+        response: userResponse.ok ? 'User created' : 'User creation failed',
+        type: userResponse.ok ? 'success' : 'error'
       });
 
       if (!userResponse.ok) {
@@ -400,7 +464,8 @@ const MarzbanSubscriptionForm = () => {
           status: userResponse.status,
           request: userData,
           response: errorData,
-          error: userResponse.status === 409 ? 'User already exists' : 'User creation failed'
+          error: userResponse.status === 409 ? 'User already exists' : 'User creation failed',
+          type: 'error'
         });
 
         if (userResponse.status === 409) {
@@ -417,7 +482,8 @@ const MarzbanSubscriptionForm = () => {
         endpoint: userEndpoint,
         status: userResponse.status,
         request: userData,
-        response: responseData
+        response: responseData,
+        type: 'success'
       });
 
       return {
@@ -446,6 +512,7 @@ const MarzbanSubscriptionForm = () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
+    setIsLoading(true);
     setDebugInfo([]);
     
     try {
@@ -460,6 +527,7 @@ const MarzbanSubscriptionForm = () => {
       
     } catch (error) {
       console.error('Payment initiation error:', error);
+      
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: error instanceof Error ? error.message : (
@@ -471,6 +539,8 @@ const MarzbanSubscriptionForm = () => {
       });
     } finally {
       setIsSubmitting(false);
+      setIsLoading(false);
+      setLoadingMessage('');
     }
   };
 
@@ -514,6 +584,9 @@ const MarzbanSubscriptionForm = () => {
             <CardTitle className="text-sm flex items-center gap-2">
               <Bug className="w-4 h-4 text-orange-600" />
               {language === 'fa' ? 'اطلاعات دیباگ' : 'Debug Information'}
+              <Badge variant="outline" className="ml-2">
+                {debugInfo.length}
+              </Badge>
             </CardTitle>
             <Button
               variant="ghost"
@@ -528,31 +601,57 @@ const MarzbanSubscriptionForm = () => {
           <CardContent>
             <div className="space-y-4">
               {debugInfo.map((info, index) => (
-                <div key={index} className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg text-xs">
+                <div 
+                  key={index} 
+                  className={`p-3 rounded-lg text-xs border-l-4 ${
+                    info.type === 'success' 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-500' 
+                      : info.type === 'error'
+                      ? 'bg-red-50 dark:bg-red-900/20 border-red-500'
+                      : 'bg-gray-50 dark:bg-gray-900 border-gray-500'
+                  }`}
+                >
                   <div className="flex items-center gap-2 mb-2">
-                    <Badge variant={info.status >= 200 && info.status < 300 ? "default" : "destructive"}>
+                    <Badge variant={info.type === 'success' ? "default" : "destructive"}>
                       {info.status}
                     </Badge>
-                    <code className="text-blue-600 dark:text-blue-400">{info.endpoint}</code>
+                    <code className={`text-xs ${
+                      info.type === 'success' ? 'text-green-600 dark:text-green-400' : 
+                      info.type === 'error' ? 'text-red-600 dark:text-red-400' : 
+                      'text-blue-600 dark:text-blue-400'
+                    }`}>
+                      {info.endpoint}
+                    </code>
+                    <span className="text-xs text-gray-500 ml-auto">
+                      {new Date(info.timestamp).toLocaleTimeString()}
+                    </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div>
-                      <strong>Request:</strong>
-                      <pre className="mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto">
+                      <strong className={info.type === 'error' ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'}>
+                        {language === 'fa' ? 'درخواست:' : 'Request:'}
+                      </strong>
+                      <pre className="mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto max-h-32">
                         {JSON.stringify(info.request, null, 2)}
                       </pre>
                     </div>
                     <div>
-                      <strong>Response:</strong>
-                      <pre className="mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto">
+                      <strong className={info.type === 'error' ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'}>
+                        {language === 'fa' ? 'پاسخ:' : 'Response:'}
+                      </strong>
+                      <pre className={`mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto max-h-32 ${
+                        info.type === 'error' ? 'text-red-600' : ''
+                      }`}>
                         {JSON.stringify(info.response, null, 2)}
                       </pre>
                     </div>
                   </div>
                   {info.error && (
                     <div className="mt-2">
-                      <strong className="text-red-600">Error:</strong>
-                      <p className="text-red-600">{info.error}</p>
+                      <strong className="text-red-600">
+                        {language === 'fa' ? 'خطا:' : 'Error:'}
+                      </strong>
+                      <p className="text-red-600 text-xs mt-1">{info.error}</p>
                     </div>
                   )}
                 </div>
@@ -564,10 +663,30 @@ const MarzbanSubscriptionForm = () => {
     );
   };
 
+  // Loading Overlay
+  const LoadingOverlay = () => {
+    if (!isLoading) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <Card className="p-6 max-w-sm w-full mx-4">
+          <CardContent className="text-center space-y-4">
+            <Loader className="w-8 h-8 animate-spin mx-auto text-primary" />
+            <p className="text-sm font-medium">{loadingMessage}</p>
+            <div className="text-xs text-muted-foreground">
+              {language === 'fa' ? 'لطفاً صبر کنید...' : 'Please wait...'}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   // Success page with animation
   if (step === 3 && result) {
     return (
       <div className="max-w-2xl mx-auto p-6 space-y-6 animate-fade-in">
+        <LoadingOverlay />
         <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800">
           <CardHeader className="text-center">
             <div className="mx-auto w-20 h-20 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mb-4 animate-scale-in">
@@ -720,6 +839,7 @@ const MarzbanSubscriptionForm = () => {
   // Form page
   return (
     <div className="max-w-2xl mx-auto p-6">
+      <LoadingOverlay />
       <Card className="bg-background border-border">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-foreground mb-2">
@@ -880,16 +1000,22 @@ const MarzbanSubscriptionForm = () => {
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isLoading}
               size="lg"
             >
-              <CreditCard className="w-5 h-5 mr-2" />
-              {isSubmitting ? (
-                language === 'fa' ? 'در حال انتقال به درگاه پرداخت...' : 'Redirecting to Payment...'
+              {isSubmitting || isLoading ? (
+                <>
+                  <Loader className="w-5 h-5 mr-2 animate-spin" />
+                  {loadingMessage || (language === 'fa' ? 'در حال پردازش...' : 'Processing...')}
+                </>
               ) : (
-                language === 'fa' ? 
-                  `پرداخت ${calculatePrice().toLocaleString()} تومان` : 
-                  `Pay ${calculatePrice().toLocaleString()} Toman`
+                <>
+                  <CreditCard className="w-5 h-5 mr-2" />
+                  {language === 'fa' ? 
+                    `پرداخت ${calculatePrice().toLocaleString()} تومان` : 
+                    `Pay ${calculatePrice().toLocaleString()} Toman`
+                  }
+                </>
               )}
             </Button>
 
