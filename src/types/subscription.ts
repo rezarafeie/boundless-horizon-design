@@ -1,5 +1,3 @@
-
-
 export interface SubscriptionPlan {
   id: 'lite' | 'pro';
   name: string;
@@ -40,4 +38,3 @@ export interface MarzneshinUserResponse {
   usage_duration: number;
   service_ids: number[];
 }
-

@@ -220,6 +220,18 @@ const MarzbanSubscriptionForm = () => {
       return false;
     }
 
+    // Duration validation
+    if (formData.duration < 1 || formData.duration > 180) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'مدت زمان باید بین ۱ تا ۱۸۰ روز باشد' : 
+          'Duration must be between 1 and 180 days',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
     return true;
   };
 
@@ -332,13 +344,14 @@ const MarzbanSubscriptionForm = () => {
       const result = await MarzneshinApiService.createUser({
         username: sanitizeInput(formData.username),
         dataLimitGB: formData.dataLimit,
+        durationDays: formData.duration,
         notes: sanitizeInput(formData.notes)
       });
 
       addDebugInfo({
         endpoint: 'marzneshin-api',
         status: 200,
-        request: { username: formData.username, dataLimit: formData.dataLimit },
+        request: { username: formData.username, dataLimit: formData.dataLimit, duration: formData.duration },
         response: result,
         type: 'success'
       });
@@ -346,14 +359,14 @@ const MarzbanSubscriptionForm = () => {
       return {
         username: result.username,
         subscription_url: result.subscription_url,
-        expire: result.expire || Math.floor(Date.now() / 1000) + (14 * 86400), // 14 days from now
+        expire: result.expire || Math.floor(Date.now() / 1000) + (formData.duration * 86400),
         data_limit: result.data_limit
       };
     } catch (error) {
       addDebugInfo({
         endpoint: 'marzneshin-api',
         status: 0,
-        request: { username: formData.username, dataLimit: formData.dataLimit },
+        request: { username: formData.username, dataLimit: formData.dataLimit, duration: formData.duration },
         response: { error: error.message },
         error: error.message,
         type: 'error'
@@ -535,24 +548,51 @@ const MarzbanSubscriptionForm = () => {
     setDebugInfo([]);
     
     try {
+      const finalPrice = calculatePrice();
+      
+      // If price is 0 (due to discount), bypass payment and create subscription directly
+      if (finalPrice === 0) {
+        setLoadingMessage(language === 'fa' ? 'در حال ایجاد اشتراک رایگان...' : 'Creating free subscription...');
+        
+        let result: SubscriptionResponse;
+        
+        if (formData.selectedPlan?.apiType === 'marzneshin') {
+          result = await createMarzneshinUser(formData);
+        } else {
+          result = await createMarzbanUser(formData);
+        }
+        
+        setResult(result);
+        setStep(3);
+        
+        toast({
+          title: language === 'fa' ? 'موفق' : 'Success',
+          description: language === 'fa' ? 
+            'اشتراک رایگان با موفقیت ایجاد شد' : 
+            'Free subscription created successfully',
+        });
+        
+        return;
+      }
+      
       // Store form data for after payment
       localStorage.setItem('pendingUserData', JSON.stringify(formData));
       
-      // Create Payman contract
+      // Create Payman contract for paid subscriptions
       const paymanAuthority = await createPaymanContract();
       
       // Redirect to Zarinpal payment page
       window.location.href = `https://www.zarinpal.com/pg/StartPayman/${paymanAuthority}/1`;
       
     } catch (error) {
-      console.error('Payment initiation error:', error);
+      console.error('Subscription creation error:', error);
       
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: error instanceof Error ? error.message : (
           language === 'fa' ? 
-            'خطا در شروع پرداخت. لطفاً دوباره تلاش کنید' : 
-            'Failed to initiate payment. Please try again'
+            'خطا در ایجاد اشتراک. لطفاً دوباره تلاش کنید' : 
+            'Failed to create subscription. Please try again'
         ),
         variant: 'destructive'
       });
@@ -973,23 +1013,21 @@ const MarzbanSubscriptionForm = () => {
                   />
                 </div>
 
-                {formData.selectedPlan?.apiType === 'marzban' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="duration">
-                      {language === 'fa' ? 'مدت زمان (روز)' : 'Duration (Days)'} *
-                    </Label>
-                    <Input
-                      id="duration"
-                      type="number"
-                      min="1"
-                      max="180"
-                      value={formData.duration}
-                      onChange={(e) => handleInputChange('duration', parseInt(e.target.value) || 0)}
-                      placeholder={language === 'fa' ? '۳۰' : '30'}
-                      required
-                    />
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="duration">
+                    {language === 'fa' ? 'مدت زمان (روز)' : 'Duration (Days)'} *
+                  </Label>
+                  <Input
+                    id="duration"
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={formData.duration}
+                    onChange={(e) => handleInputChange('duration', parseInt(e.target.value) || 0)}
+                    placeholder={language === 'fa' ? '۳۰' : '30'}
+                    required
+                  />
+                </div>
               </div>
 
               {/* Discount Field */}

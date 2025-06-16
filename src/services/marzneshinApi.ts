@@ -76,6 +76,7 @@ export class MarzneshinApiService {
   static async createUser(userData: {
     username: string;
     dataLimitGB: number;
+    durationDays: number;
     notes: string;
   }): Promise<MarzneshinUserResponse> {
     const token = await this.getAuthToken();
@@ -85,7 +86,7 @@ export class MarzneshinApiService {
     const userRequest: MarzneshinUserRequest = {
       username: userData.username,
       expire_strategy: 'start_on_first_use',
-      usage_duration: 1209600, // 14 days in seconds
+      usage_duration: userData.durationDays * 86400, // Convert days to seconds
       data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
       service_ids: serviceIds,
       note: `Purchased via bnets.co - ${userData.notes}`
