@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,9 @@ import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDow
 import { useToast } from '@/hooks/use-toast';
 import QRCodeCanvas from 'qrcode';
 import { supabase } from '@/integrations/supabase/client';
+import { SubscriptionPlan } from '@/types/subscription';
+import { MarzneshinApiService } from '@/services/marzneshinApi';
+import PlanSelector from '@/components/PlanSelector';
 
 interface MarzbanFormData {
   username: string;
@@ -18,9 +20,10 @@ interface MarzbanFormData {
   duration: number; // in days
   notes: string;
   mobile: string;
+  selectedPlan: SubscriptionPlan | null;
 }
 
-interface MarzbanResponse {
+interface SubscriptionResponse {
   username: string;
   subscription_url: string;
   expire: number;
@@ -51,10 +54,11 @@ const MarzbanSubscriptionForm = () => {
     dataLimit: 10,
     duration: 30,
     notes: '',
-    mobile: ''
+    mobile: '',
+    selectedPlan: null
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [result, setResult] = useState<MarzbanResponse | null>(null);
+  const [result, setResult] = useState<SubscriptionResponse | null>(null);
   const [step, setStep] = useState(1); // 1: Form, 2: Payment, 3: Success
   const [debugMode, setDebugMode] = useState(false);
   const [debugInfo, setDebugInfo] = useState<DebugInfo[]>([]);
@@ -65,11 +69,10 @@ const MarzbanSubscriptionForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
 
-  // Fixed configuration
+  // Marzban configuration (for Lite plan)
   const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
   const MERCHANT_ID = '10f6ea92-fb53-468c-bcc9-36ef4d9f539c';
-  const PRICE_PER_GB = 3200; // Toman per GB
-  const INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
+  const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
 
   useEffect(() => {
     // Check for debug mode in URL parameters
@@ -107,7 +110,8 @@ const MarzbanSubscriptionForm = () => {
   };
 
   const calculatePrice = () => {
-    return formData.dataLimit * PRICE_PER_GB;
+    if (!formData.selectedPlan) return 0;
+    return formData.dataLimit * formData.selectedPlan.pricePerGB;
   };
 
   const generateUsername = () => {
@@ -124,7 +128,6 @@ const MarzbanSubscriptionForm = () => {
     };
     setDebugInfo(prev => [...prev, debugEntry]);
     
-    // Auto-show debug panel on errors
     if (info.type === 'error') {
       setShowDebug(true);
     }
@@ -151,6 +154,18 @@ const MarzbanSubscriptionForm = () => {
   };
 
   const validateForm = (): boolean => {
+    // Plan selection validation
+    if (!formData.selectedPlan) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً یکی از پلن‌ها را انتخاب کنید' : 
+          'Please select a plan',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
     // Username validation
     const usernameRegex = /^[a-z0-9_]+$/;
     if (!formData.username || !usernameRegex.test(formData.username)) {
@@ -189,18 +204,6 @@ const MarzbanSubscriptionForm = () => {
       return false;
     }
 
-    // Duration validation
-    if (formData.duration < 1 || formData.duration > 180) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'مدت زمان باید بین ۱ تا ۱۸۰ روز باشد' : 
-          'Duration must be between 1 and 180 days',
-        variant: 'destructive'
-      });
-      return false;
-    }
-
     return true;
   };
 
@@ -208,95 +211,137 @@ const MarzbanSubscriptionForm = () => {
     return input.replace(/[<>'"]/g, '').trim();
   };
 
-  const createPaymanContract = async (): Promise<string> => {
-    setLoadingMessage(language === 'fa' ? 'در حال ایجاد قرارداد پرداخت...' : 'Creating payment contract...');
-    
-    const expireAt = new Date();
-    expireAt.setDate(expireAt.getDate() + 30);
-    
-    const paymanRequest = {
-      merchant_id: MERCHANT_ID,
-      mobile: formData.mobile,
-      expire_at: Math.floor(expireAt.getTime() / 1000),
-      max_daily_count: 100,
-      max_monthly_count: 1000,
-      max_amount: calculatePrice() * 10, // Convert Toman to Rial
-      callback_url: `${window.location.origin}/subscription?payment_callback=1`
+  const createMarzbanUser = async (formData: MarzbanFormData): Promise<SubscriptionResponse> => {
+    const tokenEndpoint = 'https://file.shopifysb.xyz:8000/api/admin/token';
+    const tokenRequestData = {
+      username: 'bnets',
+      password: 'reza1234',
+      grant_type: 'password'
     };
 
     try {
-      // Call edge function without authentication
-      const response = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-contract`, {
+      const tokenResponse = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams(tokenRequestData)
+      });
+
+      addDebugInfo({
+        endpoint: tokenEndpoint,
+        status: tokenResponse.status,
+        request: tokenRequestData,
+        response: tokenResponse.ok ? 'Token received' : 'Token failed',
+        type: tokenResponse.ok ? 'success' : 'error'
+      });
+
+      if (!tokenResponse.ok) {
+        throw new Error('Failed to authenticate with Marzban API');
+      }
+
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.access_token;
+
+      const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.duration * 86400);
+      const dataLimitBytes = formData.dataLimit * 1073741824;
+
+      const userData = {
+        username: sanitizeInput(formData.username),
+        status: 'active',
+        expire: expireTimestamp,
+        data_limit: dataLimitBytes,
+        data_limit_reset_strategy: 'no_reset',
+        inbounds: {
+          vless: MARZBAN_INBOUND_TAGS
+        },
+        proxies: {
+          vless: {
+            id: FIXED_UUID
+          }
+        },
+        note: `From bnets.co form - ${sanitizeInput(formData.notes)} - Mobile: ${formData.mobile}`,
+        next_plan: {
+          add_remaining_traffic: false,
+          data_limit: 0,
+          expire: 0,
+          fire_on_either: true
+        }
+      };
+
+      const userEndpoint = 'https://file.shopifysb.xyz:8000/api/user';
+      const userResponse = await fetch(userEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+          'Authorization': `Bearer ${accessToken}`
         },
-        body: JSON.stringify(paymanRequest)
+        body: JSON.stringify(userData)
       });
-
-      const data = await response.json();
 
       addDebugInfo({
-        endpoint: 'zarinpal-contract',
-        status: response.status,
-        request: paymanRequest,
-        response: data,
-        type: response.ok ? 'success' : 'error'
+        endpoint: userEndpoint,
+        status: userResponse.status,
+        request: userData,
+        response: userResponse.ok ? 'User created' : 'User creation failed',
+        type: userResponse.ok ? 'success' : 'error'
       });
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create contract');
-      }
-
-      if (!data.success) {
-        const errorDetails = data.details || data.error || 'Unknown error';
-        
-        let userMessage;
-        if (data.status === 502) {
-          userMessage = language === 'fa' ? 
-            'خطا در برقراری ارتباط با درگاه پرداخت' : 
-            'Error connecting to payment gateway';
-        } else if (data.status >= 400 && data.status < 500) {
-          userMessage = language === 'fa' ? 
-            'اطلاعات پرداخت نامعتبر است' : 
-            'Invalid payment information';
-        } else {
-          userMessage = language === 'fa' ? 
-            'خطا در سرویس پرداخت' : 
-            'Payment service error';
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json();
+        if (userResponse.status === 409) {
+          throw new Error(language === 'fa' ? 
+            'این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید' : 
+            'This username is already taken. Please choose a different one'
+          );
         }
-
-        toast({
-          title: language === 'fa' ? 'خطا در ایجاد قرارداد' : 'Contract Creation Error',
-          description: userMessage,
-          variant: 'destructive'
-        });
-
-        throw new Error(userMessage);
+        throw new Error(errorData.detail || 'Failed to create user');
       }
 
-      if (!data.data?.data?.payman_authority) {
-        throw new Error(language === 'fa' ? 
-          'پاسخ نامعتبر از درگاه پرداخت' : 
-          'Invalid response from payment gateway');
-      }
-
-      return data.data.data.payman_authority;
+      const responseData = await userResponse.json();
+      return {
+        username: responseData.username,
+        subscription_url: responseData.subscription_url,
+        expire: responseData.expire,
+        data_limit: responseData.data_limit
+      };
     } catch (error) {
-      console.error('Contract creation error:', error);
-      
-      if (!error.message.includes('service') && !error.message.includes('gateway')) {
-        addDebugInfo({
-          endpoint: 'zarinpal-contract',
-          status: 0,
-          request: paymanRequest,
-          response: { error: error.message },
-          error: error.message,
-          type: 'error'
-        });
-      }
+      console.error('Marzban API Error:', error);
+      throw error;
+    }
+  };
 
+  const createMarzneshinUser = async (formData: MarzbanFormData): Promise<SubscriptionResponse> => {
+    try {
+      const result = await MarzneshinApiService.createUser({
+        username: sanitizeInput(formData.username),
+        dataLimitGB: formData.dataLimit,
+        notes: sanitizeInput(formData.notes)
+      });
+
+      addDebugInfo({
+        endpoint: 'marzneshin-api',
+        status: 200,
+        request: { username: formData.username, dataLimit: formData.dataLimit },
+        response: result,
+        type: 'success'
+      });
+
+      return {
+        username: result.username,
+        subscription_url: result.subscription_url,
+        expire: result.expire || Math.floor(Date.now() / 1000) + (14 * 86400), // 14 days from now
+        data_limit: result.data_limit
+      };
+    } catch (error) {
+      addDebugInfo({
+        endpoint: 'marzneshin-api',
+        status: 0,
+        request: { username: formData.username, dataLimit: formData.dataLimit },
+        response: { error: error.message },
+        error: error.message,
+        type: 'error'
+      });
       throw error;
     }
   };
@@ -403,135 +448,60 @@ const MarzbanSubscriptionForm = () => {
     }
   };
 
-  const createMarzbanUser = async (formData: MarzbanFormData): Promise<MarzbanResponse> => {
-    // Step 1: Get access token
-    const tokenEndpoint = 'https://file.shopifysb.xyz:8000/api/admin/token';
-    const tokenRequestData = {
-      username: 'bnets',
-      password: 'reza1234',
-      grant_type: 'password'
+  const createPaymanContract = async (): Promise<string> => {
+    setLoadingMessage(language === 'fa' ? 'در حال ایجاد قرارداد پرداخت...' : 'Creating payment contract...');
+    
+    const expireAt = new Date();
+    expireAt.setDate(expireAt.getDate() + 30);
+    
+    const paymanRequest = {
+      merchant_id: MERCHANT_ID,
+      mobile: formData.mobile,
+      expire_at: Math.floor(expireAt.getTime() / 1000),
+      max_daily_count: 100,
+      max_monthly_count: 1000,
+      max_amount: calculatePrice() * 10, // Convert Toman to Rial
+      callback_url: `${window.location.origin}/subscription?payment_callback=1`
     };
 
     try {
-      const tokenResponse = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(tokenRequestData)
-      });
-
-      addDebugInfo({
-        endpoint: tokenEndpoint,
-        status: tokenResponse.status,
-        request: tokenRequestData,
-        response: tokenResponse.ok ? 'Token received' : 'Token failed',
-        type: tokenResponse.ok ? 'success' : 'error'
-      });
-
-      if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json();
-        addDebugInfo({
-          endpoint: tokenEndpoint,
-          status: tokenResponse.status,
-          request: tokenRequestData,
-          response: errorData,
-          error: 'Authentication failed',
-          type: 'error'
-        });
-        throw new Error('Failed to authenticate with Marzban API');
-      }
-
-      const tokenData = await tokenResponse.json();
-      const accessToken = tokenData.access_token;
-
-      // Step 2: Create user with all inbounds
-      const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.duration * 86400);
-      const dataLimitBytes = formData.dataLimit * 1073741824; // Convert GB to bytes
-
-      const userData = {
-        username: sanitizeInput(formData.username),
-        status: 'active',
-        expire: expireTimestamp,
-        data_limit: dataLimitBytes,
-        data_limit_reset_strategy: 'no_reset',
-        inbounds: {
-          vless: INBOUND_TAGS
-        },
-        proxies: {
-          vless: {
-            id: FIXED_UUID
-          }
-        },
-        note: `From bnets.co form - ${sanitizeInput(formData.notes)} - Mobile: ${formData.mobile}`,
-        next_plan: {
-          add_remaining_traffic: false,
-          data_limit: 0,
-          expire: 0,
-          fire_on_either: true
-        }
-      };
-
-      const userEndpoint = 'https://file.shopifysb.xyz:8000/api/user';
-      const userResponse = await fetch(userEndpoint, {
+      const response = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-contract`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
         },
-        body: JSON.stringify(userData)
+        body: JSON.stringify(paymanRequest)
       });
+
+      const data = await response.json();
 
       addDebugInfo({
-        endpoint: userEndpoint,
-        status: userResponse.status,
-        request: userData,
-        response: userResponse.ok ? 'User created' : 'User creation failed',
-        type: userResponse.ok ? 'success' : 'error'
+        endpoint: 'zarinpal-contract',
+        status: response.status,
+        request: paymanRequest,
+        response: data,
+        type: response.ok ? 'success' : 'error'
       });
 
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        addDebugInfo({
-          endpoint: userEndpoint,
-          status: userResponse.status,
-          request: userData,
-          response: errorData,
-          error: userResponse.status === 409 ? 'User already exists' : 'User creation failed',
-          type: 'error'
-        });
-
-        if (userResponse.status === 409) {
-          throw new Error(language === 'fa' ? 
-            'این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید' : 
-            'This username is already taken. Please choose a different one'
-          );
-        }
-        throw new Error(errorData.detail || 'Failed to create user');
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create contract');
       }
 
-      const responseData = await userResponse.json();
-      addDebugInfo({
-        endpoint: userEndpoint,
-        status: userResponse.status,
-        request: userData,
-        response: responseData,
-        type: 'success'
-      });
+      if (!data.data?.data?.payman_authority) {
+        throw new Error(language === 'fa' ? 
+          'پاسخ نامعتبر از درگاه پرداخت' : 
+          'Invalid response from payment gateway');
+      }
 
-      return {
-        username: responseData.username,
-        subscription_url: responseData.subscription_url,
-        expire: responseData.expire,
-        data_limit: responseData.data_limit
-      };
+      return data.data.data.payman_authority;
     } catch (error) {
-      console.error('Marzban API Error:', error);
+      console.error('Contract creation error:', error);
       throw error;
     }
   };
 
-  const handleInputChange = (field: keyof MarzbanFormData, value: string | number) => {
+  const handleInputChange = (field: keyof MarzbanFormData, value: string | number | SubscriptionPlan) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -561,18 +531,15 @@ const MarzbanSubscriptionForm = () => {
     } catch (error) {
       console.error('Payment initiation error:', error);
       
-      // Don't show duplicate toast if already shown in createPaymanContract
-      if (!error.message.includes('service') && !error.message.includes('gateway')) {
-        toast({
-          title: language === 'fa' ? 'خطا' : 'Error',
-          description: error instanceof Error ? error.message : (
-            language === 'fa' ? 
-              'خطا در شروع پرداخت. لطفاً دوباره تلاش کنید' : 
-              'Failed to initiate payment. Please try again'
-          ),
-          variant: 'destructive'
-        });
-      }
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: error instanceof Error ? error.message : (
+          language === 'fa' ? 
+            'خطا در شروع پرداخت. لطفاً دوباره تلاش کنید' : 
+            'Failed to initiate payment. Please try again'
+        ),
+        variant: 'destructive'
+      });
     } finally {
       setIsSubmitting(false);
       setIsLoading(false);
@@ -886,14 +853,21 @@ const MarzbanSubscriptionForm = () => {
           </CardTitle>
           <CardDescription>
             {language === 'fa' ? 
-              'اشتراک VLESS سفارشی خود را ایجاد کنید' : 
-              'Create your custom VLESS subscription'
+              'پلن مناسب خود را انتخاب کرده و اشتراک سفارشی ایجاد کنید' : 
+              'Choose your plan and create a custom subscription'
             }
           </CardDescription>
         </CardHeader>
         
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Plan Selection */}
+            <PlanSelector
+              selectedPlan={formData.selectedPlan}
+              onPlanSelect={(plan) => handleInputChange('selectedPlan', plan)}
+              dataLimit={formData.dataLimit}
+            />
+
             {/* User Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -979,67 +953,79 @@ const MarzbanSubscriptionForm = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="duration">
-                    {language === 'fa' ? 'مدت زمان (روز)' : 'Duration (Days)'} *
-                  </Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    min="1"
-                    max="180"
-                    value={formData.duration}
-                    onChange={(e) => handleInputChange('duration', parseInt(e.target.value) || 0)}
-                    placeholder={language === 'fa' ? '۳۰' : '30'}
-                    required
-                  />
-                </div>
+                {formData.selectedPlan?.apiType === 'marzban' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="duration">
+                      {language === 'fa' ? 'مدت زمان (روز)' : 'Duration (Days)'} *
+                    </Label>
+                    <Input
+                      id="duration"
+                      type="number"
+                      min="1"
+                      max="180"
+                      value={formData.duration}
+                      onChange={(e) => handleInputChange('duration', parseInt(e.target.value) || 0)}
+                      placeholder={language === 'fa' ? '۳۰' : '30'}
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Price Calculation */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold text-blue-800 dark:text-blue-200">
-                      {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
-                    </h4>
-                    <p className="text-sm text-blue-600 dark:text-blue-400">
-                      {language === 'fa' ? 
-                        `${formData.dataLimit} گیگابایت × ${PRICE_PER_GB.toLocaleString()} تومان` : 
-                        `${formData.dataLimit} GB × ${PRICE_PER_GB.toLocaleString()} Toman`
-                      }
-                    </p>
-                  </div>
-                  <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
-                    {calculatePrice().toLocaleString()} 
-                    {language === 'fa' ? ' تومان' : ' Toman'}
+              {formData.selectedPlan && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-blue-800 dark:text-blue-200">
+                        {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
+                      </h4>
+                      <p className="text-sm text-blue-600 dark:text-blue-400">
+                        {language === 'fa' ? 
+                          `${formData.dataLimit} گیگابایت × ${formData.selectedPlan.pricePerGB.toLocaleString()} تومان` : 
+                          `${formData.dataLimit} GB × ${formData.selectedPlan.pricePerGB.toLocaleString()} Toman`
+                        }
+                      </p>
+                    </div>
+                    <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
+                      {calculatePrice().toLocaleString()} 
+                      {language === 'fa' ? ' تومان' : ' Toman'}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Server Info */}
-              <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {INBOUND_TAGS.map(tag => (
-                    <Badge key={tag} variant="outline" className="text-green-700 dark:text-green-300">
-                      {tag}
-                    </Badge>
-                  ))}
+              {/* Plan Info */}
+              {formData.selectedPlan && (
+                <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {formData.selectedPlan.apiType === 'marzban' ? (
+                      MARZBAN_INBOUND_TAGS.map(tag => (
+                        <Badge key={tag} variant="outline" className="text-green-700 dark:text-green-300">
+                          {tag}
+                        </Badge>
+                      ))
+                    ) : (
+                      <Badge variant="outline" className="text-green-700 dark:text-green-300">
+                        {language === 'fa' ? 'تمام سرورهای پرو' : 'All Pro Servers'}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-green-600 dark:text-green-400">
+                    {language === 'fa' ? 
+                      `${formData.selectedPlan.name} - ${formData.selectedPlan.description}` : 
+                      `${formData.selectedPlan.name} - ${formData.selectedPlan.description}`
+                    }
+                  </p>
                 </div>
-                <p className="text-sm text-green-600 dark:text-green-400">
-                  {language === 'fa' ? 
-                    'تمام سرورها برای شما فعال خواهد شد' : 
-                    'All servers will be activated for you'
-                  }
-                </p>
-              </div>
+              )}
             </div>
 
             {/* Submit Button */}
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting || isLoading}
+              disabled={isSubmitting || isLoading || !formData.selectedPlan}
               size="lg"
             >
               {isSubmitting || isLoading ? (
