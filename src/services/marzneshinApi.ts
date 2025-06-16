@@ -1,13 +1,12 @@
 
-import { MarzneshinInbound, MarzneshinService, MarzneshinServiceRequest, MarzneshinUserRequest, MarzneshinUserResponse } from '@/types/subscription';
+import { MarzneshinService, MarzneshinServicesResponse, MarzneshinUserRequest, MarzneshinUserResponse } from '@/types/subscription';
 
 const MARZNESHIN_BASE_URL = 'https://p.rain.rest';
 const ADMIN_USERNAME = 'bnets';
 const ADMIN_PASSWORD = 'reza1234';
-const PRO_SERVICE_NAME = 'Pro Plan';
 
-// Required inbound tags for Pro plan
-const REQUIRED_INBOUND_TAGS = [
+// Required service names for Pro plan (matching actual API services)
+const REQUIRED_SERVICE_NAMES = [
   'UserInfo',
   'FinlandTunnel',
   'GermanyDirect', 
@@ -60,91 +59,28 @@ export class MarzneshinApiService {
       throw new Error(`Failed to fetch services from Marzneshin API: ${response.status} ${errorText}`);
     }
 
-    return response.json();
+    const data: MarzneshinServicesResponse = await response.json();
+    console.log('Services response:', data);
+    
+    // Return the items array from the paginated response
+    return data.items || [];
   }
 
-  private static async getInbounds(token: string): Promise<MarzneshinInbound[]> {
-    try {
-      const response = await fetch(`${MARZNESHIN_BASE_URL}/api/inbounds`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        // If we can't access inbounds, we'll use predefined IDs
-        console.warn(`Cannot access inbounds API (${response.status}), using fallback strategy`);
-        return [];
-      }
-
-      return response.json();
-    } catch (error) {
-      console.warn('Error fetching inbounds, using fallback strategy:', error);
-      return [];
-    }
-  }
-
-  private static async createProService(token: string): Promise<number> {
-    // First try to get inbounds to find the correct IDs
-    const inbounds = await this.getInbounds(token);
+  private static getRequiredServiceIds(services: MarzneshinService[]): number[] {
+    const serviceIds: number[] = [];
     
-    let inboundIds: number[] = [];
-    
-    if (inbounds.length > 0) {
-      // Map required tags to inbound IDs
-      for (const tag of REQUIRED_INBOUND_TAGS) {
-        const inbound = inbounds.find(ib => ib.tag === tag);
-        if (inbound) {
-          inboundIds.push(inbound.id);
-        }
+    for (const serviceName of REQUIRED_SERVICE_NAMES) {
+      const service = services.find(s => s.name === serviceName);
+      if (service) {
+        serviceIds.push(service.id);
+        console.log(`Found service: ${serviceName} with ID: ${service.id}`);
+      } else {
+        console.warn(`Service not found: ${serviceName}`);
       }
     }
     
-    // If we couldn't get inbounds or found no matching tags, use fallback IDs
-    if (inboundIds.length === 0) {
-      console.warn('No inbounds found matching required tags, using fallback IDs');
-      // Use sequential IDs starting from 1 as fallback
-      inboundIds = Array.from({ length: REQUIRED_INBOUND_TAGS.length }, (_, i) => i + 1);
-    }
-
-    const serviceRequest: MarzneshinServiceRequest = {
-      name: PRO_SERVICE_NAME,
-      inbound_ids: inboundIds
-    };
-
-    const response = await fetch(`${MARZNESHIN_BASE_URL}/api/services`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(serviceRequest)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to create Pro service: ${response.status} ${errorText}`);
-    }
-
-    const createdService = await response.json();
-    return createdService.id;
-  }
-
-  private static async getOrCreateProService(token: string): Promise<number> {
-    // Check if Pro Plan service already exists
-    const services = await this.getServices(token);
-    const existingProService = services.find(service => service.name === PRO_SERVICE_NAME);
-    
-    if (existingProService) {
-      console.log(`Found existing Pro service with ID: ${existingProService.id}`);
-      return existingProService.id;
-    }
-    
-    // Create new Pro service if it doesn't exist
-    console.log('Creating new Pro service...');
-    return await this.createProService(token);
+    console.log(`Found ${serviceIds.length} out of ${REQUIRED_SERVICE_NAMES.length} required services`);
+    return serviceIds;
   }
 
   static async createUser(userData: {
@@ -157,15 +93,21 @@ export class MarzneshinApiService {
       const token = await this.getAuthToken();
       console.log('Successfully obtained auth token');
       
-      const serviceId = await this.getOrCreateProService(token);
-      console.log(`Using service ID: ${serviceId}`);
+      const services = await this.getServices(token);
+      console.log(`Fetched ${services.length} services from API`);
+      
+      const requiredServiceIds = this.getRequiredServiceIds(services);
+      
+      if (requiredServiceIds.length === 0) {
+        throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
+      }
 
       const userRequest: MarzneshinUserRequest = {
         username: userData.username,
         expire_strategy: 'start_on_first_use',
         usage_duration: userData.durationDays * 86400, // Convert days to seconds
         data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
-        service_ids: [serviceId],
+        service_ids: requiredServiceIds,
         note: `Purchased via bnets.co - ${userData.notes}`
       };
 

@@ -27,8 +27,18 @@ export interface MarzneshinService {
   id: number;
   name: string;
   inbound_ids: number[];
-  created_at: string;
-  updated_at: string;
+  user_ids?: number[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MarzneshinServicesResponse {
+  items: MarzneshinService[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+  links: any;
 }
 
 export interface MarzneshinServiceRequest {
