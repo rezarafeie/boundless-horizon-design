@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { ChevronLeft, ChevronRight, CheckCircle, CreditCard, User, Settings } from 'lucide-react';
 import PlanSelector from '@/components/PlanSelector';
-import DiscountField from '@/components/DiscountField';
 import UserInfoStep from '@/components/UserInfoStep';
 import PaymentStep from '@/components/PaymentStep';
 import SubscriptionSuccess from '@/components/SubscriptionSuccess';
@@ -54,6 +53,16 @@ const MultiStepSubscriptionForm = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Auto-advance from plan selection step when plan is selected
+  useEffect(() => {
+    if (currentStep === 1 && formData.selectedPlan) {
+      const timer = setTimeout(() => {
+        setCurrentStep(2);
+      }, 300); // Small delay for smooth transition
+      return () => clearTimeout(timer);
+    }
+  }, [formData.selectedPlan, currentStep]);
+
   const canProceedFromStep = (step: number): boolean => {
     switch (step) {
       case 1:
@@ -96,10 +105,6 @@ const MultiStepSubscriptionForm = () => {
               onPlanSelect={(plan) => updateFormData('selectedPlan', plan)}
               dataLimit={formData.dataLimit}
             />
-            <DiscountField
-              onDiscountApply={setAppliedDiscount}
-              appliedDiscount={appliedDiscount}
-            />
           </div>
         );
       case 2:
@@ -118,6 +123,7 @@ const MultiStepSubscriptionForm = () => {
             onSuccess={handlePaymentSuccess}
             isSubmitting={isSubmitting}
             setIsSubmitting={setIsSubmitting}
+            onDiscountApply={setAppliedDiscount}
           />
         );
       case 4:
@@ -197,8 +203,8 @@ const MultiStepSubscriptionForm = () => {
             {renderStepContent()}
           </div>
 
-          {/* Navigation Buttons */}
-          {currentStep < 4 && (
+          {/* Navigation Buttons - Only show for steps 2 and beyond */}
+          {currentStep >= 2 && currentStep < 4 && (
             <div className="flex justify-between items-center pt-8 border-t border-gray-200 dark:border-gray-700">
               <Button
                 variant="outline"
@@ -216,17 +222,19 @@ const MultiStepSubscriptionForm = () => {
                 <span>{STEPS.length}</span>
               </div>
 
-              {currentStep < 3 ? (
+              {currentStep === 2 && (
                 <Button
                   variant="hero-primary"
                   onClick={handleNext}
                   disabled={!canProceedFromStep(currentStep)}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 w-full max-w-xs"
                 >
                   {language === 'fa' ? 'بعدی' : 'Next'}
                   <ChevronRight className="w-4 h-4" />
                 </Button>
-              ) : (
+              )}
+
+              {currentStep === 3 && (
                 <div className="w-24" /> // Spacer for layout consistency
               )}
             </div>

@@ -121,8 +121,8 @@ const HeroSection = () => {
       </div>
 
       <FreeTrialDialog 
-        open={showFreeTrial} 
-        onOpenChange={setShowFreeTrial}
+        isOpen={showFreeTrial} 
+        onClose={() => setShowFreeTrial(false)}
       />
     </section>
   );

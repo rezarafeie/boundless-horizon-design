@@ -6,6 +6,7 @@ import { CreditCard, Loader, Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SubscriptionPlan, DiscountCode } from '@/types/subscription';
 import { MarzneshinApiService } from '@/services/marzneshinApi';
+import DiscountField from '@/components/DiscountField';
 
 interface FormData {
   username: string;
@@ -29,9 +30,10 @@ interface PaymentStepProps {
   onSuccess: (result: SubscriptionResponse) => void;
   isSubmitting: boolean;
   setIsSubmitting: (value: boolean) => void;
+  onDiscountApply: (discount: DiscountCode | null) => void;
 }
 
-const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIsSubmitting }: PaymentStepProps) => {
+const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIsSubmitting, onDiscountApply }: PaymentStepProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
   
@@ -42,7 +44,7 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
     const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
     
     if (appliedDiscount) {
-      const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
+      const discountAmount = (basePrice * appliedDiscount.value) / 100;
       return Math.max(0, basePrice - discountAmount);
     }
     
@@ -240,6 +242,9 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
     }
   };
 
+  const basePrice = formData.selectedPlan ? formData.dataLimit * formData.selectedPlan.pricePerGB : 0;
+  const discountAmount = appliedDiscount ? (basePrice * appliedDiscount.value) / 100 : 0;
+
   return (
     <div className="space-y-6">
       {/* Payment Summary */}
@@ -269,11 +274,15 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
               <span>{language === 'fa' ? 'مدت:' : 'Duration:'}</span>
               <span>{formData.duration} {language === 'fa' ? 'روز' : 'days'}</span>
             </div>
+            <div className="flex justify-between text-sm">
+              <span>{language === 'fa' ? 'قیمت پایه:' : 'Base Price:'}</span>
+              <span>{basePrice.toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
+            </div>
             
             {appliedDiscount && (
               <div className="flex justify-between text-sm text-green-600">
                 <span>{language === 'fa' ? 'تخفیف:' : 'Discount:'}</span>
-                <span>-{((formData.dataLimit * (formData.selectedPlan?.pricePerGB || 0)) * appliedDiscount.percentage / 100).toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
+                <span>-{discountAmount.toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
               </div>
             )}
             
@@ -288,6 +297,12 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
           </div>
         </CardContent>
       </Card>
+
+      {/* Discount Code Field */}
+      <DiscountField
+        onDiscountApply={onDiscountApply}
+        appliedDiscount={appliedDiscount}
+      />
 
       {/* Security Notice */}
       <Card className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
@@ -316,7 +331,7 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
           disabled={isSubmitting}
           variant="hero-primary"
           size="xl"
-          className="w-full max-w-md"
+          className="w-full"
         >
           {isSubmitting ? (
             <>

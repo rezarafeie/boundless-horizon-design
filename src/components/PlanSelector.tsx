@@ -23,15 +23,17 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
         'اتصال پایه با آلمان، فنلاند، هلند - مناسب برای کاربری روزمره' : 
         'Basic connection with Germany, Finland, Netherlands - suitable for daily use',
       pricePerGB: 3200,
+      price: 0,
       apiType: 'marzban'
     },
     {
       id: 'pro',
       name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
       description: language === 'fa' ? 
-        'پریمیوم با تمام مکان‌های جهانی و اتصالات تونلی - بهترین عملکرد' : 
-        'Premium with all global locations and tunnel connections - best performance',
+        'پریمیوم با آمریکا، انگلیس، آلمان، فنلاند، هلند - بهترین عملکرد' : 
+        'Premium with USA, UK, Germany, Finland, Netherlands - best performance',
       pricePerGB: 4200,
+      price: 0,
       apiType: 'marzneshin'
     }
   ];
@@ -43,8 +45,8 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
         ['🇩🇪 Germany', '🇫🇮 Finland', '🇳🇱 Netherlands'];
     } else {
       return language === 'fa' ? 
-        ['🇺🇸 آمریکا', '🇬🇧 انگلیس', '🇩🇪 آلمان', '🇫🇮 فنلاند', '🇳🇱 هلند', '🇯🇵 ژاپن', '🇸🇬 سنگاپور', '🇦🇺 استرالیا'] :
-        ['🇺🇸 USA', '🇬🇧 UK', '🇩🇪 Germany', '🇫🇮 Finland', '🇳🇱 Netherlands', '🇯🇵 Japan', '🇸🇬 Singapore', '🇦🇺 Australia'];
+        ['🇺🇸 آمریکا', '🇬🇧 انگلیس', '🇩🇪 آلمان', '🇫🇮 فنلاند', '🇳🇱 هلند'] :
+        ['🇺🇸 USA', '🇬🇧 UK', '🇩🇪 Germany', '🇫🇮 Finland', '🇳🇱 Netherlands'];
     }
   };
 
