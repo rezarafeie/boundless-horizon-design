@@ -17,9 +17,9 @@ const Navigation = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+            <a href="/" className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
               {language === 'fa' ? 'شبکه بدون مرز' : 'BNETS.CO'}
-            </h1>
+            </a>
           </div>
 
           {/* Desktop Navigation */}
@@ -27,8 +27,8 @@ const Navigation = () => {
             <a href="#features" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.features')}
             </a>
-            <a href="#pricing" className="text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.pricing')}
+            <a href="/subscription" className="text-foreground/70 hover:text-foreground transition-colors">
+              {t('nav.subscription')}
             </a>
             <a href="#about" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.about')}
@@ -86,8 +86,8 @@ const Navigation = () => {
             <a href="#features" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.features')}
             </a>
-            <a href="#pricing" className="block text-foreground/70 hover:text-foreground transition-colors">
-              {t('nav.pricing')}
+            <a href="/subscription" className="block text-foreground/70 hover:text-foreground transition-colors">
+              {t('nav.subscription')}
             </a>
             <a href="#about" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.about')}

@@ -16,6 +16,7 @@ const translations = {
     'nav.pricing': 'Pricing',
     'nav.about': 'About',
     'nav.contact': 'Contact',
+    'nav.subscription': 'Subscribe',
     
     // Hero Section
     'hero.title': 'Boundless Network',
@@ -97,6 +98,20 @@ const translations = {
     'faq.question6': 'How is support provided?',
     'faq.answer6': '24/7 support team available via Telegram. Response time is less than 10 minutes.',
     
+    // Subscription Form
+    'subscription.title': 'VPN Subscription Purchase',
+    'subscription.subtitle': 'Choose your Boundless Network subscription',
+    'subscription.user-info': 'User Information',
+    'subscription.email': 'Email',
+    'subscription.username': 'Username',
+    'subscription.data-volume': 'Data Volume',
+    'subscription.duration': 'Duration',
+    'subscription.protocol': 'Protocol',
+    'subscription.location': 'Server Location',
+    'subscription.promo-code': 'Promo Code (Optional)',
+    'subscription.purchase': 'Purchase Subscription',
+    'subscription.terms': 'By purchasing a subscription, you agree to our terms and conditions',
+    
     // Footer
     'footer.description': 'Secure, fast and unlimited – for professional users who trust the best quality.',
     'footer.services': 'Services',
@@ -115,6 +130,7 @@ const translations = {
     'nav.pricing': 'قیمت‌گذاری',
     'nav.about': 'درباره ما',
     'nav.contact': 'تماس',
+    'nav.subscription': 'اشتراک',
     
     // Hero Section
     'hero.title': 'شبکه بدون مرز',
@@ -195,6 +211,20 @@ const translations = {
     'faq.answer5': 'سرعت بر اساس پلن انتخابی متفاوت است. پلن Pro و Pro Plus سرعت فوق‌العاده ارائه می‌دهند.',
     'faq.question6': 'پشتیبانی چگونه انجام می‌شود؟',
     'faq.answer6': 'تیم پشتیبانی ۲۴/۷ از طریق تلگرام در دسترس است. زمان پاسخ‌گویی کمتر از ۱۰ دقیقه.',
+    
+    // Subscription Form
+    'subscription.title': 'خرید اشتراک VPN',
+    'subscription.subtitle': 'اشتراک شبکه بدون مرز خود را انتخاب کنید',
+    'subscription.user-info': 'اطلاعات کاربری',
+    'subscription.email': 'ایمیل',
+    'subscription.username': 'نام کاربری',
+    'subscription.data-volume': 'حجم داده',
+    'subscription.duration': 'مدت زمان',
+    'subscription.protocol': 'پروتکل',
+    'subscription.location': 'موقعیت سرور',
+    'subscription.promo-code': 'کد تخفیف (اختیاری)',
+    'subscription.purchase': 'خرید اشتراک',
+    'subscription.terms': 'با خرید اشتراک، شما با قوانین و مقررات ما موافقت می‌کنید',
     
     // Footer
     'footer.description': 'امن، سریع و بدون محدودیت – برای کاربران حرفه‌ای که به بهترین کیفیت اعتماد دارند.',
