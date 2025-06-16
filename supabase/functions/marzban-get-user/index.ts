@@ -102,44 +102,166 @@ serve(async (req) => {
     const token = authData.access_token;
     logStep("Got auth token successfully", { tokenLength: token.length });
 
-    // Now get user data
-    const userUrl = `${baseUrl}/api/users/${encodeURIComponent(username)}`;
-    logStep("Fetching user data", { url: userUrl });
-    
-    const userResponse = await fetch(userUrl, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-    });
+    // Try multiple endpoints for user lookup
+    const possibleUserEndpoints = [
+      `${baseUrl}/api/user/${encodeURIComponent(username)}`,
+      `${baseUrl}/api/users/${encodeURIComponent(username)}`,
+      `${baseUrl}/api/users?username=${encodeURIComponent(username)}`,
+      `${baseUrl}/api/user?username=${encodeURIComponent(username)}`,
+      `${baseUrl}/users/${encodeURIComponent(username)}`,
+      `${baseUrl}/user/${encodeURIComponent(username)}`
+    ];
 
-    logStep("User response received", { 
-      status: userResponse.status, 
-      statusText: userResponse.statusText,
-      url: userUrl
-    });
+    let userData = null;
+    let lastUserError = null;
 
-    if (!userResponse.ok) {
-      if (userResponse.status === 404) {
-        logStep("User not found");
-        return new Response(JSON.stringify({
-          success: false,
-          error: "User not found",
-          user: null
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
+    for (const userUrl of possibleUserEndpoints) {
+      try {
+        logStep("Trying user endpoint", { url: userUrl, attempt: possibleUserEndpoints.indexOf(userUrl) + 1 });
+        
+        const userResponse = await fetch(userUrl, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
         });
+
+        logStep("User response received", { 
+          url: userUrl,
+          status: userResponse.status, 
+          statusText: userResponse.statusText,
+          headers: Object.fromEntries(userResponse.headers.entries())
+        });
+
+        if (userResponse.ok) {
+          const data = await userResponse.json();
+          logStep("User endpoint response data", { 
+            url: userUrl, 
+            dataType: typeof data, 
+            hasUsers: !!data.users,
+            isArray: Array.isArray(data),
+            keys: Object.keys(data || {}),
+            dataPreview: JSON.stringify(data).substring(0, 200)
+          });
+
+          // Handle different response formats
+          if (data.username === username) {
+            // Direct user response
+            userData = data;
+            logStep("User found directly", { username: data.username });
+            break;
+          } else if (data.users && Array.isArray(data.users)) {
+            // Search format response
+            const user = data.users.find((u: any) => u.username === username);
+            if (user) {
+              userData = user;
+              logStep("User found in users array", { username: user.username });
+              break;
+            }
+          } else if (Array.isArray(data)) {
+            // Direct array response
+            const user = data.find((u: any) => u.username === username);
+            if (user) {
+              userData = user;
+              logStep("User found in direct array", { username: user.username });
+              break;
+            }
+          } else if (data.username && data.username !== username) {
+            // Single user but wrong username
+            logStep("Different user returned", { expected: username, actual: data.username });
+          } else {
+            logStep("Unexpected response format", { data: JSON.stringify(data).substring(0, 200) });
+          }
+        } else if (userResponse.status === 404) {
+          logStep("User endpoint not found", { url: userUrl });
+          lastUserError = `404: Endpoint not found`;
+        } else {
+          const errorText = await userResponse.text();
+          lastUserError = `${userResponse.status}: ${errorText}`;
+          logStep("User endpoint failed", { url: userUrl, status: userResponse.status, error: errorText });
+        }
+      } catch (error) {
+        lastUserError = error.message;
+        logStep("User endpoint error", { url: userUrl, error: error.message });
       }
-      
-      const errorText = await userResponse.text();
-      logStep("User fetch failed", { status: userResponse.status, error: errorText });
-      throw new Error(`Failed to fetch user: ${userResponse.status} - ${errorText}`);
     }
 
-    const userData = await userResponse.json();
-    logStep("User data retrieved successfully", { username: userData.username });
+    // If no user found, try to get all users to see what's available
+    if (!userData) {
+      logStep("Attempting to list all users for debugging");
+      try {
+        const allUsersUrl = `${baseUrl}/api/users`;
+        const allUsersResponse = await fetch(allUsersUrl, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+        });
+
+        if (allUsersResponse.ok) {
+          const allUsersData = await allUsersResponse.json();
+          logStep("All users data", { 
+            dataType: typeof allUsersData,
+            keys: Object.keys(allUsersData || {}),
+            hasUsers: !!allUsersData.users,
+            isArray: Array.isArray(allUsersData),
+            totalUsers: Array.isArray(allUsersData) ? allUsersData.length : 
+                       (allUsersData.users ? allUsersData.users.length : 'unknown'),
+            preview: JSON.stringify(allUsersData).substring(0, 300)
+          });
+
+          // Check if our user exists in the full list
+          let allUsers = [];
+          if (Array.isArray(allUsersData)) {
+            allUsers = allUsersData;
+          } else if (allUsersData.users && Array.isArray(allUsersData.users)) {
+            allUsers = allUsersData.users;
+          }
+
+          const foundUser = allUsers.find((u: any) => u.username === username);
+          if (foundUser) {
+            userData = foundUser;
+            logStep("User found in all users list", { username: foundUser.username });
+          } else {
+            const availableUsernames = allUsers.map((u: any) => u.username || 'unknown').slice(0, 10);
+            logStep("User not found in all users list", { 
+              searchedUsername: username,
+              availableUsernames,
+              totalAvailableUsers: allUsers.length
+            });
+          }
+        } else {
+          logStep("Failed to fetch all users", { status: allUsersResponse.status });
+        }
+      } catch (error) {
+        logStep("Error fetching all users", { error: error.message });
+      }
+    }
+    
+    if (!userData) {
+      logStep("User not found in any endpoint", { 
+        lastError: lastUserError,
+        triedEndpoints: possibleUserEndpoints.length,
+        searchedUsername: username
+      });
+      return new Response(JSON.stringify({
+        success: false,
+        error: "User not found",
+        user: null,
+        debug: {
+          searchedUsername: username,
+          triedEndpoints: possibleUserEndpoints,
+          lastError: lastUserError
+        }
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    logStep("User found successfully", { username: userData.username });
 
     return new Response(JSON.stringify({
       success: true,
