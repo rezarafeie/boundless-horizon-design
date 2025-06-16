@@ -33,16 +33,35 @@ serve(async (req) => {
     const marzbanUsername = Deno.env.get("MARZBAN_ADMIN_USERNAME");
     const marzbanPassword = Deno.env.get("MARZBAN_ADMIN_PASSWORD");
 
+    // Debug logging for environment variables (safely)
+    logStep("Environment check", {
+      baseUrlExists: !!marzbanBaseUrl,
+      usernameExists: !!marzbanUsername,
+      passwordExists: !!marzbanPassword,
+      baseUrl: marzbanBaseUrl ? `${marzbanBaseUrl.substring(0, 20)}...` : 'NOT_SET'
+    });
+
     if (!marzbanBaseUrl || !marzbanUsername || !marzbanPassword) {
-      throw new Error("Marzban credentials not configured");
+      const missingVars = [];
+      if (!marzbanBaseUrl) missingVars.push('MARZBAN_BASE_URL');
+      if (!marzbanUsername) missingVars.push('MARZBAN_ADMIN_USERNAME');
+      if (!marzbanPassword) missingVars.push('MARZBAN_ADMIN_PASSWORD');
+      
+      throw new Error(`Marzban credentials not configured. Missing: ${missingVars.join(', ')}`);
     }
 
+    // Clean base URL (remove trailing slash)
+    const baseUrl = marzbanBaseUrl.replace(/\/$/, '');
+    const authUrl = `${baseUrl}/api/admin/token`;
+    
+    logStep("Authentication attempt", { url: authUrl });
+
     // First, get auth token
-    logStep("Getting auth token");
-    const authResponse = await fetch(`${marzbanBaseUrl}/api/admin/token`, {
+    const authResponse = await fetch(authUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
       },
       body: new URLSearchParams({
         username: marzbanUsername,
@@ -50,21 +69,43 @@ serve(async (req) => {
       }),
     });
 
+    logStep("Auth response received", { 
+      status: authResponse.status, 
+      statusText: authResponse.statusText,
+      headers: Object.fromEntries(authResponse.headers.entries())
+    });
+
     if (!authResponse.ok) {
-      throw new Error(`Failed to authenticate with Marzban: ${authResponse.status}`);
+      const errorText = await authResponse.text();
+      logStep("Auth failed", { status: authResponse.status, error: errorText });
+      throw new Error(`Failed to authenticate with Marzban: ${authResponse.status} - ${errorText}`);
     }
 
     const authData = await authResponse.json();
+    
+    if (!authData.access_token) {
+      logStep("No access token in response", authData);
+      throw new Error("No access token received from Marzban authentication");
+    }
+
     const token = authData.access_token;
     logStep("Got auth token successfully");
 
     // Now get user data
-    logStep("Fetching user data from Marzban");
-    const userResponse = await fetch(`${marzbanBaseUrl}/api/users/${username}`, {
+    const userUrl = `${baseUrl}/api/users/${encodeURIComponent(username)}`;
+    logStep("Fetching user data", { url: userUrl });
+    
+    const userResponse = await fetch(userUrl, {
       headers: {
         "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json",
+        "Accept": "application/json",
       },
+    });
+
+    logStep("User response received", { 
+      status: userResponse.status, 
+      statusText: userResponse.statusText 
     });
 
     if (!userResponse.ok) {
@@ -79,7 +120,10 @@ serve(async (req) => {
           status: 200,
         });
       }
-      throw new Error(`Failed to fetch user: ${userResponse.status}`);
+      
+      const errorText = await userResponse.text();
+      logStep("User fetch failed", { status: userResponse.status, error: errorText });
+      throw new Error(`Failed to fetch user: ${userResponse.status} - ${errorText}`);
     }
 
     const userData = await userResponse.json();
