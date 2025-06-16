@@ -50,8 +50,8 @@ const MarzbanSubscriptionForm = () => {
   const [rateLimitMap, setRateLimitMap] = useState<Map<string, number>>(new Map());
 
   // Fixed configuration
-  const FIXED_INBOUND = 'reza';
-  const FIXED_UUID = 'reza'; // Fixed UUID for Dubai server
+  const FIXED_INBOUND = 'fanland';
+  const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f'; // Fixed UUID for Dubai server
 
   useEffect(() => {
     // Check for debug mode in URL parameters
