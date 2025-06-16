@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -44,10 +43,12 @@ interface MarzneshinServicesResponse {
 interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
+  expire_after?: number;
   usage_duration: number;
   data_limit: number;
   service_ids: number[];
   note: string;
+  data_limit_reset_strategy?: string;
 }
 
 interface MarzneshinUserResponse {
@@ -139,11 +140,13 @@ async function createMarzneshinUser(
   
   const userRequest: MarzneshinUserRequest = {
     username: userData.username,
-    expire_strategy: 'start_on_first_use',
+    expire_strategy: 'expire_after',
+    expire_after: userData.durationDays,
     usage_duration: userData.durationDays * 86400, // Convert days to seconds
     data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
     service_ids: serviceIds,
-    note: `Purchased via bnets.co - ${userData.notes}`
+    note: `Purchased via bnets.co - ${userData.notes}`,
+    data_limit_reset_strategy: 'no_reset'
   };
 
   console.log('Creating user with request:', userRequest);

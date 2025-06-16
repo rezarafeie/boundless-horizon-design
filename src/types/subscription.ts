@@ -49,10 +49,12 @@ export interface MarzneshinServiceRequest {
 export interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
+  expire_after?: number;
   usage_duration: number;
   data_limit: number;
   service_ids: number[];
   note: string;
+  data_limit_reset_strategy?: string;
 }
 
 export interface MarzneshinUserResponse {
