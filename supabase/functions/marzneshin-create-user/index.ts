@@ -44,8 +44,8 @@ interface MarzneshinServicesResponse {
 interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
-  expire?: number;
-  usage_duration: number;
+  expire_after?: number;
+  usage_duration?: number;
   data_limit: number;
   service_ids: number[];
   note: string;
@@ -139,102 +139,120 @@ async function createMarzneshinUser(
   serviceIds: number[]
 ): Promise<MarzneshinUserResponse> {
   
-  // Calculate expiration timestamp (current time + duration in days)
-  const currentTimeSeconds = Math.floor(Date.now() / 1000);
-  const durationSeconds = userData.durationDays * 24 * 60 * 60; // Convert days to seconds
-  const expirationTimestamp = currentTimeSeconds + durationSeconds;
-
-  // Validate timestamp
-  if (expirationTimestamp <= currentTimeSeconds) {
-    throw new Error('Invalid expiration timestamp - must be in the future');
-  }
-
-  console.log(`Current time: ${currentTimeSeconds} (${new Date(currentTimeSeconds * 1000).toISOString()})`);
-  console.log(`Duration: ${userData.durationDays} days (${durationSeconds} seconds)`);
-  console.log(`Calculated expiration: ${expirationTimestamp} (${new Date(expirationTimestamp * 1000).toISOString()})`);
-
-  // Use fixed_date strategy with proper timestamp
-  const userRequest: MarzneshinUserRequest = {
-    username: userData.username,
-    expire_strategy: 'fixed_date',
-    expire: expirationTimestamp,
-    usage_duration: durationSeconds,
-    data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
-    service_ids: serviceIds,
-    note: `Purchased via bnets.co - ${userData.notes}`,
-    data_limit_reset_strategy: 'no_reset'
-  };
-
-  console.log('Creating user with request:', JSON.stringify(userRequest, null, 2));
-
-  const response = await fetch(`${baseUrl}/api/users`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+  console.log('Starting user creation with data:', userData);
+  
+  // Try multiple strategies to handle API requirements
+  const strategies = [
+    {
+      name: 'start_on_first_use',
+      createRequest: () => ({
+        username: userData.username,
+        expire_strategy: 'start_on_first_use',
+        expire_after: userData.durationDays * 24 * 60 * 60, // Duration in seconds
+        data_limit: userData.dataLimitGB * 1073741824,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes}`,
+        data_limit_reset_strategy: 'no_reset'
+      })
     },
-    body: JSON.stringify(userRequest)
-  });
+    {
+      name: 'never',
+      createRequest: () => ({
+        username: userData.username,
+        expire_strategy: 'never',
+        usage_duration: userData.durationDays * 24 * 60 * 60,
+        data_limit: userData.dataLimitGB * 1073741824,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes}`,
+        data_limit_reset_strategy: 'no_reset'
+      })
+    },
+    {
+      name: 'fixed_date_iso',
+      createRequest: () => {
+        const expirationDate = new Date();
+        expirationDate.setDate(expirationDate.getDate() + userData.durationDays);
+        return {
+          username: userData.username,
+          expire_strategy: 'fixed_date',
+          expire: Math.floor(expirationDate.getTime() / 1000),
+          data_limit: userData.dataLimitGB * 1073741824,
+          service_ids: serviceIds,
+          note: `Purchased via bnets.co - ${userData.notes}`,
+          data_limit_reset_strategy: 'no_reset'
+        };
+      }
+    }
+  ];
 
-  console.log(`User creation response status: ${response.status}`);
+  let lastError: any = null;
 
-  if (!response.ok) {
-    let errorData: any;
-    const contentType = response.headers.get('content-type');
-    
+  for (const strategy of strategies) {
     try {
-      if (contentType && contentType.includes('application/json')) {
-        errorData = await response.json();
-        console.error('Marzneshin API error response (JSON):', JSON.stringify(errorData, null, 2));
+      console.log(`Trying strategy: ${strategy.name}`);
+      const userRequest = strategy.createRequest();
+      
+      console.log('Request payload:', JSON.stringify(userRequest, null, 2));
+
+      const response = await fetch(`${baseUrl}/api/users`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userRequest)
+      });
+
+      console.log(`Strategy ${strategy.name} response status: ${response.status}`);
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`Strategy ${strategy.name} succeeded:`, result);
+        return result;
       } else {
-        const errorText = await response.text();
-        console.error('Marzneshin API error response (Text):', errorText);
-        errorData = { detail: errorText };
-      }
-    } catch (parseError) {
-      console.error('Failed to parse error response:', parseError);
-      errorData = { detail: 'Unknown error - failed to parse response' };
-    }
-
-    // Handle specific error cases
-    if (response.status === 409) {
-      throw new Error('This username is already taken. Please choose a different one');
-    }
-    
-    if (response.status === 422) {
-      // Validation error - provide more specific feedback
-      let errorMessage = 'Validation error';
-      
-      if (errorData.detail) {
-        if (typeof errorData.detail === 'string') {
-          errorMessage = `Validation error: ${errorData.detail}`;
-        } else if (errorData.detail.body) {
-          errorMessage = `Validation error: ${errorData.detail.body}`;
-        } else if (Array.isArray(errorData.detail)) {
-          const validationErrors = errorData.detail.map((err: any) => 
-            `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
-          ).join(', ');
-          errorMessage = `Validation error: ${validationErrors}`;
-        } else {
-          errorMessage = `Validation error: ${JSON.stringify(errorData.detail)}`;
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        console.error(`Strategy ${strategy.name} failed:`, errorData);
+        lastError = errorData;
+        
+        // If it's a username conflict, don't try other strategies
+        if (response.status === 409) {
+          throw new Error('This username is already taken. Please choose a different one');
         }
+        
+        // Continue to next strategy for other errors
+        continue;
+      }
+    } catch (error) {
+      console.error(`Strategy ${strategy.name} threw error:`, error);
+      lastError = error;
+      
+      // If it's a username conflict, don't try other strategies
+      if (error.message?.includes('already taken')) {
+        throw error;
       }
       
-      throw new Error(errorMessage);
+      continue;
     }
-
-    if (response.status === 400) {
-      throw new Error(`Bad request: ${errorData.detail || 'Invalid request parameters'}`);
-    }
-
-    // Generic error with detailed logging
-    const errorMessage = errorData.detail || errorData.message || `HTTP ${response.status} error`;
-    throw new Error(`Failed to create user on Marzneshin: ${errorMessage}`);
   }
 
-  const result = await response.json();
-  console.log('User created successfully:', JSON.stringify(result, null, 2));
-  return result;
+  // If all strategies failed, throw the last error
+  if (lastError) {
+    if (lastError.detail) {
+      if (typeof lastError.detail === 'string') {
+        throw new Error(`All creation strategies failed. Last error: ${lastError.detail}`);
+      } else if (Array.isArray(lastError.detail)) {
+        const validationErrors = lastError.detail.map((err: any) => 
+          `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
+        ).join(', ');
+        throw new Error(`Validation error: ${validationErrors}`);
+      } else {
+        throw new Error(`API error: ${JSON.stringify(lastError.detail)}`);
+      }
+    }
+    throw new Error(`Failed to create user: ${lastError.message || 'Unknown error'}`);
+  }
+
+  throw new Error('Failed to create user with any strategy');
 }
 
 Deno.serve(async (req) => {
