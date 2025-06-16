@@ -35,15 +35,36 @@ export default async function handler(req, res) {
       body: JSON.stringify(checkoutRequest)
     });
 
-    const responseData = await response.json();
-    console.log('Zarinpal checkout response:', responseData);
+    console.log('Zarinpal checkout response status:', response.status);
+
+    // Get raw response text first
+    const responseText = await response.text();
+    console.log('Zarinpal checkout raw response:', responseText);
+
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse JSON response:', parseError);
+      res.status(502).json({
+        success: false,
+        error: 'Invalid response from Zarinpal',
+        details: {
+          status: response.status,
+          rawResponse: responseText.substring(0, 500),
+          parseError: parseError.message
+        }
+      });
+      return;
+    }
 
     if (!response.ok) {
       res.status(response.status).json({
         success: false,
         error: 'Zarinpal API error',
         details: responseData,
-        status: response.status
+        status: response.status,
+        rawResponse: responseText
       });
       return;
     }
@@ -51,7 +72,8 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       data: responseData,
-      status: response.status
+      status: response.status,
+      rawResponse: responseText
     });
 
   } catch (error) {
@@ -59,7 +81,8 @@ export default async function handler(req, res) {
     res.status(500).json({
       success: false,
       error: 'Server error',
-      message: error.message
+      message: error.message,
+      details: error.stack
     });
   }
 }

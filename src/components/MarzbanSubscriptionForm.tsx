@@ -215,9 +215,9 @@ const MarzbanSubscriptionForm = () => {
     const paymanRequest = {
       merchant_id: MERCHANT_ID,
       mobile: formData.mobile,
-      expire_at: Math.floor(expireAt.getTime() / 1000),
-      max_daily_count: "100",
-      max_monthly_count: "1000",
+      expire_at: Math.floor(expireAt.getTime() / 1000), // Keep as timestamp for backend conversion
+      max_daily_count: 100,
+      max_monthly_count: 1000,
       max_amount: calculatePrice() * 10, // Convert Toman to Rial
       callback_url: `${window.location.origin}/subscription?payment_callback=1`
     };
@@ -231,7 +231,36 @@ const MarzbanSubscriptionForm = () => {
         body: JSON.stringify(paymanRequest)
       });
 
-      const responseData = await response.json();
+      let responseData;
+      let rawResponse = '';
+      
+      try {
+        const responseText = await response.text();
+        rawResponse = responseText;
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        // Handle HTML or non-JSON responses
+        addDebugInfo({
+          endpoint: '/api/zarinpal/contract',
+          status: response.status,
+          request: paymanRequest,
+          response: { error: 'Non-JSON response', rawResponse: rawResponse.substring(0, 500) },
+          error: `JSON Parse Error: ${parseError.message}`,
+          type: 'error'
+        });
+
+        const errorMessage = language === 'fa' ? 
+          'سرویس پرداخت در دسترس نیست. لطفاً بعداً تلاش کنید.' : 
+          'Payment service is unavailable. Please try again later.';
+
+        toast({
+          title: language === 'fa' ? 'خطا در اتصال' : 'Connection Error',
+          description: errorMessage,
+          variant: 'destructive'
+        });
+
+        throw new Error(errorMessage);
+      }
 
       addDebugInfo({
         endpoint: '/api/zarinpal/contract',
@@ -242,35 +271,70 @@ const MarzbanSubscriptionForm = () => {
       });
 
       if (!response.ok || !responseData.success) {
-        throw new Error(responseData.error || 'Contract creation failed');
+        const errorDetails = responseData.details || responseData.error || 'Unknown error';
+        
+        addDebugInfo({
+          endpoint: '/api/zarinpal/contract',
+          status: response.status,
+          request: paymanRequest,
+          response: responseData,
+          error: `API Error: ${JSON.stringify(errorDetails)}`,
+          type: 'error'
+        });
+
+        let userMessage;
+        if (response.status === 502) {
+          userMessage = language === 'fa' ? 
+            'خطا در برقراری ارتباط با درگاه پرداخت' : 
+            'Error connecting to payment gateway';
+        } else if (response.status >= 400 && response.status < 500) {
+          userMessage = language === 'fa' ? 
+            'اطلاعات پرداخت نامعتبر است' : 
+            'Invalid payment information';
+        } else {
+          userMessage = language === 'fa' ? 
+            'خطا در سرویس پرداخت' : 
+            'Payment service error';
+        }
+
+        toast({
+          title: language === 'fa' ? 'خطا در ایجاد قرارداد' : 'Contract Creation Error',
+          description: userMessage,
+          variant: 'destructive'
+        });
+
+        throw new Error(userMessage);
       }
 
       if (!responseData.data?.data?.payman_authority) {
-        throw new Error('Invalid response: missing payman_authority');
+        addDebugInfo({
+          endpoint: '/api/zarinpal/contract',
+          status: response.status,
+          request: paymanRequest,
+          response: responseData,
+          error: 'Missing payman_authority in response',
+          type: 'error'
+        });
+
+        throw new Error(language === 'fa' ? 
+          'پاسخ نامعتبر از درگاه پرداخت' : 
+          'Invalid response from payment gateway');
       }
 
       return responseData.data.data.payman_authority;
     } catch (error) {
       console.error('Contract creation error:', error);
       
-      addDebugInfo({
-        endpoint: '/api/zarinpal/contract',
-        status: 0,
-        request: paymanRequest,
-        response: { error: error.message },
-        error: error.message,
-        type: 'error'
-      });
-
-      const errorMessage = error.message.includes('fetch') 
-        ? (language === 'fa' ? 'اتصال به زرین‌پال انجام نشد. لطفاً مجدد تلاش کنید.' : 'Zarinpal connection failed. Please try again.')
-        : error.message;
-
-      toast({
-        title: language === 'fa' ? 'خطا در ایجاد قرارداد' : 'Contract Creation Error',
-        description: errorMessage,
-        variant: 'destructive'
-      });
+      if (!error.message.includes('fetch')) {
+        addDebugInfo({
+          endpoint: '/api/zarinpal/contract',
+          status: 0,
+          request: paymanRequest,
+          response: { error: error.message },
+          error: error.message,
+          type: 'error'
+        });
+      }
 
       throw error;
     }
@@ -534,15 +598,18 @@ const MarzbanSubscriptionForm = () => {
     } catch (error) {
       console.error('Payment initiation error:', error);
       
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: error instanceof Error ? error.message : (
-          language === 'fa' ? 
-            'خطا در شروع پرداخت. لطفاً دوباره تلاش کنید' : 
-            'Failed to initiate payment. Please try again'
-        ),
-        variant: 'destructive'
-      });
+      // Don't show duplicate toast if already shown in createPaymanContract
+      if (!error.message.includes('service') && !error.message.includes('gateway')) {
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: error instanceof Error ? error.message : (
+            language === 'fa' ? 
+              'خطا در شروع پرداخت. لطفاً دوباره تلاش کنید' : 
+              'Failed to initiate payment. Please try again'
+          ),
+          variant: 'destructive'
+        });
+      }
     } finally {
       setIsSubmitting(false);
       setIsLoading(false);
@@ -579,7 +646,7 @@ const MarzbanSubscriptionForm = () => {
     setFormData(prev => ({ ...prev, username: generated }));
   };
 
-  // Debug Component
+  // Enhanced Debug Component
   const DebugSection = () => {
     if (!debugMode || debugInfo.length === 0) return null;
 
@@ -619,7 +686,7 @@ const MarzbanSubscriptionForm = () => {
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <Badge variant={info.type === 'success' ? "default" : "destructive"}>
-                      {info.status}
+                      HTTP {info.status}
                     </Badge>
                     <code className={`text-xs ${
                       info.type === 'success' ? 'text-green-600 dark:text-green-400' : 
@@ -632,15 +699,17 @@ const MarzbanSubscriptionForm = () => {
                       {new Date(info.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  
+                  <div className="grid grid-cols-1 gap-2">
                     <div>
                       <strong className={info.type === 'error' ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'}>
-                        {language === 'fa' ? 'درخواست:' : 'Request:'}
+                        {language === 'fa' ? 'درخواست:' : 'Request Body:'}
                       </strong>
                       <pre className="mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto max-h-32">
                         {JSON.stringify(info.request, null, 2)}
                       </pre>
                     </div>
+                    
                     <div>
                       <strong className={info.type === 'error' ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'}>
                         {language === 'fa' ? 'پاسخ:' : 'Response:'}
@@ -652,12 +721,13 @@ const MarzbanSubscriptionForm = () => {
                       </pre>
                     </div>
                   </div>
+                  
                   {info.error && (
                     <div className="mt-2">
                       <strong className="text-red-600">
-                        {language === 'fa' ? 'خطا:' : 'Error:'}
+                        {language === 'fa' ? 'خطای سیستم:' : 'System Error:'}
                       </strong>
-                      <p className="text-red-600 text-xs mt-1">{info.error}</p>
+                      <p className="text-red-600 text-xs mt-1 font-mono">{info.error}</p>
                     </div>
                   )}
                 </div>
