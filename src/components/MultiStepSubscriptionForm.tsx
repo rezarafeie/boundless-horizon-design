@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { ChevronLeft, ChevronRight, CheckCircle, CreditCard, User, Settings } from 'lucide-react';
 import PlanSelector from '@/components/PlanSelector';
-import DiscountField from '@/components/DiscountField';
 import UserInfoStep from '@/components/UserInfoStep';
 import PaymentStep from '@/components/PaymentStep';
 import SubscriptionSuccess from '@/components/SubscriptionSuccess';
@@ -90,24 +89,17 @@ const MultiStepSubscriptionForm = () => {
     switch (currentStep) {
       case 1:
         return (
-          <div className="space-y-6">
-            <PlanSelector
-              selectedPlan={formData.selectedPlan}
-              onPlanSelect={(plan) => updateFormData('selectedPlan', plan)}
-              dataLimit={formData.dataLimit}
-            />
-            <DiscountField
-              onDiscountApply={setAppliedDiscount}
-              appliedDiscount={appliedDiscount}
-            />
-          </div>
+          <PlanSelector
+            selectedPlan={formData.selectedPlan}
+            onPlanSelect={(plan) => updateFormData('selectedPlan', plan)}
+            dataLimit={formData.dataLimit}
+          />
         );
       case 2:
         return (
           <UserInfoStep
             formData={formData}
             onUpdate={updateFormData}
-            appliedDiscount={appliedDiscount}
           />
         );
       case 3:
@@ -115,6 +107,7 @@ const MultiStepSubscriptionForm = () => {
           <PaymentStep
             formData={formData}
             appliedDiscount={appliedDiscount}
+            onDiscountApply={setAppliedDiscount}
             onSuccess={handlePaymentSuccess}
             isSubmitting={isSubmitting}
             setIsSubmitting={setIsSubmitting}
@@ -137,9 +130,9 @@ const MultiStepSubscriptionForm = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <Card className="bg-white dark:bg-gray-900 shadow-xl border-0">
-        <CardHeader className="text-center pb-6">
-          <CardTitle className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+      <Card className="bg-white dark:bg-gray-900 shadow-2xl border-0 rounded-2xl overflow-hidden">
+        <CardHeader className="text-center pb-8 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30">
+          <CardTitle className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
             {language === 'fa' ? 'خرید اشتراک VPN' : 'VPN Subscription Purchase'}
           </CardTitle>
           <CardDescription className="text-lg text-gray-600 dark:text-gray-300">
@@ -150,10 +143,10 @@ const MultiStepSubscriptionForm = () => {
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="px-8 pb-8">
+        <CardContent className="p-8">
           {/* Progress Bar */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
+          <div className="mb-10">
+            <div className="flex justify-between items-center mb-6">
               {STEPS.map((step, index) => {
                 const Icon = step.icon;
                 const isActive = currentStep === step.id;
@@ -163,25 +156,25 @@ const MultiStepSubscriptionForm = () => {
                 return (
                   <div key={step.id} className="flex flex-col items-center">
                     <div className={`
-                      w-12 h-12 rounded-full flex items-center justify-center mb-2 transition-all duration-300
+                      w-14 h-14 rounded-full flex items-center justify-center mb-3 transition-all duration-300 border-2
                       ${isCompleted 
-                        ? 'bg-green-500 text-white' 
+                        ? 'bg-green-500 border-green-500 text-white scale-110' 
                         : isActive 
-                        ? 'bg-blue-500 text-white shadow-lg scale-110' 
+                        ? 'bg-blue-500 border-blue-500 text-white shadow-xl scale-125' 
                         : isAccessible
-                        ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                        ? 'bg-white border-gray-300 text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300'
+                        : 'bg-gray-100 border-gray-200 text-gray-400 dark:bg-gray-800 dark:border-gray-700'
                       }
                     `}>
                       {isCompleted ? (
-                        <CheckCircle className="w-6 h-6" />
+                        <CheckCircle className="w-7 h-7" />
                       ) : (
-                        <Icon className="w-6 h-6" />
+                        <Icon className="w-7 h-7" />
                       )}
                     </div>
                     <span className={`
-                      text-sm font-medium transition-colors
-                      ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}
+                      text-sm font-medium transition-colors text-center
+                      ${isActive ? 'text-blue-600 dark:text-blue-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}
                     `}>
                       {language === 'fa' ? step.titleFa : step.titleEn}
                     </span>
@@ -189,45 +182,40 @@ const MultiStepSubscriptionForm = () => {
                 );
               })}
             </div>
-            <Progress value={progressPercentage} className="h-2" />
+            <Progress value={progressPercentage} className="h-3 rounded-full" />
           </div>
 
           {/* Step Content */}
-          <div className="min-h-[400px]">
+          <div className="min-h-[500px] mb-8">
             {renderStepContent()}
           </div>
 
           {/* Navigation Buttons */}
           {currentStep < 4 && (
-            <div className="flex justify-between items-center pt-8 border-t border-gray-200 dark:border-gray-700">
-              <Button
-                variant="outline"
-                onClick={handlePrevious}
-                disabled={currentStep === 1}
-                className="flex items-center gap-2"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                {language === 'fa' ? 'قبلی' : 'Previous'}
-              </Button>
+            <div className="flex gap-4 pt-8 border-t border-gray-200 dark:border-gray-700">
+              {currentStep > 1 && (
+                <Button
+                  variant="outline"
+                  onClick={handlePrevious}
+                  className="flex-1 h-14 text-lg font-semibold"
+                >
+                  <ChevronLeft className="w-5 h-5 mr-2" />
+                  {language === 'fa' ? 'قبلی' : 'Previous'}
+                </Button>
+              )}
 
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <span>{currentStep}</span>
-                <span>{language === 'fa' ? 'از' : 'of'}</span>
-                <span>{STEPS.length}</span>
-              </div>
-
-              {currentStep < 3 ? (
+              {currentStep < 3 && (
                 <Button
                   variant="hero-primary"
                   onClick={handleNext}
                   disabled={!canProceedFromStep(currentStep)}
-                  className="flex items-center gap-2"
+                  className={`h-14 text-lg font-semibold transition-all duration-200 ${
+                    currentStep === 1 ? 'flex-1' : 'flex-1'
+                  } ${!canProceedFromStep(currentStep) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
                 >
                   {language === 'fa' ? 'بعدی' : 'Next'}
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-5 h-5 ml-2" />
                 </Button>
-              ) : (
-                <div className="w-24" /> // Spacer for layout consistency
               )}
             </div>
           )}
