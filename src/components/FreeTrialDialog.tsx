@@ -21,7 +21,7 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleTelegramContact = () => {
-    window.open('https://t.me/getbnbot', '_blank');
+    window.open('https://t.me/bnets_support', '_blank');
     setIsOpen(false);
   };
 

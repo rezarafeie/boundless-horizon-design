@@ -20,13 +20,12 @@ const Subscription = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
       <Navigation />
       <div className="pt-20">
-        <MultiStepSubscriptionForm />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          {showDebug && <ZarinpalDebug />}
+          <MultiStepSubscriptionForm />
+        </div>
       </div>
       <FooterSection />
-      
-      {showDebug && (
-        <ZarinpalDebug onClose={() => setShowDebug(false)} />
-      )}
     </div>
   );
 };

@@ -78,18 +78,23 @@ const Navigation = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-background border border-border shadow-lg p-2">
-                <DropdownMenuItem 
-                  onClick={() => window.open('https://t.me/getbnbot', '_blank')} 
-                  className="cursor-pointer rounded-lg p-3 mb-2 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 transition-all duration-200 border border-blue-200 dark:border-blue-700"
-                >
-                  <Send className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-blue-600 dark:text-blue-400`} />
-                  <span className="font-medium text-blue-800 dark:text-blue-200">{t('nav.telegram')}</span>
+                <DropdownMenuItem asChild className="cursor-pointer rounded-lg p-0 mb-2">
+                  <Button
+                    onClick={() => window.open('https://t.me/bnets_support', '_blank')} 
+                    className="w-full justify-start p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 transition-all duration-200 border border-blue-200 dark:border-blue-700 h-auto"
+                    variant="ghost"
+                  >
+                    <Send className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-blue-600 dark:text-blue-400`} />
+                    <span className="font-medium text-blue-800 dark:text-blue-200">{t('nav.telegram')}</span>
+                  </Button>
                 </DropdownMenuItem>
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-lg p-0 mb-2">
-                  <Link to="/subscription" className="flex items-center w-full p-3 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50 transition-all duration-200 border border-green-200 dark:border-green-700 rounded-lg">
-                    <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-green-600 dark:text-green-400`} />
-                    <span className="font-medium text-green-800 dark:text-green-200">{t('nav.purchase')}</span>
+                  <Link to="/subscription" className="w-full">
+                    <Button className="w-full justify-start p-3 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 hover:from-green-100 hover:to-green-200 dark:hover:from-green-900/50 dark:hover:to-green-800/50 transition-all duration-200 border border-green-200 dark:border-green-700 h-auto" variant="ghost">
+                      <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-green-600 dark:text-green-400`} />
+                      <span className="font-medium text-green-800 dark:text-green-200">{t('nav.purchase')}</span>
+                    </Button>
                   </Link>
                 </DropdownMenuItem>
                 
@@ -103,9 +108,11 @@ const Navigation = () => {
                 </DropdownMenuItem>
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-lg p-0">
-                  <Link to="/renewal" className="flex items-center w-full p-3 bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/50 transition-all duration-200 border border-orange-200 dark:border-orange-700 rounded-lg">
-                    <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-orange-600 dark:text-orange-400`} />
-                    <span className="font-medium text-orange-800 dark:text-orange-200">{t('nav.renew')}</span>
+                  <Link to="/renewal" className="w-full">
+                    <Button className="w-full justify-start p-3 bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-900/50 dark:hover:to-orange-800/50 transition-all duration-200 border border-orange-200 dark:border-orange-700 h-auto" variant="ghost">
+                      <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-3' : 'mr-3'} text-orange-600 dark:text-orange-400`} />
+                      <span className="font-medium text-orange-800 dark:text-orange-200">{t('nav.renew')}</span>
+                    </Button>
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -140,7 +147,7 @@ const Navigation = () => {
             </a>
             <div className="space-y-3 pt-4 border-t border-border">
               <Button 
-                onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+                onClick={() => window.open('https://t.me/bnets_support', '_blank')}
                 variant="outline"
                 className="w-full justify-start bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-blue-200 dark:border-blue-700 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50"
               >

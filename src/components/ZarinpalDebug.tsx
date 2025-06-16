@@ -4,13 +4,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X, Settings, CreditCard, Clock } from 'lucide-react';
+import { Settings, CreditCard, Clock } from 'lucide-react';
 
-interface ZarinpalDebugProps {
-  onClose: () => void;
-}
-
-const ZarinpalDebug = ({ onClose }: ZarinpalDebugProps) => {
+const ZarinpalDebug = () => {
   const { language } = useLanguage();
 
   const debugInfo = {
@@ -26,106 +22,92 @@ const ZarinpalDebug = ({ onClose }: ZarinpalDebugProps) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-auto">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            {language === 'fa' ? 'تنظیمات دیباگ زرین‌پال' : 'Zarinpal Debug Settings'}
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="w-4 h-4" />
-          </Button>
-        </CardHeader>
-        
-        <CardContent className="space-y-6">
-          {/* Configuration */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" />
-                  {language === 'fa' ? 'تنظیمات' : 'Configuration'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                    {language === 'fa' ? 'شناسه تاجر' : 'Merchant ID'}:
-                  </span>
-                  <p className="font-mono text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded mt-1">
-                    {debugInfo.merchantId}
-                  </p>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                    {language === 'fa' ? 'وضعیت' : 'Status'}:
-                  </span>
-                  <Badge variant="default" className="bg-green-100 text-green-800">
-                    {debugInfo.status}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                    {language === 'fa' ? 'محیط' : 'Environment'}:
-                  </span>
-                  <span className="text-sm">{debugInfo.environment}</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  {language === 'fa' ? 'تراکنش‌های اخیر' : 'Recent Transactions'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {debugInfo.recentTransactions.map((tx) => (
-                    <div key={tx.id} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-800 rounded">
-                      <div>
-                        <p className="font-mono text-xs">{tx.id}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{tx.date}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{tx.amount.toLocaleString()} تومان</p>
-                        <Badge 
-                          variant={tx.status === 'Success' ? 'default' : tx.status === 'Pending' ? 'secondary' : 'destructive'}
-                          className="text-xs"
-                        >
-                          {tx.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Edge Function Logs */}
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {language === 'fa' ? 'لاگ‌های تابع' : 'Edge Function Logs'}
+    <Card className="w-full mb-6 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-orange-800 dark:text-orange-200">
+          <Settings className="w-5 h-5" />
+          {language === 'fa' ? 'تنظیمات دیباگ زرین‌پال' : 'Zarinpal Debug Settings'}
+        </CardTitle>
+      </CardHeader>
+      
+      <CardContent className="space-y-4">
+        {/* Configuration */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="bg-white/50 dark:bg-gray-800/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <CreditCard className="w-4 h-4" />
+                {language === 'fa' ? 'تنظیمات' : 'Configuration'}
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="bg-black text-green-400 p-4 rounded font-mono text-xs overflow-x-auto">
-                <div className="space-y-1">
-                  <div>[2025-06-16 21:31:58] Merchant authentication successful</div>
-                  <div>[2025-06-16 21:31:58] Contract request received</div>
-                  <div>[2025-06-16 21:31:58] Payment verification completed</div>
-                  <div>[2025-06-16 21:31:58] User subscription created successfully</div>
-                </div>
+            <CardContent className="space-y-2 text-xs">
+              <div>
+                <span className="font-medium text-gray-600 dark:text-gray-400">
+                  {language === 'fa' ? 'شناسه تاجر' : 'Merchant ID'}:
+                </span>
+                <p className="font-mono bg-gray-100 dark:bg-gray-800 p-1 rounded mt-1 break-all">
+                  {debugInfo.merchantId}
+                </p>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium text-gray-600 dark:text-gray-400">
+                  {language === 'fa' ? 'وضعیت' : 'Status'}:
+                </span>
+                <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                  {debugInfo.status}
+                </Badge>
               </div>
             </CardContent>
           </Card>
-        </CardContent>
-      </Card>
-    </div>
+
+          <Card className="bg-white/50 dark:bg-gray-800/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                {language === 'fa' ? 'تراکنش‌های اخیر' : 'Recent Transactions'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1">
+                {debugInfo.recentTransactions.slice(0, 2).map((tx) => (
+                  <div key={tx.id} className="flex justify-between items-center p-1 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                    <div>
+                      <p className="font-mono">{tx.id}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">{tx.amount.toLocaleString()}</p>
+                      <Badge 
+                        variant={tx.status === 'Success' ? 'default' : tx.status === 'Pending' ? 'secondary' : 'destructive'}
+                        className="text-xs"
+                      >
+                        {tx.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Edge Function Logs */}
+        <Card className="bg-white/50 dark:bg-gray-800/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">
+              {language === 'fa' ? 'لاگ‌های تابع' : 'Edge Function Logs'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-black text-green-400 p-2 rounded font-mono text-xs overflow-x-auto">
+              <div className="space-y-1">
+                <div>[2025-06-16 21:31:58] Merchant authentication successful</div>
+                <div>[2025-06-16 21:31:58] Payment verification completed</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </CardContent>
+    </Card>
   );
 };
 
