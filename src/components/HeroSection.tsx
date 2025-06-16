@@ -24,12 +24,12 @@ const HeroSection = () => {
             <div className="inline-flex items-center space-x-2 space-x-reverse bg-white/10 dark:bg-gray-900/30 backdrop-blur-sm rounded-full px-6 py-3 mb-6">
               <Globe className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {language === 'fa' ? 'شبکه بدون مرز' : 'Boundless Network'}
+                {language === 'fa' ? 'اینترنت آزاد، بدون مرز' : 'Boundless Internet Access'}
               </span>
             </div>
             
             <h1 className="text-5xl md:text-7xl font-bold text-gradient mb-6">
-              {language === 'fa' ? 'BNETS.CO' : 'BNETS.CO'}
+              {language === 'fa' ? 'شبکه بدون مرز' : 'Boundless Network'}
             </h1>
             
             <h2 className="text-2xl md:text-4xl font-semibold text-gray-800 dark:text-gray-100 mb-4">
@@ -41,8 +41,8 @@ const HeroSection = () => {
             
             <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
               {language === 'fa'
-                ? 'با پروتکل‌های پیشرفته VLESS و VMess، سرعت بالا و امنیت کامل را تجربه کنید. هیچ محدودیتی نمی‌تواند مانع دسترسی شما به جهان دیجیتال باشد.'
-                : 'Experience high-speed and complete security with advanced VLESS and VMess protocols. No restrictions can prevent your access to the digital world.'
+                ? 'به هرجای دنیا که میخواهی وصل شو. سریع، امن، و بدون محدودیت.'
+                : 'Connect anywhere. Fast, secure, and censorship-free'
               }
             </p>
           </div>
