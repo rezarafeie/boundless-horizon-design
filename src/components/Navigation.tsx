@@ -3,21 +3,13 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Sun, Moon, Menu, X, Globe, Gift, CreditCard } from 'lucide-react';
+import { Sun, Moon, Menu, X, Globe } from 'lucide-react';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isRTL = language === 'fa';
-
-  const scrollToSection = (sectionId: string) => {
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-      setIsMenuOpen(false);
-    }
-  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -35,12 +27,9 @@ const Navigation = () => {
             <a href="#features" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.features')}
             </a>
-            <button 
-              onClick={() => scrollToSection('subscription')}
-              className="text-foreground/70 hover:text-foreground transition-colors"
-            >
-              {language === 'fa' ? 'اشتراک' : 'Subscription'}
-            </button>
+            <a href="/subscription" className="text-foreground/70 hover:text-foreground transition-colors">
+              {t('nav.subscription')}
+            </a>
             <a href="#about" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.about')}
             </a>
@@ -71,26 +60,13 @@ const Navigation = () => {
               <Globe className="w-4 h-4" />
             </Button>
 
-            {/* CTA Buttons */}
-            <div className="hidden lg:flex gap-2">
-              <Button 
-                variant="outline"
-                size="sm"
-                onClick={() => scrollToSection('free-trial')}
-                className="text-green-600 border-green-600 hover:bg-green-50"
-              >
-                <Gift className="w-4 h-4 mr-1" />
-                {language === 'fa' ? 'آزمایش رایگان' : 'Free Trial'}
-              </Button>
-              
-              <Button 
-                size="sm"
-                onClick={() => scrollToSection('subscription')}
-              >
-                <CreditCard className="w-4 h-4 mr-1" />
-                {language === 'fa' ? 'خرید اشتراک' : 'Buy Subscription'}
-              </Button>
-            </div>
+            {/* CTA Button */}
+            <Button 
+              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+              className="hidden sm:inline-flex"
+            >
+              {t('hero.cta')}
+            </Button>
 
             {/* Mobile Menu Toggle */}
             <Button
@@ -110,37 +86,21 @@ const Navigation = () => {
             <a href="#features" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.features')}
             </a>
-            <button 
-              onClick={() => scrollToSection('subscription')}
-              className="block text-foreground/70 hover:text-foreground transition-colors"
-            >
-              {language === 'fa' ? 'اشتراک' : 'Subscription'}
-            </button>
+            <a href="/subscription" className="block text-foreground/70 hover:text-foreground transition-colors">
+              {t('nav.subscription')}
+            </a>
             <a href="#about" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.about')}
             </a>
             <a href="#contact" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.contact')}
             </a>
-            
-            <div className="flex flex-col gap-2 pt-4">
-              <Button 
-                variant="outline"
-                onClick={() => scrollToSection('free-trial')}
-                className="w-full text-green-600 border-green-600 hover:bg-green-50"
-              >
-                <Gift className="w-4 h-4 mr-2" />
-                {language === 'fa' ? 'آزمایش رایگان' : 'Free Trial'}
-              </Button>
-              
-              <Button 
-                onClick={() => scrollToSection('subscription')}
-                className="w-full"
-              >
-                <CreditCard className="w-4 h-4 mr-2" />
-                {language === 'fa' ? 'خرید اشتراک' : 'Buy Subscription'}
-              </Button>
-            </div>
+            <Button 
+              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+              className="w-full sm:hidden"
+            >
+              {t('hero.cta')}
+            </Button>
           </div>
         )}
       </div>

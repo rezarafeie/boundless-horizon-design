@@ -1,18 +1,11 @@
 
 import { Button } from "@/components/ui/button";
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ArrowRight, Play, Gift, CreditCard } from 'lucide-react';
+import { ArrowRight, Play } from 'lucide-react';
 
 const HeroSection = () => {
   const { t, language } = useLanguage();
   const isRTL = language === 'fa';
-
-  const scrollToSection = (sectionId: string) => {
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
@@ -29,38 +22,26 @@ const HeroSection = () => {
           {/* Badge */}
           <div className="inline-flex items-center rounded-full px-4 py-2 bg-primary/10 border border-primary/20 backdrop-blur-sm mb-8">
             <span className="text-sm font-medium text-primary">
-              {language === 'fa' ? '🚀 شبکه بدون مرز' : '🚀 Bedoon Marz Network'}
+              {language === 'fa' ? '🚀 سرویس پیشرفته VPN' : '🚀 Advanced VPN Service'}
             </span>
           </div>
 
           <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-foreground mb-6 tracking-tight leading-tight">
-            {language === 'fa' ? 'شبکه بدون مرز' : 'Boundless Network'}
+            {t('hero.title')}
           </h1>
           
           <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-3xl mx-auto leading-relaxed">
-            {language === 'fa' ? 
-              'دسترسی امن و پرسرعت به اینترنت آزاد با بهترین سرویس شبکه' : 
-              'Secure and high-speed access to free internet with the best network service'
-            }
+            {t('hero.subtitle')}
           </p>
           
           <div className={`flex flex-col sm:flex-row gap-4 justify-center items-center animate-slide-up ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
             <Button 
               size="lg" 
-              className="bg-green-600 hover:bg-green-700 text-white text-lg px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
-              onClick={() => scrollToSection('free-trial')}
-            >
-              <Gift className={`w-5 h-5 transition-transform group-hover:scale-110 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {language === 'fa' ? 'دریافت آزمایش رایگان' : 'Get Free Trial'}
-            </Button>
-            
-            <Button 
-              size="lg" 
               className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
-              onClick={() => scrollToSection('subscription')}
+              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
             >
-              <CreditCard className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {language === 'fa' ? 'خرید اشتراک' : 'Buy Subscription'}
+              {t('hero.cta')}
+              <ArrowRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${isRTL ? 'rotate-180 mr-2' : 'ml-2'}`} />
             </Button>
             
             <Button 
