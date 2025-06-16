@@ -1,6 +1,5 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,12 +32,14 @@ serve(async (req) => {
     const marzbanUsername = Deno.env.get("MARZBAN_ADMIN_USERNAME");
     const marzbanPassword = Deno.env.get("MARZBAN_ADMIN_PASSWORD");
 
-    // Debug logging for environment variables (safely)
-    logStep("Environment check", {
+    // Enhanced environment check with more details
+    logStep("Environment variables check", {
       baseUrlExists: !!marzbanBaseUrl,
       usernameExists: !!marzbanUsername,
       passwordExists: !!marzbanPassword,
-      baseUrl: marzbanBaseUrl ? `${marzbanBaseUrl.substring(0, 20)}...` : 'NOT_SET'
+      baseUrl: marzbanBaseUrl ? `${marzbanBaseUrl.substring(0, 30)}...` : 'NOT_SET',
+      username: marzbanUsername ? `${marzbanUsername.substring(0, 3)}***` : 'NOT_SET',
+      allEnvVars: Object.keys(Deno.env.toObject()).filter(key => key.includes('MARZBAN')),
     });
 
     if (!marzbanBaseUrl || !marzbanUsername || !marzbanPassword) {
@@ -56,7 +57,7 @@ serve(async (req) => {
     
     logStep("Authentication attempt", { url: authUrl });
 
-    // First, get auth token
+    // First, get auth token with enhanced error handling
     const authResponse = await fetch(authUrl, {
       method: "POST",
       headers: {
@@ -72,12 +73,22 @@ serve(async (req) => {
     logStep("Auth response received", { 
       status: authResponse.status, 
       statusText: authResponse.statusText,
-      headers: Object.fromEntries(authResponse.headers.entries())
+      headers: Object.fromEntries(authResponse.headers.entries()),
+      url: authUrl
     });
 
     if (!authResponse.ok) {
       const errorText = await authResponse.text();
-      logStep("Auth failed", { status: authResponse.status, error: errorText });
+      logStep("Auth failed - detailed error", { 
+        status: authResponse.status, 
+        statusText: authResponse.statusText,
+        error: errorText,
+        url: authUrl,
+        credentials: {
+          username: marzbanUsername ? `${marzbanUsername.substring(0, 3)}***` : 'MISSING',
+          passwordLength: marzbanPassword ? marzbanPassword.length : 0
+        }
+      });
       throw new Error(`Failed to authenticate with Marzban: ${authResponse.status} - ${errorText}`);
     }
 
@@ -89,7 +100,7 @@ serve(async (req) => {
     }
 
     const token = authData.access_token;
-    logStep("Got auth token successfully");
+    logStep("Got auth token successfully", { tokenLength: token.length });
 
     // Now get user data
     const userUrl = `${baseUrl}/api/users/${encodeURIComponent(username)}`;
@@ -105,7 +116,8 @@ serve(async (req) => {
 
     logStep("User response received", { 
       status: userResponse.status, 
-      statusText: userResponse.statusText 
+      statusText: userResponse.statusText,
+      url: userUrl
     });
 
     if (!userResponse.ok) {
@@ -140,7 +152,7 @@ serve(async (req) => {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logStep("ERROR", { message: errorMessage });
+    logStep("ERROR", { message: errorMessage, stack: error instanceof Error ? error.stack : undefined });
     
     return new Response(JSON.stringify({
       success: false,
