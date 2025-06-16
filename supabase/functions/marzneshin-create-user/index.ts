@@ -1,4 +1,5 @@
 
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -44,7 +45,7 @@ interface MarzneshinServicesResponse {
 interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
-  expire_after?: number;
+  expire?: number;
   usage_duration: number;
   data_limit: number;
   service_ids: number[];
@@ -139,10 +140,15 @@ async function createMarzneshinUser(
   serviceIds: number[]
 ): Promise<MarzneshinUserResponse> {
   
+  // Calculate expiration timestamp (current time + duration in days)
+  const currentTimeSeconds = Math.floor(Date.now() / 1000);
+  const durationSeconds = userData.durationDays * 24 * 60 * 60; // Convert days to seconds
+  const expirationTimestamp = currentTimeSeconds + durationSeconds;
+
   const userRequest: MarzneshinUserRequest = {
     username: userData.username,
-    expire_strategy: 'expire_after',
-    expire_after: userData.durationDays,
+    expire_strategy: 'fixed_date',
+    expire: expirationTimestamp,
     usage_duration: userData.durationDays * 86400, // Convert days to seconds
     data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
     service_ids: serviceIds,
@@ -151,6 +157,7 @@ async function createMarzneshinUser(
   };
 
   console.log('Creating user with request:', JSON.stringify(userRequest, null, 2));
+  console.log(`Expiration will be: ${new Date(expirationTimestamp * 1000).toISOString()} (${userData.durationDays} days from now)`);
 
   const response = await fetch(`${baseUrl}/api/users`, {
     method: 'POST',
