@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, ChevronDown, CheckCircle, Zap, User, Calendar, Database, RefreshCw, Bug, Globe } from 'lucide-react';
-import { SubscriptionPlan } from '@/types/subscription';
+import { Search, ChevronDown, CheckCircle, Zap, User, Calendar, Database, RefreshCw, Bug, Globe, Loader } from 'lucide-react';
+import { SubscriptionPlan, DiscountCode } from '@/types/subscription';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import DiscountField from '@/components/DiscountField';
 
 interface UserData {
   username: string;
@@ -23,6 +25,7 @@ interface UserData {
 
 const StepByStepRenewalForm = () => {
   const { language } = useLanguage();
+  const { toast } = useToast();
   const isRTL = language === 'fa';
   
   // Step management
@@ -43,6 +46,14 @@ const StepByStepRenewalForm = () => {
   // Step 4: Renewal options
   const [daysToAdd, setDaysToAdd] = useState(30);
   const [dataToAdd, setDataToAdd] = useState(10);
+  
+  // Payment and discount states
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+
+  // Merchant ID for Zarinpal
+  const MERCHANT_ID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
 
   const plans: SubscriptionPlan[] = [
     {
@@ -132,23 +143,190 @@ const StepByStepRenewalForm = () => {
 
   const calculateTotalPrice = () => {
     if (!selectedPlan) return 0;
+    const basePrice = dataToAdd * selectedPlan.pricePerGB;
+    
+    if (appliedDiscount) {
+      const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
+      return Math.max(0, basePrice - discountAmount);
+    }
+    
+    return basePrice;
+  };
+
+  const calculateDiscount = () => {
+    if (!selectedPlan || !appliedDiscount) return 0;
+    const basePrice = dataToAdd * selectedPlan.pricePerGB;
+    return (basePrice * appliedDiscount.percentage) / 100;
+  };
+
+  const getOriginalPrice = () => {
+    if (!selectedPlan) return 0;
     return dataToAdd * selectedPlan.pricePerGB;
   };
 
+  const handleDiscountApply = (discount: DiscountCode | null) => {
+    setAppliedDiscount(discount);
+  };
+
+  const validateForm = () => {
+    if (!username.trim()) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'نام کاربری وارد نشده است' : 'Username is required',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    if (!selectedPlan) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'پلن انتخاب نشده است' : 'Plan is not selected',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    if (daysToAdd < 1 || daysToAdd > 365) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'تعداد روزها باید بین ۱ تا ۳۶۵ باشد' : 'Days must be between 1 and 365',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    if (dataToAdd < 1 || dataToAdd > 1000) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'مقدار داده باید بین ۱ تا ۱۰۰۰ گیگابایت باشد' : 'Data amount must be between 1 and 1000 GB',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    return true;
+  };
+
   const handleRenewal = async () => {
-    console.log('Processing renewal:', {
-      username,
-      plan: selectedPlan,
-      daysToAdd,
-      dataToAdd,
-      totalPrice: calculateTotalPrice()
-    });
-    // Here you would integrate with Zarinpal payment gateway
-    // After successful payment, call the appropriate API to update the user
+    if (!validateForm()) return;
+
+    const totalPrice = calculateTotalPrice();
+    
+    // Handle free renewal (100% discount)
+    if (totalPrice === 0) {
+      setIsSubmitting(true);
+      setLoadingMessage(language === 'fa' ? 'در حال پردازش تمدید رایگان...' : 'Processing free renewal...');
+      
+      try {
+        // Process free renewal directly
+        console.log('Processing free renewal:', {
+          username,
+          plan: selectedPlan,
+          daysToAdd,
+          dataToAdd,
+          totalPrice: 0,
+          discount: appliedDiscount
+        });
+
+        toast({
+          title: language === 'fa' ? 'موفقیت' : 'Success',
+          description: language === 'fa' ? 'تمدید رایگان با موفقیت انجام شد!' : 'Free renewal completed successfully!',
+        });
+
+        setCurrentStep(4);
+      } catch (error) {
+        console.error('Free renewal error:', error);
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 'خطا در پردازش تمدید رایگان' : 'Error processing free renewal',
+          variant: 'destructive'
+        });
+      } finally {
+        setIsSubmitting(false);
+        setLoadingMessage('');
+      }
+      return;
+    }
+
+    // Handle paid renewal
+    setIsSubmitting(true);
+    setLoadingMessage(language === 'fa' ? 'در حال ایجاد پیوند پرداخت...' : 'Creating payment link...');
+
+    try {
+      const expireAt = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60); // 1 year from now
+
+      const contractResponse = await supabase.functions.invoke('zarinpal-contract', {
+        body: {
+          merchant_id: MERCHANT_ID,
+          mobile: '09123456789', // You might want to collect this from the user
+          expire_at: expireAt,
+          max_daily_count: 10,
+          max_monthly_count: 50,
+          max_amount: totalPrice * 10, // Convert to Rials
+          callback_url: `${window.location.origin}/renewal?status=success`
+        }
+      });
+
+      console.log('Contract response:', contractResponse);
+
+      if (contractResponse.data?.success && contractResponse.data?.data?.code === 100) {
+        const authority = contractResponse.data.data.data.authority;
+        
+        // Store renewal data
+        const { data: subscriptionData, error: subscriptionError } = await supabase
+          .from('subscriptions')
+          .insert({
+            username,
+            mobile: '09123456789',
+            data_limit_gb: dataToAdd,
+            duration_days: daysToAdd,
+            price_toman: totalPrice,
+            zarinpal_authority: authority,
+            status: 'pending',
+            notes: `Renewal for ${selectedPlan?.name} - ${dataToAdd}GB for ${daysToAdd} days${appliedDiscount ? ` (Discount: ${appliedDiscount.code})` : ''}`
+          })
+          .select()
+          .single();
+
+        if (subscriptionError) {
+          console.error('Subscription creation error:', subscriptionError);
+          throw new Error('Failed to create subscription record');
+        }
+
+        // Redirect to Zarinpal
+        const paymentUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
+        window.location.href = paymentUrl;
+
+      } else {
+        throw new Error(contractResponse.data?.error || 'Payment gateway error');
+      }
+
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast({
+        title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
+        description: language === 'fa' ? 'خطا در ایجاد پیوند پرداخت' : 'Error creating payment link',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSubmitting(false);
+      setLoadingMessage('');
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/20 py-12 px-4">
+      {/* Loading Overlay */}
+      {isSubmitting && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg flex items-center gap-3">
+            <Loader className="w-6 h-6 animate-spin" />
+            <span className="text-lg font-medium">{loadingMessage}</span>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
@@ -389,30 +567,76 @@ const StepByStepRenewalForm = () => {
                 </div>
               </div>
 
+              {/* Discount Code Field */}
+              <DiscountField
+                onDiscountApply={handleDiscountApply}
+                appliedDiscount={appliedDiscount}
+              />
+
               {/* Price Summary */}
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">
-                    {language === 'fa' ? 'مجموع قیمت' : 'Total Price'}
-                  </span>
-                  <span className="text-2xl font-bold text-primary">
-                    {calculateTotalPrice().toLocaleString()} 
-                    {language === 'fa' ? ' تومان' : ' Toman'}
-                  </span>
+                <div className="space-y-2">
+                  {appliedDiscount && (
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>
+                        {language === 'fa' ? 'قیمت اصلی' : 'Original Price'}
+                      </span>
+                      <span className="line-through">
+                        {getOriginalPrice().toLocaleString()} 
+                        {language === 'fa' ? ' تومان' : ' Toman'}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {appliedDiscount && (
+                    <div className="flex items-center justify-between text-sm text-green-600">
+                      <span>
+                        {language === 'fa' ? 'تخفیف' : 'Discount'} ({appliedDiscount.percentage}%)
+                      </span>
+                      <span>
+                        -{calculateDiscount().toLocaleString()} 
+                        {language === 'fa' ? ' تومان' : ' Toman'}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-t pt-2">
+                    <span className="font-medium">
+                      {language === 'fa' ? 'مجموع قیمت' : 'Total Price'}
+                    </span>
+                    <span className="text-2xl font-bold text-primary">
+                      {calculateTotalPrice() === 0 ? (
+                        language === 'fa' ? 'رایگان' : 'FREE'
+                      ) : (
+                        `${calculateTotalPrice().toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`
+                      )}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">
+                
+                <p className="text-sm text-muted-foreground mt-2">
                   {dataToAdd} GB × {selectedPlan?.pricePerGB.toLocaleString()} 
                   {language === 'fa' ? ' تومان' : ' Toman'}
                 </p>
               </div>
 
               {/* Renewal Button */}
-              <Button onClick={handleRenewal} size="lg" className="w-full">
-                <RefreshCw className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                {language === 'fa' ? 
-                  `پرداخت و تمدید - ${calculateTotalPrice().toLocaleString()} تومان` :
-                  `Pay & Renew - ${calculateTotalPrice().toLocaleString()} Toman`
-                }
+              <Button 
+                onClick={handleRenewal} 
+                size="lg" 
+                className="w-full"
+                disabled={isSubmitting}
+              >
+                <RefreshCw className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'} ${isSubmitting ? 'animate-spin' : ''}`} />
+                {isSubmitting ? (
+                  language === 'fa' ? 'در حال پردازش...' : 'Processing...'
+                ) : calculateTotalPrice() === 0 ? (
+                  language === 'fa' ? 'تمدید رایگان' : 'Free Renewal'
+                ) : (
+                  language === 'fa' ? 
+                    `پرداخت و تمدید - ${calculateTotalPrice().toLocaleString()} تومان` :
+                    `Pay & Renew - ${calculateTotalPrice().toLocaleString()} Toman`
+                )}
               </Button>
             </CardContent>
           </Card>
