@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -224,20 +225,28 @@ const MarzbanSubscriptionForm = () => {
     };
 
     try {
-      const { data, error } = await supabase.functions.invoke('zarinpal-contract', {
-        body: paymanRequest
+      // Call edge function without authentication
+      const response = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-contract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+        },
+        body: JSON.stringify(paymanRequest)
       });
+
+      const data = await response.json();
 
       addDebugInfo({
         endpoint: 'zarinpal-contract',
-        status: error ? 500 : 200,
+        status: response.status,
         request: paymanRequest,
-        response: data || error,
-        type: error ? 'error' : 'success'
+        response: data,
+        type: response.ok ? 'success' : 'error'
       });
 
-      if (error) {
-        throw new Error(error.message || 'Failed to create contract');
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create contract');
       }
 
       if (!data.success) {
@@ -298,40 +307,54 @@ const MarzbanSubscriptionForm = () => {
       setLoadingMessage(language === 'fa' ? 'در حال تأیید پرداخت...' : 'Verifying payment...');
       
       try {
-        // Verify payment
-        const { data: verifyData, error: verifyError } = await supabase.functions.invoke('zarinpal-verify', {
-          body: {
+        // Verify payment without authentication
+        const verifyResponse = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+          },
+          body: JSON.stringify({
             merchant_id: MERCHANT_ID,
             authority: authority
-          }
+          })
         });
+        
+        const verifyData = await verifyResponse.json();
         
         addDebugInfo({
           endpoint: 'zarinpal-verify',
-          status: verifyError ? 500 : 200,
+          status: verifyResponse.status,
           request: { merchant_id: MERCHANT_ID, authority },
-          response: verifyData || verifyError,
-          type: verifyError ? 'error' : 'success'
+          response: verifyData,
+          type: verifyResponse.ok ? 'success' : 'error'
         });
 
         if (verifyData?.success && verifyData?.data?.data?.code === 100) {
           // Checkout
           setLoadingMessage(language === 'fa' ? 'در حال تکمیل پرداخت...' : 'Completing payment...');
           
-          const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke('zarinpal-checkout', {
-            body: {
+          const checkoutResponse = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-checkout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+            },
+            body: JSON.stringify({
               merchant_id: MERCHANT_ID,
               authority: authority,
               signature: verifyData.data.data.signature
-            }
+            })
           });
+
+          const checkoutData = await checkoutResponse.json();
 
           addDebugInfo({
             endpoint: 'zarinpal-checkout',
-            status: checkoutError ? 500 : 200,
+            status: checkoutResponse.status,
             request: { merchant_id: MERCHANT_ID, authority, signature: verifyData.data.data.signature },
-            response: checkoutData || checkoutError,
-            type: checkoutError ? 'error' : 'success'
+            response: checkoutData,
+            type: checkoutResponse.ok ? 'error' : 'success'
           });
           
           if (checkoutData?.success && checkoutData?.data?.data?.code === 100) {
