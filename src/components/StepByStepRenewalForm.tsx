@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, ChevronDown, CheckCircle, Zap, User, Calendar, Database, RefreshCw, Bug, Globe, Loader } from 'lucide-react';
+import { Search, ChevronDown, CheckCircle, Zap, User, Calendar, Database, RefreshCw, Bug, Globe, Loader, Code2 } from 'lucide-react';
 import { SubscriptionPlan, DiscountCode } from '@/types/subscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -18,9 +17,21 @@ interface UserData {
   data_limit: number;
   data_limit_reset_strategy: string;
   expire: number | null;
+  expire_date?: string; // For Marzneshin
   status: string;
   used_traffic: number;
   id?: number; // For Marzneshin
+}
+
+interface DebugInfo {
+  payment_status: 'PENDING' | 'PAID' | 'FAILED' | 'FREE';
+  payment_gateway: string;
+  amount_paid: number;
+  discount_code?: string;
+  renewal_request?: any;
+  renewal_response?: any;
+  payment_authority?: string;
+  error_details?: any;
 }
 
 const StepByStepRenewalForm = () => {
@@ -51,6 +62,14 @@ const StepByStepRenewalForm = () => {
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+
+  // Debug states
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
+  const [renewalDebugOpen, setRenewalDebugOpen] = useState(false);
+
+  // Check if debug mode is enabled via URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const debugMode = urlParams.get('debug') === 'true';
 
   // Merchant ID for Zarinpal
   const MERCHANT_ID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
@@ -130,9 +149,34 @@ const StepByStepRenewalForm = () => {
     }
   };
 
-  const formatExpireDate = (timestamp: number | null) => {
-    if (!timestamp) return language === 'fa' ? 'نامحدود' : 'Unlimited';
-    return new Date(timestamp * 1000).toLocaleDateString();
+  const formatExpireDate = (timestamp: number | null, expireDate?: string) => {
+    // Handle Marzneshin format (ISO string)
+    if (expireDate) {
+      try {
+        const date = new Date(expireDate);
+        if (isNaN(date.getTime())) {
+          return language === 'fa' ? 'نامحدود' : 'Unlimited';
+        }
+        return date.toLocaleDateString(language === 'fa' ? 'fa-IR' : 'en-US');
+      } catch {
+        return language === 'fa' ? 'نامحدود' : 'Unlimited';
+      }
+    }
+    
+    // Handle Marzban format (UNIX timestamp)
+    if (!timestamp || timestamp === 0) {
+      return language === 'fa' ? 'نامحدود' : 'Unlimited';
+    }
+    
+    try {
+      const date = new Date(timestamp * 1000);
+      if (isNaN(date.getTime())) {
+        return language === 'fa' ? 'نامحدود' : 'Unlimited';
+      }
+      return date.toLocaleDateString(language === 'fa' ? 'fa-IR' : 'en-US');
+    } catch {
+      return language === 'fa' ? 'نامحدود' : 'Unlimited';
+    }
   };
 
   const formatDataUsage = (used: number, limit: number) => {
@@ -166,6 +210,15 @@ const StepByStepRenewalForm = () => {
 
   const handleDiscountApply = (discount: DiscountCode | null) => {
     setAppliedDiscount(discount);
+    
+    // Update debug info when discount is applied/removed
+    if (debugInfo) {
+      setDebugInfo({
+        ...debugInfo,
+        discount_code: discount?.code,
+        amount_paid: calculateTotalPrice()
+      });
+    }
   };
 
   const validateForm = () => {
@@ -213,13 +266,29 @@ const StepByStepRenewalForm = () => {
 
     const totalPrice = calculateTotalPrice();
     
+    // Initialize debug info
+    const initialDebugInfo: DebugInfo = {
+      payment_status: totalPrice === 0 ? 'FREE' : 'PENDING',
+      payment_gateway: 'Zarinpal',
+      amount_paid: totalPrice,
+      discount_code: appliedDiscount?.code,
+      renewal_request: {
+        username,
+        plan: selectedPlan?.name,
+        data_limit: dataToAdd * 1024 * 1024 * 1024, // Convert GB to bytes
+        expire_after: daysToAdd
+      }
+    };
+    
+    setDebugInfo(initialDebugInfo);
+    
     // Handle free renewal (100% discount)
     if (totalPrice === 0) {
       setIsSubmitting(true);
       setLoadingMessage(language === 'fa' ? 'در حال پردازش تمدید رایگان...' : 'Processing free renewal...');
       
       try {
-        // Process free renewal directly
+        // TODO: Add actual renewal API call here
         console.log('Processing free renewal:', {
           username,
           plan: selectedPlan,
@@ -229,14 +298,40 @@ const StepByStepRenewalForm = () => {
           discount: appliedDiscount
         });
 
+        // Simulate API call for demonstration
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Update debug info with successful renewal
+        setDebugInfo({
+          ...initialDebugInfo,
+          payment_status: 'FREE',
+          renewal_response: {
+            success: true,
+            message: 'Free renewal completed successfully',
+            timestamp: new Date().toISOString()
+          }
+        });
+
         toast({
           title: language === 'fa' ? 'موفقیت' : 'Success',
           description: language === 'fa' ? 'تمدید رایگان با موفقیت انجام شد!' : 'Free renewal completed successfully!',
         });
 
         setCurrentStep(4);
+        setRenewalDebugOpen(true);
       } catch (error) {
         console.error('Free renewal error:', error);
+        
+        // Update debug info with error
+        setDebugInfo({
+          ...initialDebugInfo,
+          payment_status: 'FAILED',
+          error_details: {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          }
+        });
+        
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
           description: language === 'fa' ? 'خطا در پردازش تمدید رایگان' : 'Error processing free renewal',
@@ -273,6 +368,12 @@ const StepByStepRenewalForm = () => {
       if (contractResponse.data?.success && contractResponse.data?.data?.code === 100) {
         const authority = contractResponse.data.data.data.authority;
         
+        // Update debug info with payment authority
+        setDebugInfo({
+          ...initialDebugInfo,
+          payment_authority: authority
+        });
+        
         // Store renewal data
         const { data: subscriptionData, error: subscriptionError } = await supabase
           .from('subscriptions')
@@ -304,11 +405,24 @@ const StepByStepRenewalForm = () => {
 
     } catch (error) {
       console.error('Payment error:', error);
+      
+      // Update debug info with error
+      setDebugInfo({
+        ...initialDebugInfo,
+        payment_status: 'FAILED',
+        error_details: {
+          message: error instanceof Error ? error.message : 'Payment gateway error',
+          timestamp: new Date().toISOString()
+        }
+      });
+      
       toast({
         title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
         description: language === 'fa' ? 'خطا در ایجاد پیوند پرداخت' : 'Error creating payment link',
         variant: 'destructive'
       });
+      
+      setRenewalDebugOpen(true);
     } finally {
       setIsSubmitting(false);
       setLoadingMessage('');
@@ -517,7 +631,7 @@ const StepByStepRenewalForm = () => {
                   <Label className="text-sm text-muted-foreground">
                     {language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}
                   </Label>
-                  <p className="font-medium">{formatExpireDate(userData.expire)}</p>
+                  <p className="font-medium">{formatExpireDate(userData.expire, userData.expire_date)}</p>
                 </div>
                 <div>
                   <Label className="text-sm text-muted-foreground">
@@ -638,6 +752,63 @@ const StepByStepRenewalForm = () => {
                     `Pay & Renew - ${calculateTotalPrice().toLocaleString()} Toman`
                 )}
               </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Renewal Debug Log Card */}
+        {debugInfo && (debugMode || renewalDebugOpen) && (
+          <Card className="mb-6 border-blue-200 bg-blue-50 dark:bg-blue-900/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Code2 className="w-5 h-5 text-blue-500" />
+                {language === 'fa' ? 'گزارش عملیات تمدید' : 'Renewal Debug Log'}
+              </CardTitle>
+              <CardDescription>
+                {language === 'fa' ? 
+                  'اطلاعات تکمیلی درباره وضعیت پرداخت و تمدید' : 
+                  'Detailed information about payment and renewal status'
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Collapsible open={renewalDebugOpen} onOpenChange={setRenewalDebugOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="outline" className="w-full flex items-center justify-between">
+                    {language === 'fa' ? 'مشاهده جزئیات کامل' : 'View Full Details'}
+                    <ChevronDown className={`w-4 h-4 transition-transform ${renewalDebugOpen ? 'rotate-180' : ''}`} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-4">
+                  <div className="bg-muted p-4 rounded-lg">
+                    <pre className="text-sm overflow-auto">
+                      {JSON.stringify(debugInfo, null, 2)}
+                    </pre>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+              
+              {/* Quick Status Summary */}
+              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Payment Status</Label>
+                  <Badge variant={debugInfo.payment_status === 'PAID' || debugInfo.payment_status === 'FREE' ? 'default' : 'destructive'}>
+                    {debugInfo.payment_status}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Amount</Label>
+                  <p className="text-sm font-medium">{debugInfo.amount_paid.toLocaleString()} Toman</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Gateway</Label>
+                  <p className="text-sm font-medium">{debugInfo.payment_gateway}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Discount</Label>
+                  <p className="text-sm font-medium">{debugInfo.discount_code || 'None'}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
