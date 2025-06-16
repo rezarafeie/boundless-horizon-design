@@ -44,7 +44,7 @@ interface MarzneshinServicesResponse {
 interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
-  expire_after?: number;
+  expire?: number;
   usage_duration: number;
   data_limit: number;
   service_ids: number[];
@@ -139,11 +139,26 @@ async function createMarzneshinUser(
   serviceIds: number[]
 ): Promise<MarzneshinUserResponse> {
   
+  // Calculate expiration timestamp (current time + duration in days)
+  const currentTimeSeconds = Math.floor(Date.now() / 1000);
+  const durationSeconds = userData.durationDays * 24 * 60 * 60; // Convert days to seconds
+  const expirationTimestamp = currentTimeSeconds + durationSeconds;
+
+  // Validate timestamp
+  if (expirationTimestamp <= currentTimeSeconds) {
+    throw new Error('Invalid expiration timestamp - must be in the future');
+  }
+
+  console.log(`Current time: ${currentTimeSeconds} (${new Date(currentTimeSeconds * 1000).toISOString()})`);
+  console.log(`Duration: ${userData.durationDays} days (${durationSeconds} seconds)`);
+  console.log(`Calculated expiration: ${expirationTimestamp} (${new Date(expirationTimestamp * 1000).toISOString()})`);
+
+  // Start with minimal required fields for testing
   const userRequest: MarzneshinUserRequest = {
     username: userData.username,
-    expire_strategy: 'expire_after',
-    expire_after: userData.durationDays,
-    usage_duration: userData.durationDays * 86400, // Convert days to seconds
+    expire_strategy: 'fixed_date',
+    expire: expirationTimestamp,
+    usage_duration: durationSeconds, // Use seconds consistently
     data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
     service_ids: serviceIds,
     note: `Purchased via bnets.co - ${userData.notes}`,
@@ -188,14 +203,24 @@ async function createMarzneshinUser(
     
     if (response.status === 422) {
       // Validation error - provide more specific feedback
-      if (errorData.detail && Array.isArray(errorData.detail)) {
-        const validationErrors = errorData.detail.map((err: any) => 
-          `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
-        ).join(', ');
-        throw new Error(`Validation error: ${validationErrors}`);
-      } else if (errorData.detail) {
-        throw new Error(`Validation error: ${errorData.detail}`);
+      let errorMessage = 'Validation error';
+      
+      if (errorData.detail) {
+        if (typeof errorData.detail === 'string') {
+          errorMessage = `Validation error: ${errorData.detail}`;
+        } else if (errorData.detail.body) {
+          errorMessage = `Validation error: ${errorData.detail.body}`;
+        } else if (Array.isArray(errorData.detail)) {
+          const validationErrors = errorData.detail.map((err: any) => 
+            `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
+          ).join(', ');
+          errorMessage = `Validation error: ${validationErrors}`;
+        } else {
+          errorMessage = `Validation error: ${JSON.stringify(errorData.detail)}`;
+        }
       }
+      
+      throw new Error(errorMessage);
     }
 
     if (response.status === 400) {
@@ -219,7 +244,70 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { username, dataLimitGB, durationDays, notes } = await req.json();
+    console.log('Received request, parsing body...');
+    const requestBody = await req.json();
+    console.log('Raw request body:', JSON.stringify(requestBody, null, 2));
+
+    // Extract parameters with support for both old and new parameter names
+    const {
+      username,
+      dataLimitGB,
+      dataLimit,
+      durationDays,
+      duration,
+      notes
+    } = requestBody;
+
+    // Use the new parameter names if available, otherwise fall back to old ones
+    const finalDataLimitGB = dataLimitGB || dataLimit;
+    const finalDurationDays = durationDays || duration;
+
+    console.log('Extracted parameters:', {
+      username,
+      finalDataLimitGB,
+      finalDurationDays,
+      notes: notes ? 'provided' : 'empty'
+    });
+
+    // Validate required parameters
+    if (!username) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Username is required' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!finalDataLimitGB || typeof finalDataLimitGB !== 'number' || finalDataLimitGB <= 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Valid data limit (in GB) is required and must be a positive number' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!finalDurationDays || typeof finalDurationDays !== 'number' || finalDurationDays <= 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Valid duration (in days) is required and must be a positive number' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Get secrets from environment
     const baseUrl = Deno.env.get('MARZNESHIN_BASE_URL');
@@ -230,6 +318,7 @@ Deno.serve(async (req) => {
       console.error('Missing required environment variables');
       return new Response(
         JSON.stringify({ 
+          success: false,
           error: 'Server configuration error. Please contact support.' 
         }),
         { 
@@ -240,7 +329,6 @@ Deno.serve(async (req) => {
     }
 
     console.log('Starting Marzneshin user creation process');
-    console.log('Request parameters:', { username, dataLimitGB, durationDays, notes: notes ? 'provided' : 'empty' });
 
     // Get authentication token
     const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
@@ -256,11 +344,16 @@ Deno.serve(async (req) => {
       throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
     }
 
-    // Create the user
+    // Create the user with normalized parameters
     const result = await createMarzneshinUser(
       baseUrl,
       token,
-      { username, dataLimitGB, durationDays, notes },
+      { 
+        username, 
+        dataLimitGB: finalDataLimitGB, 
+        durationDays: finalDurationDays, 
+        notes: notes || '' 
+      },
       requiredServiceIds
     );
 
