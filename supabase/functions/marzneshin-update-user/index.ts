@@ -81,24 +81,70 @@ Deno.serve(async (req) => {
     const currentUser = await getUserResponse.json();
     console.log('[MARZNESHIN-UPDATE-USER] Current user data:', {
       username: currentUser.username,
+      expire_strategy: currentUser.expire_strategy,
       current_data_limit: currentUser.data_limit,
+      current_expire_date: currentUser.expire_date || 'N/A',
       current_expire_after: currentUser.expire_after || 'N/A'
     });
 
-    // Step 3: Calculate total values
+    // Step 3: Calculate total values based on expire strategy
     const newDataLimitBytes = dataLimitGB * 1024 * 1024 * 1024; // Convert GB to bytes
     const totalDataLimit = (currentUser.data_limit || 0) + newDataLimitBytes;
-    const expireAfterDays = durationDays;
-    const usageDuration = expireAfterDays * 86400; // Convert days to seconds
+    
+    let updatePayload: any;
+    
+    if (currentUser.expire_strategy === 'fixed_date') {
+      // Handle fixed_date strategy
+      console.log('[MARZNESHIN-UPDATE-USER] Using fixed_date strategy');
+      
+      // Calculate new expire_date by adding days to current expire_date
+      let currentExpireDate: Date;
+      
+      if (currentUser.expire_date) {
+        currentExpireDate = new Date(currentUser.expire_date);
+      } else {
+        // If no current expire date, use current time
+        currentExpireDate = new Date();
+      }
+      
+      // Add duration days to current expire date
+      const newExpireDate = new Date(currentExpireDate.getTime() + (durationDays * 24 * 60 * 60 * 1000));
+      const expireDateISO = newExpireDate.toISOString();
+      
+      updatePayload = {
+        expire_strategy: "fixed_date",
+        expire_date: expireDateISO,
+        data_limit: totalDataLimit
+      };
+      
+      console.log('[MARZNESHIN-UPDATE-USER] Fixed date payload:', {
+        ...updatePayload,
+        calculated_from_date: currentUser.expire_date || 'now',
+        days_added: durationDays,
+        new_expire_date: expireDateISO
+      });
+      
+    } else {
+      // Handle expire_after strategy (existing logic)
+      console.log('[MARZNESHIN-UPDATE-USER] Using expire_after strategy');
+      
+      const expireAfterDays = durationDays;
+      const usageDuration = expireAfterDays * 86400; // Convert days to seconds
 
-    const updatePayload = {
-      expire_strategy: "expire_after",
-      expire_after: expireAfterDays,
-      usage_duration: usageDuration,
-      data_limit: totalDataLimit
-    };
+      updatePayload = {
+        expire_strategy: "expire_after",
+        expire_after: expireAfterDays,
+        usage_duration: usageDuration,
+        data_limit: totalDataLimit
+      };
+      
+      console.log('[MARZNESHIN-UPDATE-USER] Expire after payload:', {
+        ...updatePayload,
+        days_added: durationDays
+      });
+    }
 
-    console.log('[MARZNESHIN-UPDATE-USER] Update payload:', updatePayload);
+    console.log('[MARZNESHIN-UPDATE-USER] Final update payload:', updatePayload);
 
     // Step 4: Send PATCH request
     console.log('[MARZNESHIN-UPDATE-USER] Sending PATCH request...');
@@ -129,12 +175,19 @@ Deno.serve(async (req) => {
       success: true,
       data: {
         username,
+        strategy_used: currentUser.expire_strategy,
         previous_data_limit: currentUser.data_limit || 0,
         added_data_limit: newDataLimitBytes,
         total_data_limit: totalDataLimit,
-        expire_after_days: expireAfterDays,
-        usage_duration: usageDuration,
-        update_response: updateResult
+        duration_days_added: durationDays,
+        payload_sent: updatePayload,
+        update_response: updateResult,
+        previous_expire_info: currentUser.expire_strategy === 'fixed_date' 
+          ? { expire_date: currentUser.expire_date }
+          : { expire_after: currentUser.expire_after },
+        new_expire_info: currentUser.expire_strategy === 'fixed_date'
+          ? { expire_date: updatePayload.expire_date }
+          : { expire_after: updatePayload.expire_after, usage_duration: updatePayload.usage_duration }
       }
     };
 
