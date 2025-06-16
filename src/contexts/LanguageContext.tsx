@@ -17,16 +17,11 @@ const translations = {
     'nav.about': 'About',
     'nav.contact': 'Contact',
     'nav.subscription': 'Subscribe',
-    'nav.dropdown': 'Get Boundless Network',
-    'nav.purchase': 'Purchase',
-    'nav.free-trial': 'Free Trial',
     
     // Hero Section
     'hero.title': 'Boundless Network',
     'hero.subtitle': 'Secure, fast, and unlimited – for professional users',
     'hero.cta': 'Join Telegram Bot',
-    'hero.purchase': 'Purchase Plan',
-    'hero.free-trial': 'Start Free Trial',
     
     // Features
     'features.title': 'Unique Features',
@@ -47,8 +42,8 @@ const translations = {
     // Pricing
     'pricing.title': 'Pricing Plans',
     'pricing.subtitle': 'Choose the best plan for your needs',
-    'pricing.lite': 'Boundless Network Lite',
-    'pricing.pro': 'Boundless Network Pro',
+    'pricing.lite': 'Lite',
+    'pricing.pro': 'Pro',
     'pricing.pro-plus': 'Pro Plus',
     'pricing.monthly': 'monthly',
     'pricing.most-popular': 'Most Popular',
@@ -95,16 +90,16 @@ const translations = {
     'faq.question2': 'Are activity logs stored?',
     'faq.answer2': 'No, we do not store any logs of user activities. Your privacy is sacred to us.',
     'faq.question3': 'What is the difference between plans?',
-    'faq.answer3': 'Lite for regular use with basic locations, Pro for business with full global access and high-speed connections.',
+    'faq.answer3': 'Lite for regular use, Pro for business with clean IPs, and Pro Plus includes dedicated Iranian tunnel.',
     'faq.question4': 'Is there a free trial available?',
     'faq.answer4': 'Yes, 24-hour free trial is available for all plans.',
     'faq.question5': 'How is the connection speed?',
-    'faq.answer5': 'Speed varies based on the selected plan. Pro plans offer outstanding speed with full location access.',
+    'faq.answer5': 'Speed varies based on the selected plan. Pro and Pro Plus plans offer outstanding speed.',
     'faq.question6': 'How is support provided?',
     'faq.answer6': '24/7 support team available via Telegram. Response time is less than 10 minutes.',
     
     // Subscription Form
-    'subscription.title': 'Boundless Network Subscription',
+    'subscription.title': 'VPN Subscription Purchase',
     'subscription.subtitle': 'Choose your Boundless Network subscription',
     'subscription.user-info': 'User Information',
     'subscription.email': 'Email',
@@ -116,9 +111,6 @@ const translations = {
     'subscription.promo-code': 'Promo Code (Optional)',
     'subscription.purchase': 'Purchase Subscription',
     'subscription.terms': 'By purchasing a subscription, you agree to our terms and conditions',
-    'subscription.step1': 'Plan Selection',
-    'subscription.step2': 'User Information',
-    'subscription.step3': 'Subscription Configuration',
     
     // Footer
     'footer.description': 'Secure, fast and unlimited – for professional users who trust the best quality.',
@@ -139,16 +131,11 @@ const translations = {
     'nav.about': 'درباره ما',
     'nav.contact': 'تماس',
     'nav.subscription': 'اشتراک',
-    'nav.dropdown': 'دریافت شبکه بدون مرز',
-    'nav.purchase': 'خرید',
-    'nav.free-trial': 'تست رایگان',
     
     // Hero Section
     'hero.title': 'شبکه بدون مرز',
     'hero.subtitle': 'امن، سریع و بدون محدودیت – برای کاربران حرفه‌ای',
     'hero.cta': 'ورود به ربات تلگرام',
-    'hero.purchase': 'خرید پلن',
-    'hero.free-trial': 'شروع تست رایگان',
     
     // Features
     'features.title': 'ویژگی‌های منحصر به فرد',
@@ -169,8 +156,8 @@ const translations = {
     // Pricing
     'pricing.title': 'پلن‌های قیمت‌گذاری',
     'pricing.subtitle': 'بهترین پلن را برای نیازهای خود انتخاب کنید',
-    'pricing.lite': 'شبکه بدون مرز لایت',
-    'pricing.pro': 'شبکه بدون مرز پرو',
+    'pricing.lite': 'Lite',
+    'pricing.pro': 'Pro',
     'pricing.pro-plus': 'Pro Plus',
     'pricing.monthly': 'ماهانه',
     'pricing.most-popular': 'محبوب‌ترین',
@@ -217,16 +204,16 @@ const translations = {
     'faq.question2': 'آیا لاگ فعالیت‌ها نگهداری می‌شود؟',
     'faq.answer2': 'خیر، ما هیچ لاگی از فعالیت کاربران نگهداری نمی‌کنیم. حریم خصوصی شما برای ما مقدس است.',
     'faq.question3': 'تفاوت پلن‌ها در چیست؟',
-    'faq.answer3': 'لایت برای استفاده عادی با موقعیت‌های محدود، پرو برای کسب‌وکار با دسترسی جهانی کامل و اتصالات پرسرعت است.',
+    'faq.answer3': 'Lite برای استفاده عادی، Pro برای کسب‌وکار با IP های تمیز، و Pro Plus شامل تونل ایرانی اختصاصی است.',
     'faq.question4': 'آیا امکان تست رایگان وجود دارد؟',
     'faq.answer4': 'بله، ۲۴ ساعت تست رایگان برای همه پلن‌ها در نظر گرفته شده است.',
     'faq.question5': 'سرعت اتصال چگونه است؟',
-    'faq.answer5': 'سرعت بر اساس پلن انتخابی متفاوت است. پلن‌های پرو سرعت فوق‌العاده با دسترسی کامل به موقعیت‌ها ارائه می‌دهند.',
+    'faq.answer5': 'سرعت بر اساس پلن انتخابی متفاوت است. پلن Pro و Pro Plus سرعت فوق‌العاده ارائه می‌دهند.',
     'faq.question6': 'پشتیبانی چگونه انجام می‌شود؟',
     'faq.answer6': 'تیم پشتیبانی ۲۴/۷ از طریق تلگرام در دسترس است. زمان پاسخ‌گویی کمتر از ۱۰ دقیقه.',
     
     // Subscription Form
-    'subscription.title': 'اشتراک شبکه بدون مرز',
+    'subscription.title': 'خرید اشتراک VPN',
     'subscription.subtitle': 'اشتراک شبکه بدون مرز خود را انتخاب کنید',
     'subscription.user-info': 'اطلاعات کاربری',
     'subscription.email': 'ایمیل',
@@ -238,9 +225,6 @@ const translations = {
     'subscription.promo-code': 'کد تخفیف (اختیاری)',
     'subscription.purchase': 'خرید اشتراک',
     'subscription.terms': 'با خرید اشتراک، شما با قوانین و مقررات ما موافقت می‌کنید',
-    'subscription.step1': 'انتخاب پلن',
-    'subscription.step2': 'اطلاعات کاربری',
-    'subscription.step3': 'پیکربندی اشتراک',
     
     // Footer
     'footer.description': 'امن، سریع و بدون محدودیت – برای کاربران حرفه‌ای که به بهترین کیفیت اعتماد دارند.',

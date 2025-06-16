@@ -1,19 +1,11 @@
 
 import { Button } from "@/components/ui/button";
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Play } from 'lucide-react';
 
 const HeroSection = () => {
   const { t, language } = useLanguage();
   const isRTL = language === 'fa';
-
-  const scrollToSubscription = () => {
-    window.open('/subscription', '_blank');
-  };
-
-  const startFreeTrial = () => {
-    window.open('https://t.me/getbnbot', '_blank');
-  };
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
@@ -30,7 +22,7 @@ const HeroSection = () => {
           {/* Badge */}
           <div className="inline-flex items-center rounded-full px-4 py-2 bg-primary/10 border border-primary/20 backdrop-blur-sm mb-8">
             <span className="text-sm font-medium text-primary">
-              {language === 'fa' ? '🚀 سرویس پیشرفته شبکه بدون مرز' : '🚀 Advanced Boundless Network Service'}
+              {language === 'fa' ? '🚀 سرویس پیشرفته VPN' : '🚀 Advanced VPN Service'}
             </span>
           </div>
 
@@ -46,9 +38,9 @@ const HeroSection = () => {
             <Button 
               size="lg" 
               className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
-              onClick={scrollToSubscription}
+              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
             >
-              {t('hero.purchase')}
+              {t('hero.cta')}
               <ArrowRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${isRTL ? 'rotate-180 mr-2' : 'ml-2'}`} />
             </Button>
             
@@ -56,10 +48,10 @@ const HeroSection = () => {
               variant="outline" 
               size="lg"
               className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group"
-              onClick={startFreeTrial}
+              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
             >
-              {t('hero.free-trial')}
-              <ArrowRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${isRTL ? 'rotate-180 mr-2' : 'ml-2'}`} />
+              <Play className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {language === 'fa' ? 'مشاهده دمو' : 'Watch Demo'}
             </Button>
           </div>
         </div>
