@@ -23,7 +23,6 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
         'اتصال پایه با آلمان، فنلاند، هلند - مناسب برای کاربری روزمره' : 
         'Basic connection with Germany, Finland, Netherlands - suitable for daily use',
       pricePerGB: 3200,
-      price: 0,
       apiType: 'marzban'
     },
     {
@@ -33,7 +32,6 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
         'پریمیوم با آمریکا، انگلیس، آلمان، فنلاند، هلند - بهترین عملکرد' : 
         'Premium with USA, UK, Germany, Finland, Netherlands - best performance',
       pricePerGB: 4200,
-      price: 0,
       apiType: 'marzneshin'
     }
   ];

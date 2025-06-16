@@ -44,7 +44,7 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
     const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
     
     if (appliedDiscount) {
-      const discountAmount = (basePrice * appliedDiscount.value) / 100;
+      const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
       return Math.max(0, basePrice - discountAmount);
     }
     
@@ -243,7 +243,7 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
   };
 
   const basePrice = formData.selectedPlan ? formData.dataLimit * formData.selectedPlan.pricePerGB : 0;
-  const discountAmount = appliedDiscount ? (basePrice * appliedDiscount.value) / 100 : 0;
+  const discountAmount = appliedDiscount ? (basePrice * appliedDiscount.percentage) / 100 : 0;
 
   return (
     <div className="space-y-6">

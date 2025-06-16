@@ -8,7 +8,6 @@ import FreeTrialDialog from './FreeTrialDialog';
 
 const HeroSection = () => {
   const { language, t } = useLanguage();
-  const [showFreeTrial, setShowFreeTrial] = useState(false);
 
   return (
     <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-purple-900/20 overflow-hidden">
@@ -79,14 +78,15 @@ const HeroSection = () => {
               </Link>
             </Button>
 
-            <Button 
-              variant="hero-secondary" 
-              size="xl" 
-              onClick={() => setShowFreeTrial(true)}
-              className="w-full sm:w-auto"
-            >
-              {language === 'fa' ? 'تست رایگان' : 'Free Trial'}
-            </Button>
+            <FreeTrialDialog>
+              <Button 
+                variant="hero-secondary" 
+                size="xl" 
+                className="w-full sm:w-auto"
+              >
+                {language === 'fa' ? 'تست رایگان' : 'Free Trial'}
+              </Button>
+            </FreeTrialDialog>
 
             <Button asChild variant="hero-accent" size="xl" className="w-full sm:w-auto">
               <Link to="/renewal" className="group">
@@ -119,11 +119,6 @@ const HeroSection = () => {
           </div>
         </div>
       </div>
-
-      <FreeTrialDialog 
-        isOpen={showFreeTrial} 
-        onClose={() => setShowFreeTrial(false)}
-      />
     </section>
   );
 };
