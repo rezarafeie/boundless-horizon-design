@@ -26,7 +26,6 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
-  const [countdown, setCountdown] = useState(3);
 
   const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
 
@@ -36,19 +35,12 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
       // Store data for delivery page
       localStorage.setItem('deliverySubscriptionData', JSON.stringify(result));
       
-      // Start countdown and auto-redirect
-      const timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            navigate('/delivery', { state: { subscriptionData: result } });
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      // Redirect immediately to delivery page
+      const timer = setTimeout(() => {
+        navigate('/delivery', { state: { subscriptionData: result } });
+      }, 500); // Very short delay just to show success message
 
-      return () => clearInterval(timer);
+      return () => clearTimeout(timer);
     }
   }, [result, navigate]);
 
@@ -113,12 +105,12 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
             }
           </CardDescription>
           
-          {/* Auto-redirect countdown */}
+          {/* Auto-redirect notice */}
           <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
             <p className="text-blue-800 dark:text-blue-200 text-sm">
               {language === 'fa' ? 
-                `در ${countdown} ثانیه به صفحه جزئیات منتقل می‌شوید...` : 
-                `Redirecting to details page in ${countdown} seconds...`
+                'در حال انتقال به صفحه جزئیات...' : 
+                'Redirecting to details page...'
               }
             </p>
           </div>
