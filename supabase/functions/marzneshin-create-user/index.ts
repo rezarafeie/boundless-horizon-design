@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -149,7 +150,7 @@ async function createMarzneshinUser(
     data_limit_reset_strategy: 'no_reset'
   };
 
-  console.log('Creating user with request:', userRequest);
+  console.log('Creating user with request:', JSON.stringify(userRequest, null, 2));
 
   const response = await fetch(`${baseUrl}/api/users`, {
     method: 'POST',
@@ -160,16 +161,54 @@ async function createMarzneshinUser(
     body: JSON.stringify(userRequest)
   });
 
+  console.log(`User creation response status: ${response.status}`);
+
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    let errorData: any;
+    const contentType = response.headers.get('content-type');
+    
+    try {
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+        console.error('Marzneshin API error response (JSON):', JSON.stringify(errorData, null, 2));
+      } else {
+        const errorText = await response.text();
+        console.error('Marzneshin API error response (Text):', errorText);
+        errorData = { detail: errorText };
+      }
+    } catch (parseError) {
+      console.error('Failed to parse error response:', parseError);
+      errorData = { detail: 'Unknown error - failed to parse response' };
+    }
+
+    // Handle specific error cases
     if (response.status === 409) {
       throw new Error('This username is already taken. Please choose a different one');
     }
-    throw new Error(errorData.detail || `Failed to create user on Marzneshin: ${response.status}`);
+    
+    if (response.status === 422) {
+      // Validation error - provide more specific feedback
+      if (errorData.detail && Array.isArray(errorData.detail)) {
+        const validationErrors = errorData.detail.map((err: any) => 
+          `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
+        ).join(', ');
+        throw new Error(`Validation error: ${validationErrors}`);
+      } else if (errorData.detail) {
+        throw new Error(`Validation error: ${errorData.detail}`);
+      }
+    }
+
+    if (response.status === 400) {
+      throw new Error(`Bad request: ${errorData.detail || 'Invalid request parameters'}`);
+    }
+
+    // Generic error with detailed logging
+    const errorMessage = errorData.detail || errorData.message || `HTTP ${response.status} error`;
+    throw new Error(`Failed to create user on Marzneshin: ${errorMessage}`);
   }
 
   const result = await response.json();
-  console.log('User created successfully:', result);
+  console.log('User created successfully:', JSON.stringify(result, null, 2));
   return result;
 }
 
@@ -201,6 +240,7 @@ Deno.serve(async (req) => {
     }
 
     console.log('Starting Marzneshin user creation process');
+    console.log('Request parameters:', { username, dataLimitGB, durationDays, notes: notes ? 'provided' : 'empty' });
 
     // Get authentication token
     const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
@@ -238,7 +278,9 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Marzneshin API Error:', error);
+    console.error('Marzneshin API Error Details:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     
     return new Response(
       JSON.stringify({ 
