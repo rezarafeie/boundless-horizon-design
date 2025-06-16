@@ -21,6 +21,7 @@ const translations = {
     'nav.telegram': 'Telegram Bot',
     'nav.purchase': 'Purchase',
     'nav.free-trial': 'Free Trial',
+    'nav.renew': 'Renew Subscription',
     
     // Hero Section
     'hero.title': 'Boundless Network',
@@ -49,7 +50,9 @@ const translations = {
     'pricing.title': 'Pricing Plans',
     'pricing.subtitle': 'Choose the best plan for your needs',
     'pricing.lite': 'Boundless Network Lite',
+    'pricing.lite-desc': 'A lightweight access option for users who need basic connection with fewer locations and moderate speed.',
     'pricing.pro': 'Boundless Network Pro',
+    'pricing.pro-desc': 'A premium connection plan with full global access, highest speed, and stable connections — especially optimized for streaming, remote work, and gaming.',
     'pricing.pro-plus': 'Pro Plus',
     'pricing.monthly': 'monthly',
     'pricing.most-popular': 'Most Popular',
@@ -117,6 +120,23 @@ const translations = {
     'subscription.promo-code': 'Promo Code (Optional)',
     'subscription.purchase': 'Purchase Subscription',
     'subscription.terms': 'By purchasing a subscription, you agree to our terms and conditions',
+    'subscription.renew': 'Renew Subscription',
+    'subscription.search-username': 'Search Username',
+    'subscription.extend-time': 'Extend Time',
+    'subscription.add-data': 'Add Data',
+    'subscription.account-info': 'Account Information',
+    'subscription.plan-type': 'Plan Type',
+    'subscription.expiry-date': 'Expiry Date',
+    'subscription.remaining-data': 'Remaining Data',
+    'subscription.status': 'Status',
+    'subscription.user-not-found': 'Username not found',
+    'subscription.renewal-success': 'Subscription renewed successfully',
+    
+    // Free Trial
+    'free-trial.title': 'Free Trial - Boundless Network',
+    'free-trial.subtitle': 'Get 24-hour free access to experience our service',
+    'free-trial.get-trial': 'Get Free Trial',
+    'free-trial.telegram-note': 'Please contact our Telegram bot to get your free trial',
     
     // Footer
     'footer.description': 'Secure, fast and unlimited – for professional users who trust the best quality.',
@@ -141,6 +161,7 @@ const translations = {
     'nav.telegram': 'ربات تلگرام',
     'nav.purchase': 'خرید',
     'nav.free-trial': 'تست رایگان',
+    'nav.renew': 'تمدید اشتراک',
     
     // Hero Section
     'hero.title': 'شبکه بدون مرز',
@@ -169,7 +190,9 @@ const translations = {
     'pricing.title': 'پلن‌های قیمت‌گذاری',
     'pricing.subtitle': 'بهترین پلن را برای نیازهای خود انتخاب کنید',
     'pricing.lite': 'شبکه بدون مرز لایت',
+    'pricing.lite-desc': 'گزینه سبک دسترسی برای کاربرانی که به اتصال پایه با مکان‌های کمتر و سرعت متوسط نیاز دارند.',
     'pricing.pro': 'شبکه بدون مرز پرو',
+    'pricing.pro-desc': 'پلن اتصال پریمیوم با دسترسی کامل جهانی، بالاترین سرعت و اتصالات پایدار — به‌ویژه برای استریمینگ، کار از راه دور و بازی بهینه‌سازی شده.',
     'pricing.pro-plus': 'پرو پلاس',
     'pricing.monthly': 'ماهانه',
     'pricing.most-popular': 'محبوب‌ترین',
@@ -237,6 +260,23 @@ const translations = {
     'subscription.promo-code': 'کد تخفیف (اختیاری)',
     'subscription.purchase': 'خرید اشتراک',
     'subscription.terms': 'با خرید اشتراک، شما با قوانین و مقررات ما موافقت می‌کنید',
+    'subscription.renew': 'تمدید اشتراک',
+    'subscription.search-username': 'جستجوی نام کاربری',
+    'subscription.extend-time': 'افزایش زمان',
+    'subscription.add-data': 'افزایش حجم',
+    'subscription.account-info': 'اطلاعات حساب',
+    'subscription.plan-type': 'نوع پلن',
+    'subscription.expiry-date': 'تاریخ انقضا',
+    'subscription.remaining-data': 'حجم باقی‌مانده',
+    'subscription.status': 'وضعیت',
+    'subscription.user-not-found': 'نام کاربری یافت نشد',
+    'subscription.renewal-success': 'اشتراک با موفقیت تمدید شد',
+    
+    // Free Trial
+    'free-trial.title': 'تست رایگان - شبکه بدون مرز',
+    'free-trial.subtitle': 'دسترسی رایگان ۲۴ ساعته برای تجربه سرویس ما',
+    'free-trial.get-trial': 'دریافت تست رایگان',
+    'free-trial.telegram-note': 'لطفاً با ربات تلگرام ما تماس بگیرید تا تست رایگان خود را دریافت کنید',
     
     // Footer
     'footer.description': 'امن، سریع و بدون محدودیت – برای کاربران حرفه‌ای که به بهترین کیفیت اعتماد دارند.',

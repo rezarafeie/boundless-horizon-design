@@ -67,8 +67,11 @@ const SubscriptionForm = () => {
   const locationOptions = [
     { value: 'germany', labelEn: 'Germany', labelFa: 'آلمان' },
     { value: 'netherlands', labelEn: 'Netherlands', labelFa: 'هلند' },
-    { value: 'singapore', labelEn: 'Singapore', labelFa: 'سنگاپور' },
-    { value: 'usa', labelEn: 'United States', labelFa: 'آمریکا' }
+    { value: 'finland', labelEn: 'Finland', labelFa: 'فنلاند' },
+    { value: 'turkey', labelEn: 'Turkey', labelFa: 'ترکیه' },
+    { value: 'uk', labelEn: 'United Kingdom', labelFa: 'انگلستان' },
+    { value: 'usa', labelEn: 'United States', labelFa: 'آمریکا' },
+    { value: 'poland', labelEn: 'Poland', labelFa: 'لهستان' }
   ];
 
   const handleInputChange = (field: keyof SubscriptionFormData, value: string) => {
@@ -180,8 +183,8 @@ const SubscriptionForm = () => {
             </CardTitle>
             <CardDescription className="text-green-600 dark:text-green-400">
               {language === 'fa' ? 
-                'پیکربندی VPN شما با موفقیت ایجاد شد' : 
-                'Your VPN configuration has been created successfully'
+                'پیکربندی شبکه شما با موفقیت ایجاد شد' : 
+                'Your network configuration has been created successfully'
               }
             </CardDescription>
           </CardHeader>
@@ -199,7 +202,7 @@ const SubscriptionForm = () => {
 
             <div className="space-y-4">
               <Label className="text-lg font-semibold">
-                {language === 'fa' ? 'پیکربندی V2Ray' : 'V2Ray Configuration'}
+                {language === 'fa' ? 'پیکربندی شبکه' : 'Network Configuration'}
               </Label>
               
               <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
@@ -286,7 +289,7 @@ const SubscriptionForm = () => {
       <Card className="bg-background border-border">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-foreground mb-2">
-            {language === 'fa' ? 'خرید اشتراک VPN' : 'VPN Subscription Purchase'}
+            {language === 'fa' ? 'خرید اشتراک شبکه' : 'Network Subscription Purchase'}
           </CardTitle>
           <CardDescription>
             {language === 'fa' ? 
@@ -390,11 +393,11 @@ const SubscriptionForm = () => {
               </div>
             </div>
 
-            {/* VPN Configuration */}
+            {/* Network Configuration */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Globe className="w-5 h-5 text-primary" />
-                {language === 'fa' ? 'پیکربندی VPN' : 'VPN Configuration'}
+                {language === 'fa' ? 'پیکربندی شبکه' : 'Network Configuration'}
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

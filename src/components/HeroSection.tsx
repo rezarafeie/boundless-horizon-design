@@ -2,6 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ArrowRight, ShoppingCart, Gift } from 'lucide-react';
+import FreeTrialDialog from './FreeTrialDialog';
 
 const HeroSection = () => {
   const { t, language } = useLanguage();
@@ -44,15 +45,16 @@ const HeroSection = () => {
               {t('hero.purchase')}
             </Button>
             
-            <Button 
-              variant="outline" 
-              size="lg"
-              className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group border-2 border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-            >
-              <Gift className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {t('hero.free-trial')}
-            </Button>
+            <FreeTrialDialog>
+              <Button 
+                variant="outline" 
+                size="lg"
+                className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group border-2 border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
+              >
+                <Gift className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('hero.free-trial')}
+              </Button>
+            </FreeTrialDialog>
           </div>
         </div>
         

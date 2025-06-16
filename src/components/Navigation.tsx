@@ -9,7 +9,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Sun, Moon, Menu, X, Globe, ChevronDown, Send, ShoppingCart, Gift } from 'lucide-react';
+import { Sun, Moon, Menu, X, Globe, ChevronDown, Send, ShoppingCart, Gift, RefreshCw } from 'lucide-react';
+import FreeTrialDialog from './FreeTrialDialog';
+import SubscriptionRenewalDialog from './SubscriptionRenewalDialog';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
@@ -83,9 +85,21 @@ const Navigation = () => {
                   <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
                   {t('nav.purchase')}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => window.open('https://t.me/getbnbot', '_blank')} className="cursor-pointer">
-                  <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                  {t('nav.free-trial')}
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <FreeTrialDialog>
+                    <div className="flex items-center w-full">
+                      <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                      {t('nav.free-trial')}
+                    </div>
+                  </FreeTrialDialog>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <SubscriptionRenewalDialog>
+                    <div className="flex items-center w-full">
+                      <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                      {t('nav.renew')}
+                    </div>
+                  </SubscriptionRenewalDialog>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -134,14 +148,24 @@ const Navigation = () => {
                 <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
                 {t('nav.purchase')}
               </Button>
-              <Button 
-                onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-                variant="outline"
-                className="w-full justify-start"
-              >
-                <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                {t('nav.free-trial')}
-              </Button>
+              <FreeTrialDialog>
+                <Button 
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('nav.free-trial')}
+                </Button>
+              </FreeTrialDialog>
+              <SubscriptionRenewalDialog>
+                <Button 
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('nav.renew')}
+                </Button>
+              </SubscriptionRenewalDialog>
             </div>
           </div>
         )}
