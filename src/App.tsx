@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Subscription from "./pages/Subscription";
+import Renewal from "./pages/Renewal";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +28,7 @@ const App = () => {
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/subscription" element={<Subscription />} />
+            <Route path="/renewal" element={<Renewal />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

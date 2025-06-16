@@ -2,7 +2,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Zap, Star } from 'lucide-react';
+import { CheckCircle, Zap, Star, Globe } from 'lucide-react';
 import { SubscriptionPlan } from '@/types/subscription';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -20,8 +20,8 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       id: 'lite',
       name: language === 'fa' ? 'شبکه بدون مرز لایت' : 'Boundless Network Lite',
       description: language === 'fa' ? 
-        'سرعت پایین‌تر، مکان‌های محدود، پنل مرزبان' : 
-        'Lower speed, fewer locations, uses Marzban panel',
+        'اتصال پایه با آلمان، فنلاند، هلند - مناسب برای کاربری روزمره' : 
+        'Basic connection with Germany, Finland, Netherlands - suitable for daily use',
       pricePerGB: 3200,
       apiType: 'marzban'
     },
@@ -29,12 +29,24 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       id: 'pro',
       name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
       description: language === 'fa' ? 
-        'کارایی بالا، دسترسی کامل به مکان‌ها، API مرزنشین' : 
-        'High performance, full location access, uses Marzneshin API',
+        'پریمیوم با تمام مکان‌های جهانی و اتصالات تونلی - بهترین عملکرد' : 
+        'Premium with all global locations and tunnel connections - best performance',
       pricePerGB: 4200,
       apiType: 'marzneshin'
     }
   ];
+
+  const getLocationsList = (planId: string) => {
+    if (planId === 'lite') {
+      return language === 'fa' ? 
+        ['🇩🇪 آلمان', '🇫🇮 فنلاند', '🇳🇱 هلند'] :
+        ['🇩🇪 Germany', '🇫🇮 Finland', '🇳🇱 Netherlands'];
+    } else {
+      return language === 'fa' ? 
+        ['🇺🇸 آمریکا', '🇬🇧 انگلیس', '🇩🇪 آلمان', '🇫🇮 فنلاند', '🇳🇱 هلند', '🇯🇵 ژاپن', '🇸🇬 سنگاپور', '🇦🇺 استرالیا'] :
+        ['🇺🇸 USA', '🇬🇧 UK', '🇩🇪 Germany', '🇫🇮 Finland', '🇳🇱 Netherlands', '🇯🇵 Japan', '🇸🇬 Singapore', '🇦🇺 Australia'];
+    }
+  };
 
   const calculatePrice = (plan: SubscriptionPlan) => {
     return dataLimit * plan.pricePerGB;
@@ -79,7 +91,24 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
               </CardDescription>
             </CardHeader>
             
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
+              {/* Server Locations */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Globe className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {language === 'fa' ? 'مکان‌های سرور' : 'Server Locations'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {getLocationsList(plan.id).map((location, index) => (
+                    <Badge key={index} variant="outline" className="text-xs">
+                      {location}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
                   {language === 'fa' ? 'قیمت هر گیگابایت' : 'Price per GB'}

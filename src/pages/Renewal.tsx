@@ -2,22 +2,18 @@
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import Navigation from "@/components/Navigation";
-import HeroSection from "@/components/HeroSection";
-import FeaturesSection from "@/components/FeaturesSection";
-import WhyBoundlessSection from "@/components/WhyBoundlessSection";
-import FAQSection from "@/components/FAQSection";
+import RenewalSubscriptionForm from "@/components/RenewalSubscriptionForm";
 import FooterSection from "@/components/FooterSection";
 
-const Index = () => {
+const Renewal = () => {
   return (
     <ThemeProvider>
       <LanguageProvider>
         <div className="min-h-screen bg-background">
           <Navigation />
-          <HeroSection />
-          <FeaturesSection />
-          <WhyBoundlessSection />
-          <FAQSection />
+          <div className="pt-20">
+            <RenewalSubscriptionForm />
+          </div>
           <FooterSection />
         </div>
       </LanguageProvider>
@@ -25,4 +21,4 @@ const Index = () => {
   );
 };
 
-export default Index;
+export default Renewal;
