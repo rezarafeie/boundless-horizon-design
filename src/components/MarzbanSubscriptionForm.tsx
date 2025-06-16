@@ -63,7 +63,6 @@ const MarzbanSubscriptionForm = () => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [user, setUser] = useState(null);
 
   // Fixed configuration
   const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
@@ -82,13 +81,6 @@ const MarzbanSubscriptionForm = () => {
     if (status && authority) {
       handlePaymentCallback(status, authority);
     }
-
-    // Get current user
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    getCurrentUser();
   }, []);
 
   useEffect(() => {
@@ -526,17 +518,6 @@ const MarzbanSubscriptionForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'لطفاً ابتدا وارد شوید' : 
-          'Please sign in first',
-        variant: 'destructive'
-      });
-      return;
-    }
-    
     if (!checkRateLimit()) return;
     if (!validateForm()) return;
 
@@ -889,20 +870,6 @@ const MarzbanSubscriptionForm = () => {
         </CardHeader>
         
         <CardContent>
-          {!user && (
-            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
-                <AlertCircle className="w-5 h-5" />
-                <p className="font-medium">
-                  {language === 'fa' ? 
-                    'برای ادامه باید وارد شوید' : 
-                    'You need to sign in to continue'
-                  }
-                </p>
-              </div>
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* User Information */}
             <div className="space-y-4">
@@ -1049,7 +1016,7 @@ const MarzbanSubscriptionForm = () => {
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting || isLoading || !user}
+              disabled={isSubmitting || isLoading}
               size="lg"
             >
               {isSubmitting || isLoading ? (
