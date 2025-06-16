@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.zarinpal-checkout]
 verify_jwt = false
+
+[functions.marzneshin-update-user]
+verify_jwt = false

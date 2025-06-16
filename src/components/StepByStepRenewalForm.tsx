@@ -288,7 +288,6 @@ const StepByStepRenewalForm = () => {
       setLoadingMessage(language === 'fa' ? 'در حال پردازش تمدید رایگان...' : 'Processing free renewal...');
       
       try {
-        // TODO: Add actual renewal API call here
         console.log('Processing free renewal:', {
           username,
           plan: selectedPlan,
@@ -298,16 +297,52 @@ const StepByStepRenewalForm = () => {
           discount: appliedDiscount
         });
 
-        // Simulate API call for demonstration
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Make actual renewal API call based on plan type
+        let renewalResponse;
+        if (selectedPlan?.apiType === 'marzneshin') {
+          renewalResponse = await supabase.functions.invoke('marzneshin-update-user', {
+            body: {
+              username,
+              dataLimitGB: dataToAdd,
+              durationDays: daysToAdd
+            }
+          });
+        } else {
+          // For Marzban, we'll implement this later or use existing create-user function
+          renewalResponse = await supabase.functions.invoke('marzban-update-user', {
+            body: {
+              username,
+              dataLimitGB: dataToAdd,
+              durationDays: daysToAdd
+            }
+          });
+        }
+
+        console.log('Renewal API response:', renewalResponse);
+
+        if (renewalResponse.error) {
+          throw new Error(renewalResponse.error.message || 'Renewal API call failed');
+        }
+
+        if (!renewalResponse.data?.success) {
+          throw new Error(renewalResponse.data?.error || 'Renewal failed on server');
+        }
 
         // Update debug info with successful renewal
         setDebugInfo({
           ...initialDebugInfo,
           payment_status: 'FREE',
+          renewal_request: {
+            username,
+            plan: selectedPlan?.name,
+            data_limit_gb: dataToAdd,
+            expire_after_days: daysToAdd,
+            api_type: selectedPlan?.apiType
+          },
           renewal_response: {
             success: true,
             message: 'Free renewal completed successfully',
+            api_response: renewalResponse.data,
             timestamp: new Date().toISOString()
           }
         });
@@ -326,9 +361,17 @@ const StepByStepRenewalForm = () => {
         setDebugInfo({
           ...initialDebugInfo,
           payment_status: 'FAILED',
+          renewal_request: {
+            username,
+            plan: selectedPlan?.name,
+            data_limit_gb: dataToAdd,
+            expire_after_days: daysToAdd,
+            api_type: selectedPlan?.apiType
+          },
           error_details: {
             message: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            error_type: 'renewal_api_error'
           }
         });
         
@@ -337,6 +380,8 @@ const StepByStepRenewalForm = () => {
           description: language === 'fa' ? 'خطا در پردازش تمدید رایگان' : 'Error processing free renewal',
           variant: 'destructive'
         });
+        
+        setRenewalDebugOpen(true);
       } finally {
         setIsSubmitting(false);
         setLoadingMessage('');
@@ -371,7 +416,15 @@ const StepByStepRenewalForm = () => {
         // Update debug info with payment authority
         setDebugInfo({
           ...initialDebugInfo,
-          payment_authority: authority
+          payment_authority: authority,
+          renewal_request: {
+            username,
+            plan: selectedPlan?.name,
+            data_limit_gb: dataToAdd,
+            expire_after_days: daysToAdd,
+            api_type: selectedPlan?.apiType,
+            payment_amount: totalPrice
+          }
         });
         
         // Store renewal data
@@ -410,9 +463,18 @@ const StepByStepRenewalForm = () => {
       setDebugInfo({
         ...initialDebugInfo,
         payment_status: 'FAILED',
+        renewal_request: {
+          username,
+          plan: selectedPlan?.name,
+          data_limit_gb: dataToAdd,
+          expire_after_days: daysToAdd,
+          api_type: selectedPlan?.apiType,
+          payment_amount: totalPrice
+        },
         error_details: {
           message: error instanceof Error ? error.message : 'Payment gateway error',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          error_type: 'payment_gateway_error'
         }
       });
       
