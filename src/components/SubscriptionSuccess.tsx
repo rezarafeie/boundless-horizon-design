@@ -26,6 +26,7 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [countdown, setCountdown] = useState(3);
 
   const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
 
@@ -34,8 +35,22 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
       generateQRCode(result.subscription_url);
       // Store data for delivery page
       localStorage.setItem('deliverySubscriptionData', JSON.stringify(result));
+      
+      // Start countdown and auto-redirect
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            navigate('/delivery', { state: { subscriptionData: result } });
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
     }
-  }, [result]);
+  }, [result, navigate]);
 
   const generateQRCode = async (url: string) => {
     try {
@@ -97,6 +112,16 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
               'Payment successful and your VLESS configuration is ready'
             }
           </CardDescription>
+          
+          {/* Auto-redirect countdown */}
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <p className="text-blue-800 dark:text-blue-200 text-sm">
+              {language === 'fa' ? 
+                `در ${countdown} ثانیه به صفحه جزئیات منتقل می‌شوید...` : 
+                `Redirecting to details page in ${countdown} seconds...`
+              }
+            </p>
+          </div>
         </CardHeader>
         
         <CardContent className="space-y-6">
