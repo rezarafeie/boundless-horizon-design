@@ -1,9 +1,11 @@
+
 export interface SubscriptionPlan {
   id: 'lite' | 'pro';
   name: string;
   description: string;
   pricePerGB: number;
   apiType: 'marzban' | 'marzneshin';
+  durationDays?: number;
 }
 
 export interface DiscountCode {
@@ -19,6 +21,19 @@ export interface MarzneshinInbound {
   network: string;
   tls: string;
   port: number;
+}
+
+export interface MarzneshinService {
+  id: number;
+  name: string;
+  inbound_ids: number[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MarzneshinServiceRequest {
+  name: string;
+  inbound_ids: number[];
 }
 
 export interface MarzneshinUserRequest {
