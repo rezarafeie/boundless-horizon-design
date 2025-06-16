@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, ChevronDown, CheckCircle, Zap, User, Calendar, Database, RefreshCw, Bug, Globe, Loader, Code2 } from 'lucide-react';
+import { Search, ChevronDown, CheckCircle, Zap, User, Calendar, Database, RefreshCw, Bug, Globe, Loader, Code2, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import { SubscriptionPlan, DiscountCode } from '@/types/subscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -33,6 +34,13 @@ interface DebugInfo {
   payment_authority?: string;
   error_details?: any;
 }
+
+const STEPS = [
+  { id: 1, name: 'plan', icon: Settings, titleFa: 'انتخاب پلن', titleEn: 'Select Plan' },
+  { id: 2, name: 'search', icon: User, titleFa: 'جستجوی کاربر', titleEn: 'User Search' },
+  { id: 3, name: 'renewal', icon: RefreshCw, titleFa: 'تمدید اشتراک', titleEn: 'Renewal Options' },
+  { id: 4, name: 'success', icon: CheckCircle, titleFa: 'تکمیل', titleEn: 'Complete' },
+];
 
 const StepByStepRenewalForm = () => {
   const { language } = useLanguage();
@@ -491,63 +499,72 @@ const StepByStepRenewalForm = () => {
     }
   };
 
+  const progressPercentage = ((currentStep - 1) / (STEPS.length - 1)) * 100;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted/20 py-12 px-4">
-      {/* Loading Overlay */}
-      {isSubmitting && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg flex items-center gap-3">
-            <Loader className="w-6 h-6 animate-spin" />
-            <span className="text-lg font-medium">{loadingMessage}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-4">
+    <div className="max-w-4xl mx-auto p-6">
+      <Card className="bg-white dark:bg-gray-900 shadow-xl border-0">
+        <CardHeader className="text-center pb-6">
+          <CardTitle className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             {language === 'fa' ? 'تمدید اشتراک' : 'Renewal Subscription'}
-          </h1>
-          <p className="text-xl text-muted-foreground">
+          </CardTitle>
+          <CardDescription className="text-lg text-gray-600 dark:text-gray-300">
             {language === 'fa' ? 'اشتراک شبکه بدون مرز خود را تمدید کنید' : 'Renew your Boundless Network subscription'}
-          </p>
-        </div>
+          </CardDescription>
+        </CardHeader>
 
-        {/* Step Indicator */}
-        <div className="flex justify-center mb-8">
-          <div className="flex items-center space-x-4">
-            {[1, 2, 3, 4].map((step) => (
-              <div key={step} className={`flex items-center ${step < 4 ? (isRTL ? 'ml-4' : 'mr-4') : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  currentStep >= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                }`}>
-                  {step}
-                </div>
-                {step < 4 && (
-                  <div className={`w-12 h-0.5 ${currentStep > step ? 'bg-primary' : 'bg-muted'} ${isRTL ? 'mr-2' : 'ml-2'}`} />
-                )}
-              </div>
-            ))}
+        <CardContent className="px-8 pb-8">
+          {/* Progress Bar */}
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-4">
+              {STEPS.map((step, index) => {
+                const Icon = step.icon;
+                const isActive = currentStep === step.id;
+                const isCompleted = currentStep > step.id;
+                const isAccessible = currentStep >= step.id;
+
+                return (
+                  <div key={step.id} className="flex flex-col items-center">
+                    <div className={`
+                      w-12 h-12 rounded-full flex items-center justify-center mb-2 transition-all duration-300
+                      ${isCompleted 
+                        ? 'bg-green-500 text-white' 
+                        : isActive 
+                        ? 'bg-blue-500 text-white shadow-lg scale-110' 
+                        : isAccessible
+                        ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                      }
+                    `}>
+                      {isCompleted ? (
+                        <CheckCircle className="w-6 h-6" />
+                      ) : (
+                        <Icon className="w-6 h-6" />
+                      )}
+                    </div>
+                    <span className={`
+                      text-sm font-medium transition-colors
+                      ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}
+                    `}>
+                      {language === 'fa' ? step.titleFa : step.titleEn}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <Progress value={progressPercentage} className="h-2" />
           </div>
-        </div>
 
-        {/* Step 1: Plan Selection */}
-        {currentStep >= 1 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className={`w-5 h-5 ${currentStep > 1 ? 'text-green-500' : 'text-primary'}`} />
-                {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {currentStep === 1 ? (
+          {/* Step Content */}
+          <div className="min-h-[400px]">
+            {/* Step 1: Plan Selection */}
+            {currentStep === 1 && (
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {plans.map((plan) => (
                     <Card 
                       key={plan.id}
-                      className="cursor-pointer transition-all duration-200 hover:shadow-md"
+                      className="cursor-pointer transition-all duration-200 hover:shadow-md border-2 hover:border-primary"
                       onClick={() => handlePlanSelect(plan)}
                     >
                       <CardHeader className="pb-2">
@@ -582,310 +599,343 @@ const StepByStepRenewalForm = () => {
                     </Card>
                   ))}
                 </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{selectedPlan?.name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedPlan?.description}</p>
-                  </div>
-                  <Badge variant="default">
-                    {language === 'fa' ? 'انتخاب شده' : 'Selected'}
-                  </Badge>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+              </div>
+            )}
 
-        {/* Step 2: Username Search */}
-        {currentStep >= 2 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className={`w-5 h-5 ${currentStep > 2 ? 'text-green-500' : 'text-primary'}`} />
-                {language === 'fa' ? 'جستجوی کاربر' : 'User Search'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {currentStep === 2 ? (
-                <div className="space-y-4">
+            {/* Step 2: Username Search */}
+            {currentStep === 2 && (
+              <div className="space-y-6">
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-semibold mb-2">
+                    {language === 'fa' ? 'جستجوی حساب کاربری' : 'Search User Account'}
+                  </h3>
+                  <p className="text-muted-foreground">
+                    {language === 'fa' ? 'نام کاربری فعلی خود را وارد کنید' : 'Enter your current username'}
+                  </p>
+                </div>
+
+                <div className="max-w-md mx-auto space-y-4">
                   <div>
-                    <Label htmlFor="username">
-                      {language === 'fa' ? 'نام کاربری فعلی شما' : 'Your Current Username'}
+                    <Label htmlFor="username" className="text-base font-medium">
+                      {language === 'fa' ? 'نام کاربری' : 'Username'}
                     </Label>
-                    <div className="flex gap-2 mt-1">
+                    <div className="flex gap-2 mt-2">
                       <Input
                         id="username"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         placeholder={language === 'fa' ? 'نام کاربری...' : 'Username...'}
+                        className="text-lg p-3"
                       />
-                      <Button onClick={searchUser} disabled={!username.trim() || searchLoading}>
+                      <Button 
+                        onClick={searchUser} 
+                        disabled={!username.trim() || searchLoading}
+                        size="lg"
+                        className="px-6"
+                      >
                         {searchLoading ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <RefreshCw className="w-5 h-5 animate-spin" />
                         ) : (
-                          <Search className="w-4 h-4" />
+                          <Search className="w-5 h-5" />
                         )}
-                        {language === 'fa' ? 'جستجو' : 'Search'}
                       </Button>
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="flex items-center justify-between">
+              </div>
+            )}
+
+            {/* Step 3: User Info and Renewal Options */}
+            {currentStep === 3 && userData && (
+              <div className="space-y-6">
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-semibold mb-2">
+                    {language === 'fa' ? 'اطلاعات حساب و تمدید' : 'Account Info & Renewal'}
+                  </h3>
+                  <p className="text-muted-foreground">
+                    {language === 'fa' ? 'تنظیمات تمدید اشتراک خود را انتخاب کنید' : 'Choose your renewal settings'}
+                  </p>
+                </div>
+
+                {/* Current User Info */}
+                <Card className="bg-muted/30">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center justify-between">
+                      {username}
+                      <Badge variant={userData.status === 'active' ? 'default' : 'secondary'}>
+                        {userData.status}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label className="text-sm text-muted-foreground">
+                          {language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}
+                        </Label>
+                        <p className="font-medium">{formatExpireDate(userData.expire, userData.expire_date)}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm text-muted-foreground">
+                          {language === 'fa' ? 'مصرف داده' : 'Data Usage'}
+                        </Label>
+                        <p className="font-medium">{formatDataUsage(userData.used_traffic, userData.data_limit)}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm text-muted-foreground">
+                          {language === 'fa' ? 'نوع پلن' : 'Plan Type'}
+                        </Label>
+                        <p className="font-medium">{selectedPlan?.name}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Renewal Options */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <p className="font-medium">{username}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {language === 'fa' ? 'کاربر پیدا شد' : 'User found'}
-                    </p>
+                    <Label htmlFor="days" className="flex items-center gap-2 mb-3 text-base font-medium">
+                      <Calendar className="w-5 h-5" />
+                      {language === 'fa' ? 'روزهای اضافه' : 'Days to Add'}
+                    </Label>
+                    <Input
+                      id="days"
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={daysToAdd}
+                      onChange={(e) => setDaysToAdd(Number(e.target.value))}
+                      className="text-lg p-3"
+                    />
                   </div>
-                  <Badge variant="default" className="text-green-600 border-green-600">
-                    {language === 'fa' ? 'تایید شده' : 'Verified'}
-                  </Badge>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 3: Debug Log Card */}
-        {apiResponse && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bug className="w-5 h-5 text-orange-500" />
-                {language === 'fa' ? 'گزارش API' : 'API Debug Log'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="outline" className="w-full flex items-center justify-between">
-                    {language === 'fa' ? 'مشاهده پاسخ API' : 'View API Response'}
-                    <ChevronDown className={`w-4 h-4 transition-transform ${debugOpen ? 'rotate-180' : ''}`} />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <div className="bg-muted p-4 rounded-lg">
-                    <pre className="text-sm overflow-auto">
-                      {JSON.stringify(apiResponse, null, 2)}
-                    </pre>
+                  <div>
+                    <Label htmlFor="data" className="flex items-center gap-2 mb-3 text-base font-medium">
+                      <Database className="w-5 h-5" />
+                      {language === 'fa' ? 'گیگابایت اضافه' : 'GB to Add'}
+                    </Label>
+                    <Input
+                      id="data"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      value={dataToAdd}
+                      onChange={(e) => setDataToAdd(Number(e.target.value))}
+                      className="text-lg p-3"
+                    />
                   </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 4: User Info and Renewal Options */}
-        {userData && currentStep >= 3 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <RefreshCw className="w-5 h-5 text-primary" />
-                {language === 'fa' ? 'اطلاعات فعلی و تمدید' : 'Current Info & Renewal'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Current User Info */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
-                <div>
-                  <Label className="text-sm text-muted-foreground">
-                    {language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}
-                  </Label>
-                  <p className="font-medium">{formatExpireDate(userData.expire, userData.expire_date)}</p>
                 </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">
-                    {language === 'fa' ? 'مصرف داده' : 'Data Usage'}
-                  </Label>
-                  <p className="font-medium">{formatDataUsage(userData.used_traffic, userData.data_limit)}</p>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">
-                    {language === 'fa' ? 'وضعیت' : 'Status'}
-                  </Label>
-                  <Badge variant={userData.status === 'active' ? 'default' : 'secondary'}>
-                    {userData.status}
-                  </Badge>
-                </div>
-              </div>
 
-              {/* Renewal Options */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="days" className="flex items-center gap-2 mb-2">
-                    <Calendar className="w-4 h-4" />
-                    {language === 'fa' ? 'روزهای اضافه' : 'Days to Add'}
-                  </Label>
-                  <Input
-                    id="days"
-                    type="number"
-                    min="1"
-                    max="365"
-                    value={daysToAdd}
-                    onChange={(e) => setDaysToAdd(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="data" className="flex items-center gap-2 mb-2">
-                    <Database className="w-4 h-4" />
-                    {language === 'fa' ? 'گیگابایت اضافه' : 'GB to Add'}
-                  </Label>
-                  <Input
-                    id="data"
-                    type="number"
-                    min="1"
-                    max="1000"
-                    value={dataToAdd}
-                    onChange={(e) => setDataToAdd(Number(e.target.value))}
-                  />
-                </div>
-              </div>
+                {/* Discount Code Field */}
+                <DiscountField
+                  onDiscountApply={handleDiscountApply}
+                  appliedDiscount={appliedDiscount}
+                />
 
-              {/* Discount Code Field */}
-              <DiscountField
-                onDiscountApply={handleDiscountApply}
-                appliedDiscount={appliedDiscount}
-              />
-
-              {/* Price Summary */}
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
-                <div className="space-y-2">
-                  {appliedDiscount && (
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <span>
-                        {language === 'fa' ? 'قیمت اصلی' : 'Original Price'}
-                      </span>
-                      <span className="line-through">
-                        {getOriginalPrice().toLocaleString()} 
-                        {language === 'fa' ? ' تومان' : ' Toman'}
-                      </span>
-                    </div>
-                  )}
-                  
-                  {appliedDiscount && (
-                    <div className="flex items-center justify-between text-sm text-green-600">
-                      <span>
-                        {language === 'fa' ? 'تخفیف' : 'Discount'} ({appliedDiscount.percentage}%)
-                      </span>
-                      <span>
-                        -{calculateDiscount().toLocaleString()} 
-                        {language === 'fa' ? ' تومان' : ' Toman'}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between border-t pt-2">
-                    <span className="font-medium">
-                      {language === 'fa' ? 'مجموع قیمت' : 'Total Price'}
-                    </span>
-                    <span className="text-2xl font-bold text-primary">
-                      {calculateTotalPrice() === 0 ? (
-                        language === 'fa' ? 'رایگان' : 'FREE'
-                      ) : (
-                        `${calculateTotalPrice().toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`
+                {/* Price Summary */}
+                <Card className="bg-primary/5 border-primary/20">
+                  <CardContent className="pt-6">
+                    <div className="space-y-3">
+                      {appliedDiscount && (
+                        <div className="flex items-center justify-between text-sm text-muted-foreground">
+                          <span>{language === 'fa' ? 'قیمت اصلی' : 'Original Price'}</span>
+                          <span className="line-through">
+                            {getOriginalPrice().toLocaleString()} 
+                            {language === 'fa' ? ' تومان' : ' Toman'}
+                          </span>
+                        </div>
                       )}
-                    </span>
-                  </div>
+                      
+                      {appliedDiscount && (
+                        <div className="flex items-center justify-between text-sm text-green-600">
+                          <span>
+                            {language === 'fa' ? 'تخفیف' : 'Discount'} ({appliedDiscount.percentage}%)
+                          </span>
+                          <span>
+                            -{calculateDiscount().toLocaleString()} 
+                            {language === 'fa' ? ' تومان' : ' Toman'}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between border-t pt-3 text-lg">
+                        <span className="font-semibold">
+                          {language === 'fa' ? 'مجموع قیمت' : 'Total Price'}
+                        </span>
+                        <span className="text-2xl font-bold text-primary">
+                          {calculateTotalPrice() === 0 ? (
+                            language === 'fa' ? 'رایگان' : 'FREE'
+                          ) : (
+                            `${calculateTotalPrice().toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Renewal Button */}
+                <Button 
+                  onClick={handleRenewal} 
+                  size="xl" 
+                  className="w-full"
+                  disabled={isSubmitting}
+                  variant="hero-primary"
+                >
+                  <RefreshCw className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'} ${isSubmitting ? 'animate-spin' : ''}`} />
+                  {isSubmitting ? (
+                    language === 'fa' ? 'در حال پردازش...' : 'Processing...'
+                  ) : calculateTotalPrice() === 0 ? (
+                    language === 'fa' ? 'تمدید رایگان' : 'Free Renewal'
+                  ) : (
+                    language === 'fa' ? 
+                      `پرداخت و تمدید - ${calculateTotalPrice().toLocaleString()} تومان` :
+                      `Pay & Renew - ${calculateTotalPrice().toLocaleString()} Toman`
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Step 4: Success or Debug Info */}
+            {currentStep === 4 && (
+              <div className="text-center space-y-6">
+                <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-4">
+                  <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
                 </div>
-                
-                <p className="text-sm text-muted-foreground mt-2">
-                  {dataToAdd} GB × {selectedPlan?.pricePerGB.toLocaleString()} 
-                  {language === 'fa' ? ' تومان' : ' Toman'}
+                <h3 className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {language === 'fa' ? 'تمدید موفق!' : 'Renewal Successful!'}
+                </h3>
+                <p className="text-muted-foreground">
+                  {language === 'fa' ? 
+                    'اشتراک شما با موفقیت تمدید شد' : 
+                    'Your subscription has been renewed successfully'
+                  }
                 </p>
               </div>
+            )}
+          </div>
 
-              {/* Renewal Button */}
-              <Button 
-                onClick={handleRenewal} 
-                size="lg" 
-                className="w-full"
-                disabled={isSubmitting}
+          {/* Navigation Buttons */}
+          {currentStep >= 2 && currentStep < 4 && (
+            <div className="flex justify-between items-center pt-8 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStep(prev => prev - 1)}
+                disabled={currentStep === 1}
+                className="flex items-center gap-2"
               >
-                <RefreshCw className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'} ${isSubmitting ? 'animate-spin' : ''}`} />
-                {isSubmitting ? (
-                  language === 'fa' ? 'در حال پردازش...' : 'Processing...'
-                ) : calculateTotalPrice() === 0 ? (
-                  language === 'fa' ? 'تمدید رایگان' : 'Free Renewal'
-                ) : (
-                  language === 'fa' ? 
-                    `پرداخت و تمدید - ${calculateTotalPrice().toLocaleString()} تومان` :
-                    `Pay & Renew - ${calculateTotalPrice().toLocaleString()} Toman`
-                )}
+                <ChevronLeft className="w-4 h-4" />
+                {language === 'fa' ? 'قبلی' : 'Previous'}
               </Button>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* Renewal Debug Log Card */}
-        {debugInfo && (debugMode || renewalDebugOpen) && (
-          <Card className="mb-6 border-blue-200 bg-blue-50 dark:bg-blue-900/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Code2 className="w-5 h-5 text-blue-500" />
-                {language === 'fa' ? 'گزارش عملیات تمدید' : 'Renewal Debug Log'}
-              </CardTitle>
-              <CardDescription>
-                {language === 'fa' ? 
-                  'اطلاعات تکمیلی درباره وضعیت پرداخت و تمدید' : 
-                  'Detailed information about payment and renewal status'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Collapsible open={renewalDebugOpen} onOpenChange={setRenewalDebugOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="outline" className="w-full flex items-center justify-between">
-                    {language === 'fa' ? 'مشاهده جزئیات کامل' : 'View Full Details'}
-                    <ChevronDown className={`w-4 h-4 transition-transform ${renewalDebugOpen ? 'rotate-180' : ''}`} />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <div className="bg-muted p-4 rounded-lg">
-                    <pre className="text-sm overflow-auto">
-                      {JSON.stringify(debugInfo, null, 2)}
-                    </pre>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-              
-              {/* Quick Status Summary */}
-              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Payment Status</Label>
-                  <Badge variant={debugInfo.payment_status === 'PAID' || debugInfo.payment_status === 'FREE' ? 'default' : 'destructive'}>
-                    {debugInfo.payment_status}
-                  </Badge>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Amount</Label>
-                  <p className="text-sm font-medium">{debugInfo.amount_paid.toLocaleString()} Toman</p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Gateway</Label>
-                  <p className="text-sm font-medium">{debugInfo.payment_gateway}</p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Discount</Label>
-                  <p className="text-sm font-medium">{debugInfo.discount_code || 'None'}</p>
-                </div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <span>{currentStep}</span>
+                <span>{language === 'fa' ? 'از' : 'of'}</span>
+                <span>{STEPS.length}</span>
               </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* Error State */}
-        {apiResponse?.error && (
-          <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
-            <CardContent className="pt-6">
-              <p className="text-red-600 dark:text-red-400 text-center">
-                {language === 'fa' ? 'کاربر پیدا نشد یا خطا در اتصال به سرور' : 'User not found or server connection error'}
-              </p>
+              {currentStep === 2 && (
+                <Button
+                  variant="hero-primary"
+                  onClick={() => {
+                    if (userData) {
+                      setCurrentStep(3);
+                    }
+                  }}
+                  disabled={!userData}
+                  className="flex items-center gap-2"
+                >
+                  {language === 'fa' ? 'بعدی' : 'Next'}
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              )}
+
+              {currentStep === 3 && (
+                <div className="w-24" />
+              )}
+            </div>
+          )}
+
+          {/* Debug sections - keep existing debug functionality */}
+          {apiResponse && debugMode && (
+            <Card className="mt-6 border-orange-200 bg-orange-50 dark:bg-orange-900/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-orange-600">
+                  <Bug className="w-5 h-5" />
+                  {language === 'fa' ? 'گزارش API' : 'API Debug Log'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="outline" className="w-full flex items-center justify-between">
+                      {language === 'fa' ? 'مشاهده پاسخ API' : 'View API Response'}
+                      <ChevronDown className={`w-4 h-4 transition-transform ${debugOpen ? 'rotate-180' : ''}`} />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4">
+                    <div className="bg-muted p-4 rounded-lg">
+                      <pre className="text-sm overflow-auto">
+                        {JSON.stringify(apiResponse, null, 2)}
+                      </pre>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </CardContent>
+            </Card>
+          )}
+
+          {debugInfo && (debugMode || renewalDebugOpen) && (
+            <Card className="mt-6 border-blue-200 bg-blue-50 dark:bg-blue-900/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-600">
+                  <Code2 className="w-5 h-5" />
+                  {language === 'fa' ? 'گزارش عملیات تمدید' : 'Renewal Debug Log'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Collapsible open={renewalDebugOpen} onOpenChange={setRenewalDebugOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="outline" className="w-full flex items-center justify-between">
+                      {language === 'fa' ? 'مشاهده جزئیات کامل' : 'View Full Details'}
+                      <ChevronDown className={`w-4 h-4 transition-transform ${renewalDebugOpen ? 'rotate-180' : ''}`} />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4">
+                    <div className="bg-muted p-4 rounded-lg">
+                      <pre className="text-sm overflow-auto">
+                        {JSON.stringify(debugInfo, null, 2)}
+                      </pre>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </CardContent>
+            </Card>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Loading Overlay */}
+      {isSubmitting && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="p-6">
+            <CardContent className="flex items-center gap-3 pt-0">
+              <Loader className="w-6 h-6 animate-spin" />
+              <span className="text-lg font-medium">{loadingMessage}</span>
             </CardContent>
           </Card>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {apiResponse?.error && currentStep === 2 && (
+        <Card className="mt-6 border-red-200 bg-red-50 dark:bg-red-900/20">
+          <CardContent className="pt-6 text-center">
+            <p className="text-red-600 dark:text-red-400">
+              {language === 'fa' ? 'کاربر پیدا نشد یا خطا در اتصال به سرور' : 'User not found or server connection error'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
