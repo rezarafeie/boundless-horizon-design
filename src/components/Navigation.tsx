@@ -10,7 +10,8 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon, Menu, X, Globe, ChevronDown, Send, ShoppingCart, Gift, RefreshCw } from 'lucide-react';
-import FreeTrialDialog from './FreeTrialDialog';
+import { Link } from 'react-router-dom';
+import FreeTrialButton from './FreeTrialButton';
 import SubscriptionRenewalDialog from './SubscriptionRenewalDialog';
 
 const Navigation = () => {
@@ -25,9 +26,9 @@ const Navigation = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <a href="/" className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+            <Link to="/" className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
               {language === 'fa' ? 'شبکه بدون مرز' : 'BNETS.CO'}
-            </a>
+            </Link>
           </div>
 
           {/* Desktop Navigation */}
@@ -35,9 +36,9 @@ const Navigation = () => {
             <a href="#features" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.features')}
             </a>
-            <a href="/subscription" className="text-foreground/70 hover:text-foreground transition-colors">
+            <Link to="/subscription" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.subscription')}
-            </a>
+            </Link>
             <a href="#about" className="text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.about')}
             </a>
@@ -81,25 +82,22 @@ const Navigation = () => {
                   <Send className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
                   {t('nav.telegram')}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => window.location.href = '/subscription'} className="cursor-pointer">
-                  <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                  {t('nav.purchase')}
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link to="/subscription" className="flex items-center w-full">
+                    <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                    {t('nav.purchase')}
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild className="cursor-pointer">
-                  <FreeTrialDialog>
-                    <div className="flex items-center w-full">
-                      <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                      {t('nav.free-trial')}
-                    </div>
-                  </FreeTrialDialog>
+                  <div className="w-full">
+                    <FreeTrialButton />
+                  </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild className="cursor-pointer">
-                  <SubscriptionRenewalDialog>
-                    <div className="flex items-center w-full">
-                      <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                      {t('nav.renew')}
-                    </div>
-                  </SubscriptionRenewalDialog>
+                  <Link to="/renewal" className="flex items-center w-full">
+                    <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                    {t('nav.renew')}
+                  </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -122,9 +120,9 @@ const Navigation = () => {
             <a href="#features" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.features')}
             </a>
-            <a href="/subscription" className="block text-foreground/70 hover:text-foreground transition-colors">
+            <Link to="/subscription" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.subscription')}
-            </a>
+            </Link>
             <a href="#about" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.about')}
             </a>
@@ -140,24 +138,17 @@ const Navigation = () => {
                 <Send className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
                 {t('nav.telegram')}
               </Button>
-              <Button 
-                onClick={() => window.location.href = '/subscription'}
-                variant="outline"
-                className="w-full justify-start"
-              >
-                <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                {t('nav.purchase')}
-              </Button>
-              <FreeTrialDialog>
+              <Link to="/subscription">
                 <Button 
                   variant="outline"
                   className="w-full justify-start"
                 >
-                  <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                  {t('nav.free-trial')}
+                  <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('nav.purchase')}
                 </Button>
-              </FreeTrialDialog>
-              <SubscriptionRenewalDialog>
+              </Link>
+              <FreeTrialButton />
+              <Link to="/renewal">
                 <Button 
                   variant="outline"
                   className="w-full justify-start"
@@ -165,7 +156,7 @@ const Navigation = () => {
                   <RefreshCw className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
                   {t('nav.renew')}
                 </Button>
-              </SubscriptionRenewalDialog>
+              </Link>
             </div>
           </div>
         )}

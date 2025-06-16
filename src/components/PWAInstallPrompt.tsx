@@ -56,7 +56,7 @@ const PWAInstallPrompt = () => {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <img 
-              src="/lovable-uploads/953c60c6-037c-4b73-8b2e-dd2d0d220702.png" 
+              src="/lovable-uploads/28e6b45e-0a57-479d-8274-b76cf45c566a.png" 
               alt="BNETS.CO" 
               className="w-8 h-8"
             />

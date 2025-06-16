@@ -1,6 +1,4 @@
 
-import { LanguageProvider } from "@/contexts/LanguageContext";
-import { ThemeProvider } from "@/contexts/ThemeContext";
 import Navigation from "@/components/Navigation";
 import HeroSection from "@/components/HeroSection";
 import FeaturesSection from "@/components/FeaturesSection";
@@ -10,18 +8,14 @@ import FooterSection from "@/components/FooterSection";
 
 const Index = () => {
   return (
-    <ThemeProvider>
-      <LanguageProvider>
-        <div className="min-h-screen bg-background">
-          <Navigation />
-          <HeroSection />
-          <FeaturesSection />
-          <WhyBoundlessSection />
-          <FAQSection />
-          <FooterSection />
-        </div>
-      </LanguageProvider>
-    </ThemeProvider>
+    <div className="min-h-screen bg-background">
+      <Navigation />
+      <HeroSection />
+      <FeaturesSection />
+      <WhyBoundlessSection />
+      <FAQSection />
+      <FooterSection />
+    </div>
   );
 };
 

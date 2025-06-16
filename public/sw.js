@@ -4,7 +4,7 @@ const urlsToCache = [
   '/',
   '/static/js/bundle.js',
   '/static/css/main.css',
-  '/lovable-uploads/953c60c6-037c-4b73-8b2e-dd2d0d220702.png'
+  '/lovable-uploads/28e6b45e-0a57-479d-8274-b76cf45c566a.png'
 ];
 
 self.addEventListener('install', (event) => {

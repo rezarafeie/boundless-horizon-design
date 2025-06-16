@@ -5,11 +5,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LanguageProvider } from "@/contexts/LanguageContext";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import Subscription from "./pages/Subscription";
-import Renewal from "./pages/Renewal";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+import { lazy, Suspense } from "react";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
+
+// Lazy load pages for better performance
+const Index = lazy(() => import("./pages/Index"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Subscription = lazy(() => import("./pages/Subscription"));
+const Renewal = lazy(() => import("./pages/Renewal"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,24 +24,35 @@ const queryClient = new QueryClient({
   },
 });
 
+// Loading component for lazy loaded pages
+const PageLoader = () => (
+  <div className="min-h-screen bg-background flex items-center justify-center">
+    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+  </div>
+);
+
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/subscription" element={<Subscription />} />
-              <Route path="/renewal" element={<Renewal />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            <PWAInstallPrompt />
-          </BrowserRouter>
-        </TooltipProvider>
-      </LanguageProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/subscription" element={<Subscription />} />
+                  <Route path="/renewal" element={<Renewal />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+              <PWAInstallPrompt />
+            </BrowserRouter>
+          </TooltipProvider>
+        </LanguageProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 };

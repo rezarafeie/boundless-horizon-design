@@ -1,11 +1,13 @@
 
 import { Button } from "@/components/ui/button";
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ArrowRight, ShoppingCart, Gift } from 'lucide-react';
-import FreeTrialDialog from './FreeTrialDialog';
+import { ArrowRight, ShoppingCart, Gift, RefreshCw } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import FreeTrialButton from './FreeTrialButton';
 
 const HeroSection = () => {
   const { t, language } = useLanguage();
+  const navigate = useNavigate();
   const isRTL = language === 'fa';
 
   return (
@@ -36,25 +38,28 @@ const HeroSection = () => {
           </p>
           
           <div className={`flex flex-col sm:flex-row gap-4 justify-center items-center animate-slide-up ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
-            <Button 
-              size="lg" 
-              className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
-              onClick={() => window.location.href = '/subscription'}
-            >
-              <ShoppingCart className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {t('hero.purchase')}
-            </Button>
+            <Link to="/subscription">
+              <Button 
+                size="lg" 
+                className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
+              >
+                <ShoppingCart className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('hero.purchase')}
+              </Button>
+            </Link>
             
-            <FreeTrialDialog>
+            <FreeTrialButton />
+            
+            <Link to="/renewal">
               <Button 
                 variant="outline" 
                 size="lg"
-                className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group border-2 border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
+                className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group border-2 border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20"
               >
-                <Gift className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                {t('hero.free-trial')}
+                <RefreshCw className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {language === 'fa' ? 'تمدید اشتراک' : 'Renew Subscription'}
               </Button>
-            </FreeTrialDialog>
+            </Link>
           </div>
         </div>
         
