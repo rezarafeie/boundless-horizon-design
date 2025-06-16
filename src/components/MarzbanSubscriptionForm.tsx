@@ -25,6 +25,12 @@ interface MarzbanResponse {
   data_limit: number;
 }
 
+interface PaymanResponse {
+  payman_authority: string;
+  code: number;
+  message?: string;
+}
+
 interface DebugInfo {
   endpoint: string;
   status: number;
