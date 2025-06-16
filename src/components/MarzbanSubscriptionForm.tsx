@@ -1,20 +1,19 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { QrCode, Copy, Download, CheckCircle, AlertCircle, Globe, Shield, Zap, User } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDown, ChevronUp, Bug } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface MarzbanFormData {
   username: string;
   dataLimit: number; // in GB
   duration: number; // in days
-  inbound: string;
   notes: string;
 }
 
@@ -25,6 +24,14 @@ interface MarzbanResponse {
   data_limit: number;
 }
 
+interface DebugInfo {
+  endpoint: string;
+  status: number;
+  request: any;
+  response: any;
+  error?: string;
+}
+
 const MarzbanSubscriptionForm = () => {
   const { language, t } = useLanguage();
   const { toast } = useToast();
@@ -32,21 +39,25 @@ const MarzbanSubscriptionForm = () => {
     username: '',
     dataLimit: 10,
     duration: 30,
-    inbound: '',
     notes: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<MarzbanResponse | null>(null);
   const [step, setStep] = useState(1);
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+  const [rateLimitMap, setRateLimitMap] = useState<Map<string, number>>(new Map());
 
-  const serverLocations = [
-    { value: 'vless_tcp_ws', labelEn: 'VLESSTCP (WS)', labelFa: 'VLESSTCP (WS)' },
-    { value: 'vless_dubai_ws', labelEn: 'DUBAI (WS)', labelFa: 'دبی (WS)' },
-    { value: 'vless_israel_ws', labelEn: 'ISRAEL (WS)', labelFa: 'اسرائیل (WS)' },
-    { value: 'vless_finland_tcp', labelEn: 'FINLAND (TCP)', labelFa: 'فنلاند (TCP)' },
-    { value: 'vless_usac_http', labelEn: 'USAC (HTTPUPGRADE)', labelFa: 'آمریکا (HTTPUPGRADE)' },
-    { value: 'vless_info_ws', labelEn: 'INFO_PROTOCOL (WS)', labelFa: 'INFO_PROTOCOL (WS)' }
-  ];
+  // Fixed configuration
+  const FIXED_INBOUND = 'vless_dubai_ws';
+  const FIXED_UUID = '550e8400-e29b-41d4-a716-446655440000'; // Fixed UUID for Dubai server
+
+  useEffect(() => {
+    // Check for debug mode in URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    setDebugMode(urlParams.get('debug') === 'true');
+  }, []);
 
   const generateUsername = () => {
     const prefix = 'bnets_';
@@ -55,12 +66,28 @@ const MarzbanSubscriptionForm = () => {
     return `${prefix}${timestamp}_${random}`;
   };
 
-  const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c == 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+  const addDebugInfo = (info: DebugInfo) => {
+    setDebugInfo(prev => [...prev, info]);
+  };
+
+  const checkRateLimit = (): boolean => {
+    const clientIP = 'user_ip'; // In a real app, you'd get this from the server
+    const now = Date.now();
+    const lastRequest = rateLimitMap.get(clientIP) || 0;
+    
+    if (now - lastRequest < 30000) { // 30 seconds rate limit
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً ۳۰ ثانیه صبر کنید قبل از تلاش مجدد' : 
+          'Please wait 30 seconds before trying again',
+        variant: 'destructive'
+      });
+      return false;
+    }
+    
+    setRateLimitMap(prev => new Map(prev.set(clientIP, now)));
+    return true;
   };
 
   const validateForm = (): boolean => {
@@ -101,91 +128,134 @@ const MarzbanSubscriptionForm = () => {
       return false;
     }
 
-    // Server location validation
-    if (!formData.inbound) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'لطفاً موقعیت سرور را انتخاب کنید' : 
-          'Please select a server location',
-        variant: 'destructive'
-      });
-      return false;
-    }
-
     return true;
+  };
+
+  const sanitizeInput = (input: string): string => {
+    return input.replace(/[<>'"]/g, '').trim();
   };
 
   const createMarzbanUser = async (formData: MarzbanFormData): Promise<MarzbanResponse> => {
     // Step 1: Get access token
-    const tokenResponse = await fetch('https://file.shopifysb.xyz:8000/api/admin/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        username: 'bnets',
-        password: 'reza1234',
-        grant_type: 'password'
-      })
-    });
+    const tokenEndpoint = 'https://file.shopifysb.xyz:8000/api/admin/token';
+    const tokenRequestData = {
+      username: 'bnets',
+      password: 'reza1234',
+      grant_type: 'password'
+    };
 
-    if (!tokenResponse.ok) {
-      throw new Error('Failed to authenticate with Marzban API');
-    }
+    try {
+      const tokenResponse = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams(tokenRequestData)
+      });
 
-    const tokenData = await tokenResponse.json();
-    const accessToken = tokenData.access_token;
+      addDebugInfo({
+        endpoint: tokenEndpoint,
+        status: tokenResponse.status,
+        request: tokenRequestData,
+        response: tokenResponse.ok ? 'Token received' : 'Token failed'
+      });
 
-    // Step 2: Create user
-    const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.duration * 86400);
-    const dataLimitBytes = formData.dataLimit * 1073741824; // Convert GB to bytes
-    const userUUID = generateUUID();
-
-    const userData = {
-      username: formData.username,
-      status: 'active',
-      expire: expireTimestamp,
-      data_limit: dataLimitBytes,
-      data_limit_reset_strategy: 'no_reset',
-      inbounds: {
-        vless: [formData.inbound]
-      },
-      proxies: {
-        vless: {
-          id: userUUID
-        }
-      },
-      note: `From bnets.co form - ${formData.notes}`,
-      next_plan: {
-        add_remaining_traffic: false,
-        data_limit: 0,
-        expire: 0,
-        fire_on_either: true
+      if (!tokenResponse.ok) {
+        const errorData = await tokenResponse.json();
+        addDebugInfo({
+          endpoint: tokenEndpoint,
+          status: tokenResponse.status,
+          request: tokenRequestData,
+          response: errorData,
+          error: 'Authentication failed'
+        });
+        throw new Error('Failed to authenticate with Marzban API');
       }
-    };
 
-    const userResponse = await fetch('https://file.shopifysb.xyz:8000/api/user', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
-      body: JSON.stringify(userData)
-    });
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.access_token;
 
-    if (!userResponse.ok) {
-      const errorData = await userResponse.json();
-      throw new Error(errorData.detail || 'Failed to create user');
+      // Step 2: Create user with fixed inbound
+      const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.duration * 86400);
+      const dataLimitBytes = formData.dataLimit * 1073741824; // Convert GB to bytes
+
+      const userData = {
+        username: sanitizeInput(formData.username),
+        status: 'active',
+        expire: expireTimestamp,
+        data_limit: dataLimitBytes,
+        data_limit_reset_strategy: 'no_reset',
+        inbounds: {
+          vless: [FIXED_INBOUND]
+        },
+        proxies: {
+          vless: {
+            id: FIXED_UUID
+          }
+        },
+        note: `From bnets.co form - ${sanitizeInput(formData.notes)}`,
+        next_plan: {
+          add_remaining_traffic: false,
+          data_limit: 0,
+          expire: 0,
+          fire_on_either: true
+        }
+      };
+
+      const userEndpoint = 'https://file.shopifysb.xyz:8000/api/user';
+      const userResponse = await fetch(userEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(userData)
+      });
+
+      addDebugInfo({
+        endpoint: userEndpoint,
+        status: userResponse.status,
+        request: userData,
+        response: userResponse.ok ? 'User created' : 'User creation failed'
+      });
+
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json();
+        addDebugInfo({
+          endpoint: userEndpoint,
+          status: userResponse.status,
+          request: userData,
+          response: errorData,
+          error: userResponse.status === 409 ? 'User already exists' : 'User creation failed'
+        });
+
+        if (userResponse.status === 409) {
+          throw new Error(language === 'fa' ? 
+            'این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید' : 
+            'This username is already taken. Please choose a different one'
+          );
+        }
+        throw new Error(errorData.detail || 'Failed to create user');
+      }
+
+      const responseData = await userResponse.json();
+      addDebugInfo({
+        endpoint: userEndpoint,
+        status: userResponse.status,
+        request: userData,
+        response: responseData
+      });
+
+      return {
+        username: responseData.username,
+        subscription_url: responseData.subscription_url,
+        expire: responseData.expire,
+        data_limit: responseData.data_limit
+      };
+    } catch (error) {
+      console.error('Marzban API Error:', error);
+      throw error;
     }
-
-    const responseData = await userResponse.json();
-    return {
-      username: responseData.username,
-      subscription_url: responseData.subscription_url,
-      expire: responseData.expire,
-      data_limit: responseData.data_limit
-    };
   };
 
   const handleInputChange = (field: keyof MarzbanFormData, value: string | number) => {
@@ -198,9 +268,11 @@ const MarzbanSubscriptionForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!checkRateLimit()) return;
     if (!validateForm()) return;
 
     setIsSubmitting(true);
+    setDebugInfo([]); // Clear previous debug info
     
     try {
       const result = await createMarzbanUser(formData);
@@ -217,9 +289,11 @@ const MarzbanSubscriptionForm = () => {
       console.error('Marzban API Error:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'خطا در ایجاد اشتراک. لطفاً دوباره تلاش کنید' : 
-          'Failed to create subscription. Please try again',
+        description: error instanceof Error ? error.message : (
+          language === 'fa' ? 
+            'خطا در ایجاد اشتراک. لطفاً دوباره تلاش کنید' : 
+            'Failed to create subscription. Please try again'
+        ),
         variant: 'destructive'
       });
     } finally {
@@ -256,6 +330,67 @@ const MarzbanSubscriptionForm = () => {
     setFormData(prev => ({ ...prev, username: generated }));
   };
 
+  // Debug Component
+  const DebugSection = () => {
+    if (!debugMode || debugInfo.length === 0) return null;
+
+    return (
+      <Card className="mt-6 border-orange-200 dark:border-orange-800">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Bug className="w-4 h-4 text-orange-600" />
+              {language === 'fa' ? 'اطلاعات دیباگ' : 'Debug Information'}
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDebug(!showDebug)}
+            >
+              {showDebug ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+          </div>
+        </CardHeader>
+        {showDebug && (
+          <CardContent>
+            <div className="space-y-4">
+              {debugInfo.map((info, index) => (
+                <div key={index} className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg text-xs">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant={info.status >= 200 && info.status < 300 ? "default" : "destructive"}>
+                      {info.status}
+                    </Badge>
+                    <code className="text-blue-600 dark:text-blue-400">{info.endpoint}</code>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <strong>Request:</strong>
+                      <pre className="mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto">
+                        {JSON.stringify(info.request, null, 2)}
+                      </pre>
+                    </div>
+                    <div>
+                      <strong>Response:</strong>
+                      <pre className="mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto">
+                        {JSON.stringify(info.response, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                  {info.error && (
+                    <div className="mt-2">
+                      <strong className="text-red-600">Error:</strong>
+                      <p className="text-red-600">{info.error}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    );
+  };
+
   // Success page
   if (step === 2 && result) {
     return (
@@ -284,6 +419,17 @@ const MarzbanSubscriptionForm = () => {
               <div>
                 <Label>{language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}</Label>
                 <p>{new Date(result.expire * 1000).toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="outline" className="text-blue-700 dark:text-blue-300">
+                  {language === 'fa' ? 'سرور: دبی' : 'Server: Dubai'}
+                </Badge>
+                <Badge variant="outline" className="text-blue-700 dark:text-blue-300">
+                  VLESS
+                </Badge>
               </div>
             </div>
 
@@ -360,6 +506,8 @@ const MarzbanSubscriptionForm = () => {
             </div>
           </CardContent>
         </Card>
+        
+        <DebugSection />
       </div>
     );
   }
@@ -374,8 +522,8 @@ const MarzbanSubscriptionForm = () => {
           </CardTitle>
           <CardDescription>
             {language === 'fa' ? 
-              'اشتراک VLESS سفارشی خود را ایجاد کنید' : 
-              'Create your custom VLESS subscription'
+              'اشتراک VLESS سفارشی خود را ایجاد کنید - سرور دبی' : 
+              'Create your custom VLESS subscription - Dubai Server'
             }
           </CardDescription>
         </CardHeader>
@@ -468,20 +616,16 @@ const MarzbanSubscriptionForm = () => {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>{language === 'fa' ? 'موقعیت سرور' : 'Server Location'} *</Label>
-                <Select value={formData.inbound} onValueChange={(value) => handleInputChange('inbound', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={language === 'fa' ? 'سرور را انتخاب کنید' : 'Select server'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {serverLocations.map((location) => (
-                      <SelectItem key={location.value} value={location.value}>
-                        {language === 'fa' ? location.labelFa : location.labelEn}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Server Info */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-blue-700 dark:text-blue-300">
+                    {language === 'fa' ? 'سرور: دبی (VLESS WS)' : 'Server: Dubai (VLESS WS)'}
+                  </Badge>
+                  <span className="text-sm text-blue-600 dark:text-blue-400">
+                    {language === 'fa' ? 'بهینه‌شده برای سرعت بالا' : 'Optimized for high speed'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -509,6 +653,8 @@ const MarzbanSubscriptionForm = () => {
           </form>
         </CardContent>
       </Card>
+
+      <DebugSection />
     </div>
   );
 };
