@@ -39,7 +39,6 @@ serve(async (req) => {
       passwordExists: !!marzneshinPassword,
       baseUrl: marzneshinBaseUrl ? `${marzneshinBaseUrl.substring(0, 30)}...` : 'NOT_SET',
       username: marzneshinUsername ? `${marzneshinUsername.substring(0, 3)}***` : 'NOT_SET',
-      allEnvVars: Object.keys(Deno.env.toObject()).filter(key => key.includes('MARZNESHIN')),
     });
 
     if (!marzneshinBaseUrl || !marzneshinUsername || !marzneshinPassword) {
@@ -54,110 +53,57 @@ serve(async (req) => {
     // Clean base URL (remove trailing slash)
     const baseUrl = marzneshinBaseUrl.replace(/\/$/, '');
     
-    // Try multiple possible authentication endpoints for Marzneshin
-    const possibleAuthEndpoints = [
-      `${baseUrl}/api/admin/token`,
-      `${baseUrl}/api/auth/token`, 
-      `${baseUrl}/auth/token`,
-      `${baseUrl}/api/token`,
-      `${baseUrl}/token`,
-      `${baseUrl}/api/admin/auth`,
-      `${baseUrl}/admin/token`,
-      `${baseUrl}/login`
-    ];
+    // Use the correct authentication endpoint for Marzneshin
+    const authUrl = `${baseUrl}/api/admins/token`;
+    
+    logStep("Authentication attempt", { url: authUrl });
 
-    let token = null;
-    let authEndpointUsed = null;
-    let lastAuthError = null;
+    // Authenticate with the correct endpoint and request format
+    const authResponse = await fetch(authUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+      },
+      body: new URLSearchParams({
+        grant_type: "password",
+        username: marzneshinUsername,
+        password: marzneshinPassword,
+      })
+    });
 
-    // Try each authentication endpoint
-    for (const authUrl of possibleAuthEndpoints) {
-      try {
-        logStep("Trying authentication endpoint", { url: authUrl, attempt: possibleAuthEndpoints.indexOf(authUrl) + 1 });
+    logStep("Auth response received", { 
+      status: authResponse.status, 
+      statusText: authResponse.statusText,
+      headers: Object.fromEntries(authResponse.headers.entries()),
+      url: authUrl
+    });
 
-        // Try both form data and JSON body formats
-        const authMethods = [
-          {
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Accept": "application/json",
-            },
-            body: new URLSearchParams({
-              username: marzneshinUsername,
-              password: marzneshinPassword,
-            })
-          },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "Accept": "application/json",
-            },
-            body: JSON.stringify({
-              username: marzneshinUsername,
-              password: marzneshinPassword,
-            })
-          }
-        ];
-
-        for (const method of authMethods) {
-          try {
-            const authResponse = await fetch(authUrl, {
-              method: "POST",
-              ...method
-            });
-
-            logStep("Auth response", { 
-              url: authUrl,
-              method: method.headers["Content-Type"],
-              status: authResponse.status, 
-              statusText: authResponse.statusText,
-              headers: Object.fromEntries(authResponse.headers.entries())
-            });
-
-            if (authResponse.ok) {
-              const authData = await authResponse.json();
-              logStep("Auth response data", { url: authUrl, data: authData });
-              
-              if (authData.access_token) {
-                token = authData.access_token;
-                authEndpointUsed = authUrl;
-                logStep("Authentication successful", { endpoint: authUrl, method: method.headers["Content-Type"] });
-                break;
-              }
-            } else {
-              const errorText = await authResponse.text();
-              lastAuthError = `${authResponse.status}: ${errorText}`;
-              logStep("Auth method failed", { 
-                url: authUrl, 
-                method: method.headers["Content-Type"],
-                status: authResponse.status, 
-                error: errorText 
-              });
-            }
-          } catch (methodError) {
-            logStep("Auth method error", { 
-              url: authUrl, 
-              method: method.headers["Content-Type"],
-              error: methodError.message 
-            });
-          }
+    if (!authResponse.ok) {
+      const errorText = await authResponse.text();
+      logStep("Auth failed - detailed error", { 
+        status: authResponse.status, 
+        statusText: authResponse.statusText,
+        error: errorText,
+        url: authUrl,
+        credentials: {
+          username: marzneshinUsername ? `${marzneshinUsername.substring(0, 3)}***` : 'MISSING',
+          passwordLength: marzneshinPassword ? marzneshinPassword.length : 0
         }
-
-        if (token) break;
-
-      } catch (error) {
-        logStep("Auth endpoint error", { url: authUrl, error: error.message });
-        lastAuthError = error.message;
-      }
-    }
-
-    if (!token) {
-      logStep("All authentication attempts failed", { 
-        lastError: lastAuthError,
-        triedEndpoints: possibleAuthEndpoints.length 
       });
-      throw new Error(`Failed to authenticate with Marzneshin using any endpoint. Last error: ${lastAuthError}. Tried: ${possibleAuthEndpoints.join(', ')}`);
+      throw new Error(`Failed to authenticate with Marzneshin: ${authResponse.status} - ${errorText}`);
     }
+
+    const authData = await authResponse.json();
+    logStep("Auth response data", { authData });
+    
+    if (!authData.access_token) {
+      logStep("No access token in response", authData);
+      throw new Error("No access token received from Marzneshin authentication");
+    }
+
+    const token = authData.access_token;
+    logStep("Authentication successful", { tokenLength: token.length });
 
     // Now search for user by username - try multiple endpoints
     const possibleUserEndpoints = [
