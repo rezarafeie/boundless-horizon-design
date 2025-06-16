@@ -1,9 +1,15 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Sun, Moon, Menu, X, Globe } from 'lucide-react';
+import { Sun, Moon, Menu, X, Globe, ChevronDown, Send, ShoppingCart, Gift } from 'lucide-react';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
@@ -60,13 +66,29 @@ const Navigation = () => {
               <Globe className="w-4 h-4" />
             </Button>
 
-            {/* CTA Button */}
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="hidden sm:inline-flex"
-            >
-              {t('hero.cta')}
-            </Button>
+            {/* Dropdown Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="hidden sm:inline-flex">
+                  {t('nav.get-network')}
+                  <ChevronDown className={`w-4 h-4 ${isRTL ? 'mr-2' : 'ml-2'}`} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 bg-background border border-border shadow-lg">
+                <DropdownMenuItem onClick={() => window.open('https://t.me/getbnbot', '_blank')} className="cursor-pointer">
+                  <Send className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('nav.telegram')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.location.href = '/subscription'} className="cursor-pointer">
+                  <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('nav.purchase')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.open('https://t.me/getbnbot', '_blank')} className="cursor-pointer">
+                  <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('nav.free-trial')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Mobile Menu Toggle */}
             <Button
@@ -95,12 +117,32 @@ const Navigation = () => {
             <a href="#contact" className="block text-foreground/70 hover:text-foreground transition-colors">
               {t('nav.contact')}
             </a>
-            <Button 
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
-              className="w-full sm:hidden"
-            >
-              {t('hero.cta')}
-            </Button>
+            <div className="space-y-2 pt-4 border-t border-border">
+              <Button 
+                onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <Send className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('nav.telegram')}
+              </Button>
+              <Button 
+                onClick={() => window.location.href = '/subscription'}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <ShoppingCart className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('nav.purchase')}
+              </Button>
+              <Button 
+                onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <Gift className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('nav.free-trial')}
+              </Button>
+            </div>
           </div>
         )}
       </div>

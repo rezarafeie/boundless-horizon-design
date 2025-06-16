@@ -1,7 +1,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ArrowRight, Play } from 'lucide-react';
+import { ArrowRight, ShoppingCart, Gift } from 'lucide-react';
 
 const HeroSection = () => {
   const { t, language } = useLanguage();
@@ -22,7 +22,7 @@ const HeroSection = () => {
           {/* Badge */}
           <div className="inline-flex items-center rounded-full px-4 py-2 bg-primary/10 border border-primary/20 backdrop-blur-sm mb-8">
             <span className="text-sm font-medium text-primary">
-              {language === 'fa' ? '🚀 سرویس پیشرفته VPN' : '🚀 Advanced VPN Service'}
+              {language === 'fa' ? '🚀 سرویس پیشرفته شبکه' : '🚀 Advanced Network Service'}
             </span>
           </div>
 
@@ -38,20 +38,20 @@ const HeroSection = () => {
             <Button 
               size="lg" 
               className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
-              onClick={() => window.open('https://t.me/getbnbot', '_blank')}
+              onClick={() => window.location.href = '/subscription'}
             >
-              {t('hero.cta')}
-              <ArrowRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${isRTL ? 'rotate-180 mr-2' : 'ml-2'}`} />
+              <ShoppingCart className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('hero.purchase')}
             </Button>
             
             <Button 
               variant="outline" 
               size="lg"
-              className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group"
+              className="text-lg px-8 py-6 rounded-2xl hover:bg-accent transition-all duration-300 group border-2 border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
               onClick={() => window.open('https://t.me/getbnbot', '_blank')}
             >
-              <Play className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {language === 'fa' ? 'مشاهده دمو' : 'Watch Demo'}
+              <Gift className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('hero.free-trial')}
             </Button>
           </div>
         </div>
