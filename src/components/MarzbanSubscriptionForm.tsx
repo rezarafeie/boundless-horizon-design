@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { SubscriptionPlan } from '@/types/subscription';
 import { MarzneshinApiService } from '@/services/marzneshinApi';
 import PlanSelector from '@/components/PlanSelector';
 import DiscountField from '@/components/DiscountField';
+import FreeTrialButton from '@/components/FreeTrialButton';
 import { DiscountCode } from '@/types/subscription';
 
 interface MarzbanFormData {
@@ -905,6 +907,17 @@ const MarzbanSubscriptionForm = () => {
   // Form page
   return (
     <div className="max-w-2xl mx-auto p-6">
+      {/* Free Trial Button */}
+      <div className="mb-8 text-center">
+        <FreeTrialButton />
+        <div className="mt-4 text-sm text-muted-foreground">
+          {language === 'fa' ? 
+            'یا اشتراک سفارشی خود را بسازید:' : 
+            'Or create your custom subscription:'
+          }
+        </div>
+      </div>
+
       <LoadingOverlay />
       <Card className="bg-background border-border">
         <CardHeader className="text-center">
