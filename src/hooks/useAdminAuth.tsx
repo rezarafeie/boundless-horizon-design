@@ -36,7 +36,16 @@ export const useAdminAuth = () => {
       }
       
       console.log('ADMIN AUTH: User is admin with role:', adminData.role);
-      return adminData;
+      
+      // Type assertion to ensure role matches our union type
+      const typedAdminData: AdminUser = {
+        id: adminData.id,
+        user_id: adminData.user_id,
+        role: adminData.role as 'superadmin' | 'editor',
+        is_active: adminData.is_active
+      };
+      
+      return typedAdminData;
     } catch (error) {
       console.log('ADMIN AUTH: Exception checking admin status:', error);
       return null;
