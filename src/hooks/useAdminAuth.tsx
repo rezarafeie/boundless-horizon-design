@@ -19,8 +19,8 @@ export const useAdminAuth = () => {
   const checkAdminStatus = async (userId: string) => {
     try {
       // Use a direct query to avoid RLS issues with proper type casting
-      const { data: adminData, error } = await supabase
-        .rpc('check_admin_user' as any, { check_user_id: userId });
+      const { data: adminData, error } = await (supabase as any)
+        .rpc('check_admin_user', { check_user_id: userId });
       
       if (error) {
         console.log('Error checking admin status:', error);
