@@ -76,7 +76,6 @@ const MarzbanSubscriptionForm = () => {
           variant: 'destructive',
         });
       } else {
-        // Map database schema to component interface
         const mappedPlans = data.map(plan => ({
           id: plan.id,
           name: language === 'fa' ? plan.name_fa : plan.name_en,
@@ -93,7 +92,6 @@ const MarzbanSubscriptionForm = () => {
     fetchPlans();
   }, [language, toast]);
 
-  // Fetch panels for selected plan
   useEffect(() => {
     const fetchPlanPanels = async () => {
       if (!selectedPlan) {
@@ -137,7 +135,6 @@ const MarzbanSubscriptionForm = () => {
       console.log('SUBSCRIPTION FORM: Plan panels:', panels);
       setPlanPanels(panels);
 
-      // Show helpful toast messages about panel configuration
       if (panels.length === 0) {
         console.warn('SUBSCRIPTION FORM: No panels configured for plan:', selectedPlan.id);
         toast({
@@ -178,10 +175,9 @@ const MarzbanSubscriptionForm = () => {
       });
       setDiscountUsed(null);
     } else {
-      // Map database schema to component interface
       const mappedDiscount = {
         code: data.code,
-        percentage: data.discount_value, // Use discount_value as percentage
+        percentage: data.discount_value,
         description: data.description || ''
       };
       setDiscountUsed(mappedDiscount);
@@ -210,9 +206,15 @@ const MarzbanSubscriptionForm = () => {
     console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
     console.log('SUBSCRIPTION FORM: Plan panels:', planPanels);
     
-    // Enhanced validation with better error messages
+    // Enhanced validation
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
       console.error('SUBSCRIPTION FORM: Missing required fields');
+      const missingFields = [];
+      if (!formData.mobile) missingFields.push('mobile');
+      if (!formData.dataLimit) missingFields.push('dataLimit');
+      if (!selectedPlan) missingFields.push('selectedPlan');
+      
+      setError(`Missing required fields: ${missingFields.join(', ')}`);
       toast({
         title: language === 'fa' ? 'خطا در فرم' : 'Form Error',
         description: language === 'fa' ? 
@@ -266,7 +268,7 @@ const MarzbanSubscriptionForm = () => {
       const username = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       console.log('SUBSCRIPTION: Generated username:', username);
 
-      // First, save the subscription to database
+      // STEP 1: Save subscription to database FIRST with better error handling
       const subscriptionData = {
         mobile: formData.mobile,
         data_limit_gb: formData.dataLimit,
@@ -274,10 +276,11 @@ const MarzbanSubscriptionForm = () => {
         price_toman: finalPrice,
         status: 'pending',
         username: username,
-        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days, API: ${selectedPlan.apiType}, Panels: ${planPanels.length}`
+        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days, API: ${selectedPlan.apiType}, Panels: ${planPanels.length}`,
+        marzban_user_created: false
       };
 
-      console.log('SUBSCRIPTION: Saving to database:', subscriptionData);
+      console.log('SUBSCRIPTION: Attempting to save subscription to database:', subscriptionData);
 
       const { data: savedSubscription, error: saveError } = await supabase
         .from('subscriptions')
@@ -286,11 +289,22 @@ const MarzbanSubscriptionForm = () => {
         .single();
 
       if (saveError) {
-        console.error('SUBSCRIPTION: Database save error:', saveError);
-        throw new Error(`Failed to save subscription: ${saveError.message}`);
+        console.error('SUBSCRIPTION: Database save failed:', {
+          error: saveError,
+          message: saveError.message,
+          details: saveError.details,
+          hint: saveError.hint,
+          code: saveError.code
+        });
+        throw new Error(`Failed to save subscription to database: ${saveError.message}. Details: ${saveError.details || 'None'}`);
       }
 
-      console.log('SUBSCRIPTION: Successfully saved to database:', savedSubscription);
+      if (!savedSubscription) {
+        console.error('SUBSCRIPTION: No subscription returned from database insert');
+        throw new Error('Failed to save subscription - no data returned from database');
+      }
+
+      console.log('SUBSCRIPTION: ✅ Successfully saved subscription to database:', savedSubscription);
 
       // Show success toast for database save
       toast({
@@ -300,21 +314,18 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // Get primary panel or first available panel
-      const targetPanel = planPanels.find(p => p.is_primary) || planPanels[0];
-      console.log('SUBSCRIPTION: Using panel:', targetPanel);
-
-      // Create VPN user via appropriate edge function with CORRECT parameter names
+      // STEP 2: Create VPN user via edge function with FIXED parameters
       console.log('SUBSCRIPTION: Creating VPN user via edge function...');
       
+      // Fix parameter names to match what the edge function expects
       const vpnUserRequest = {
         username: savedSubscription.username,
-        dataLimitGB: formData.dataLimit, // Fixed parameter name
-        durationDays: formData.duration,  // Fixed parameter name
-        notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}` // Fixed parameter name
+        dataLimitGB: formData.dataLimit,  // Edge function expects this exact name
+        durationDays: formData.duration,   // Edge function expects this exact name
+        notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`  // Edge function expects this exact name
       };
 
-      console.log('SUBSCRIPTION: VPN user request data with corrected parameters:', vpnUserRequest);
+      console.log('SUBSCRIPTION: VPN user request data (FIXED parameters):', vpnUserRequest);
 
       let vpnResponse;
       if (selectedPlan.apiType === 'marzneshin') {
@@ -349,7 +360,7 @@ const MarzbanSubscriptionForm = () => {
         console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse?.error);
         
         // Update subscription status to failed
-        await supabase
+        const failedUpdateResult = await supabase
           .from('subscriptions')
           .update({ 
             status: 'failed',
@@ -357,17 +368,19 @@ const MarzbanSubscriptionForm = () => {
           })
           .eq('id', savedSubscription.id);
         
+        console.log('SUBSCRIPTION: Updated subscription status to failed:', failedUpdateResult);
+        
         throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
       }
 
-      console.log('SUBSCRIPTION: VPN user created successfully:', vpnResponse.data);
+      console.log('SUBSCRIPTION: ✅ VPN user created successfully:', vpnResponse.data);
 
-      // Update subscription with VPN details
+      // STEP 3: Update subscription with VPN details
       const updateData = {
         subscription_url: vpnResponse.data.subscription_url,
         status: 'active',
         marzban_user_created: true,
-        expire_at: new Date(vpnResponse.data.expire * 1000).toISOString()
+        expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire * 1000).toISOString() : null
       };
 
       console.log('SUBSCRIPTION: Updating subscription with VPN details:', updateData);
@@ -378,17 +391,16 @@ const MarzbanSubscriptionForm = () => {
         .eq('id', savedSubscription.id);
 
       if (updateError) {
-        console.error('SUBSCRIPTION: Update error:', updateError);
-        throw new Error(`Failed to update subscription: ${updateError.message}`);
+        console.error('SUBSCRIPTION: Failed to update subscription with VPN details:', updateError);
+        throw new Error(`Failed to update subscription with VPN details: ${updateError.message}`);
       }
 
-      console.log('SUBSCRIPTION: Successfully updated subscription with VPN details');
+      console.log('SUBSCRIPTION: ✅ Successfully updated subscription with VPN details');
 
-      // Log discount usage if applicable
+      // STEP 4: Log discount usage if applicable
       if (discountUsed && discountUsed.code) {
         console.log('SUBSCRIPTION: Logging discount usage');
         
-        // Get discount ID from database
         const { data: discountRecord } = await supabase
           .from('discount_codes')
           .select('id, current_usage_count')
@@ -396,7 +408,6 @@ const MarzbanSubscriptionForm = () => {
           .single();
 
         if (discountRecord) {
-          // Log the discount usage
           await supabase
             .from('discount_usage_logs')
             .insert({
@@ -406,7 +417,6 @@ const MarzbanSubscriptionForm = () => {
               user_mobile: formData.mobile
             });
 
-          // Update usage count
           await supabase
             .from('discount_codes')
             .update({ 
@@ -414,11 +424,11 @@ const MarzbanSubscriptionForm = () => {
             })
             .eq('id', discountRecord.id);
 
-          console.log('SUBSCRIPTION: Discount usage logged successfully');
+          console.log('SUBSCRIPTION: ✅ Discount usage logged successfully');
         }
       }
 
-      // Set success result with complete data
+      // STEP 5: Set success result with complete data
       const successResult = {
         username: vpnResponse.data.username,
         subscription_url: vpnResponse.data.subscription_url,
@@ -428,7 +438,7 @@ const MarzbanSubscriptionForm = () => {
         subscriptionId: savedSubscription.id
       };
 
-      console.log('SUBSCRIPTION: Process completed successfully, result:', successResult);
+      console.log('SUBSCRIPTION: ✅ Process completed successfully, result:', successResult);
       
       // Store data for delivery page
       localStorage.setItem('deliverySubscriptionData', JSON.stringify(successResult));
@@ -439,7 +449,12 @@ const MarzbanSubscriptionForm = () => {
       });
 
     } catch (error: any) {
-      console.error('SUBSCRIPTION: Process failed with error:', error);
+      console.error('SUBSCRIPTION: ❌ Process failed with error:', {
+        error,
+        message: error.message,
+        stack: error.stack
+      });
+      
       setError(error.message || 'An unexpected error occurred');
       
       toast({
@@ -485,7 +500,7 @@ const MarzbanSubscriptionForm = () => {
               />
             </div>
 
-            {/* Plan Selection with better validation feedback */}
+            {/* Plan Selection */}
             <div>
               <Label className="text-sm font-medium">
                 {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
@@ -524,7 +539,7 @@ const MarzbanSubscriptionForm = () => {
               )}
             </div>
 
-            {/* Enhanced panel status display */}
+            {/* Panel status display */}
             {selectedPlan && (
               <>
                 {planPanels.length > 0 ? (
