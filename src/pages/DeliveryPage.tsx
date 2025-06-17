@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw, Clock } from 'lucide-react';
+import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import QRCodeCanvas from 'qrcode';
@@ -18,8 +18,6 @@ interface SubscriptionData {
   expire: number;
   data_limit: number;
   status: string;
-  subscriptionId?: string;
-  paymentMethod?: string;
 }
 
 const DeliveryPage = () => {
@@ -33,52 +31,6 @@ const DeliveryPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showPendingMessage, setShowPendingMessage] = useState(false);
-
-  const createVPNUserIfNeeded = async (subscriptionId: string, subscription: any) => {
-    try {
-      // Check if VPN user already created
-      if (subscription.marzban_user_created || subscription.subscription_url) {
-        return subscription.subscription_url;
-      }
-
-      console.log('Creating VPN user for subscription:', subscriptionId);
-      
-      const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
-        body: {
-          username: subscription.username,
-          dataLimitGB: subscription.data_limit_gb,
-          durationDays: subscription.duration_days,
-          notes: `Created for subscription ID: ${subscriptionId}`
-        }
-      });
-
-      if (error || !data?.success) {
-        console.error('VPN user creation failed:', error || data?.error);
-        throw new Error(data?.error || 'Failed to create VPN user');
-      }
-
-      console.log('VPN user created successfully:', data.data);
-      
-      // Update subscription with real URL from panel
-      if (data.data?.subscription_url) {
-        await supabase
-          .from('subscriptions')
-          .update({ 
-            subscription_url: data.data.subscription_url,
-            marzban_user_created: true
-          })
-          .eq('id', subscriptionId);
-
-        return data.data.subscription_url;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('VPN user creation failed:', error);
-      return null;
-    }
-  };
 
   useEffect(() => {
     const loadSubscriptionData = async () => {
@@ -89,7 +41,7 @@ const DeliveryPage = () => {
         // Check different sources for subscription data
         let data: SubscriptionData | null = null;
 
-        // 1. From URL state (navigation from verification)
+        // 1. From URL state (navigation)
         if (location.state?.subscriptionData) {
           console.log('Found subscription data in location state:', location.state.subscriptionData);
           data = location.state.subscriptionData;
@@ -121,10 +73,10 @@ const DeliveryPage = () => {
         const subscriptionId = searchParams.get('subscriptionId');
         const orderId = searchParams.get('orderId');
 
-        if ((paymentMethod === 'crypto') && (subscriptionId || orderId)) {
-          console.log('Handling crypto payment callback:', { paymentMethod, subscriptionId, orderId });
+        if ((paymentMethod === 'zarinpal' || paymentMethod === 'crypto') && (subscriptionId || orderId)) {
+          console.log('Handling payment callback:', { paymentMethod, subscriptionId, orderId });
           
-          // For crypto payment callbacks, try to fetch subscription from database
+          // For payment callbacks, try to fetch subscription from database
           const id = subscriptionId || orderId;
           if (id) {
             try {
@@ -135,26 +87,14 @@ const DeliveryPage = () => {
                 .single();
 
               if (subscription && !error) {
-                // Try to create VPN user if needed and subscription is active
-                let subscriptionUrl = subscription.subscription_url;
-                if (subscription.status === 'active' && !subscriptionUrl) {
-                  subscriptionUrl = await createVPNUserIfNeeded(id, subscription);
-                }
-
                 data = {
                   username: subscription.username,
-                  subscription_url: subscriptionUrl,
+                  subscription_url: subscription.subscription_url,
                   expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
                   data_limit: subscription.data_limit_gb * 1073741824,
-                  status: subscription.status || 'active',
-                  subscriptionId: subscription.id
+                  status: subscription.status || 'active'
                 };
                 console.log('Fetched subscription from database:', data);
-
-                // If it's a pending manual payment, show special handling
-                if (subscription.status === 'pending' && subscription.admin_decision === 'pending') {
-                  setShowPendingMessage(true);
-                }
               }
             } catch (fetchError) {
               console.error('Failed to fetch subscription from database:', fetchError);
@@ -180,17 +120,6 @@ const DeliveryPage = () => {
 
     loadSubscriptionData();
   }, [location.state, searchParams, language]);
-
-  // Auto-refresh for pending payments
-  useEffect(() => {
-    if (subscriptionData?.status === 'pending' && showPendingMessage) {
-      const interval = setInterval(async () => {
-        await refreshSubscription();
-      }, 10000); // Check every 10 seconds
-
-      return () => clearInterval(interval);
-    }
-  }, [subscriptionData?.status, showPendingMessage]);
 
   const generateQRCode = async (url: string) => {
     try {
@@ -238,46 +167,25 @@ const DeliveryPage = () => {
     setIsRefreshing(true);
     try {
       // Try to refresh subscription data from database
-      const searchKey = subscriptionData.subscriptionId || subscriptionData.username;
-      const searchField = subscriptionData.subscriptionId ? 'id' : 'username';
-      
       const { data: subscription, error } = await supabase
         .from('subscriptions')
         .select('*')
-        .eq(searchField, searchKey)
+        .eq('username', subscriptionData.username)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
 
       if (subscription && !error) {
-        // Try to create VPN user if needed and subscription is active
-        let subscriptionUrl = subscription.subscription_url;
-        if (subscription.status === 'active' && !subscriptionUrl) {
-          subscriptionUrl = await createVPNUserIfNeeded(subscription.id, subscription);
-        }
-
         const updatedData = {
           username: subscription.username,
-          subscription_url: subscriptionUrl,
+          subscription_url: subscription.subscription_url,
           expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
           data_limit: subscription.data_limit_gb * 1073741824,
-          status: subscription.status || 'active',
-          subscriptionId: subscription.id
+          status: subscription.status || 'active'
         };
         
         setSubscriptionData(updatedData);
         localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
-        
-        // Check if subscription is now approved
-        if (subscription.status === 'active' && showPendingMessage) {
-          setShowPendingMessage(false);
-          toast({
-            title: language === 'fa' ? '🎉 تایید شد!' : '🎉 Approved!',
-            description: language === 'fa' ? 
-              'اشتراک شما تایید شد و فعال گردید' : 
-              'Your subscription has been approved and activated',
-          });
-        }
         
         if (updatedData.subscription_url) {
           await generateQRCode(updatedData.subscription_url);
@@ -300,19 +208,6 @@ const DeliveryPage = () => {
     } finally {
       setIsRefreshing(false);
     }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      active: { color: 'bg-green-500', text: language === 'fa' ? 'فعال' : 'Active' },
-      pending: { color: 'bg-yellow-500', text: language === 'fa' ? 'در انتظار تایید' : 'Pending Approval' },
-      payment_pending: { color: 'bg-blue-500', text: language === 'fa' ? 'در انتظار پرداخت' : 'Payment Pending' },
-      paid: { color: 'bg-blue-500', text: language === 'fa' ? 'پرداخت شده' : 'Paid' },
-      expired: { color: 'bg-red-500', text: language === 'fa' ? 'منقضی' : 'Expired' }
-    };
-    
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.active;
-    return <Badge className={`${config.color} text-white`}>{config.text}</Badge>;
   };
 
   if (isLoading) {
@@ -364,121 +259,17 @@ const DeliveryPage = () => {
     );
   }
 
-  // Special handling for pending manual payments
-  if (showPendingMessage && subscriptionData.status === 'pending') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
-        <Navigation />
-        <div className="pt-20">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {/* Header */}
-            <div className="text-center mb-8">
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <Clock className="w-8 h-8 text-yellow-600" />
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                  {language === 'fa' ? 'در انتظار تایید' : 'Awaiting Approval'}
-                </h1>
-              </div>
-              <p className="text-gray-600 dark:text-gray-300">
-                {language === 'fa' ? 
-                  'پرداخت دستی شما دریافت شد و در حال بررسی است' : 
-                  'Your manual payment has been received and is under review'
-                }
-              </p>
-            </div>
-
-            {/* Pending Status Card */}
-            <div className="max-w-2xl mx-auto">
-              <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20">
-                <CardHeader>
-                  <CardTitle className="text-center text-yellow-800 dark:text-yellow-200">
-                    {language === 'fa' ? '⏳ در حال بررسی' : '⏳ Under Review'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="text-center space-y-4">
-                    <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg">
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-center gap-4 text-2xl">
-                          <span>📋</span>
-                          <span>👨‍💼</span>
-                          <span>✅</span>
-                        </div>
-                        <div className="space-y-2">
-                          <p className="font-semibold">
-                            {language === 'fa' ? 'وضعیت درخواست شما:' : 'Your Request Status:'}
-                          </p>
-                          <ol className="text-left space-y-2 text-sm">
-                            <li className="flex items-center gap-2">
-                              <span className="text-green-500">✓</span>
-                              {language === 'fa' ? 'پرداخت دستی ثبت شد' : 'Manual payment submitted'}
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <span className="text-yellow-500">⏳</span>
-                              {language === 'fa' ? 'در حال بررسی توسط ادمین' : 'Under admin review'}
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <span className="text-gray-400">⏳</span>
-                              {language === 'fa' ? 'تایید و فعال‌سازی اشتراک' : 'Approval & subscription activation'}
-                            </li>
-                          </ol>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="bg-white/30 p-3 rounded">
-                        <span className="font-medium">{language === 'fa' ? 'نام کاربری:' : 'Username:'}</span>
-                        <p className="font-mono">{subscriptionData.username}</p>
-                      </div>
-                      <div className="bg-white/30 p-3 rounded">
-                        <span className="font-medium">{language === 'fa' ? 'وضعیت:' : 'Status:'}</span>
-                        <div className="mt-1">{getStatusBadge(subscriptionData.status)}</div>
-                      </div>
-                    </div>
-
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <p className="text-blue-800 dark:text-blue-200 text-sm">
-                        {language === 'fa' ? 
-                          '💡 صفحه به طور خودکار هر 10 ثانیه بروزرسانی می‌شود. همچنین ایمیل تایید نیز برای شما ارسال خواهد شد.' : 
-                          '💡 This page automatically refreshes every 10 seconds. You will also receive a confirmation email once approved.'
-                        }
-                      </p>
-                    </div>
-
-                    <Button
-                      onClick={refreshSubscription}
-                      disabled={isRefreshing}
-                      className="w-full"
-                      variant="outline"
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                      {isRefreshing ? 
-                        (language === 'fa' ? 'در حال بررسی...' : 'Checking...') :
-                        (language === 'fa' ? 'بررسی مجدد وضعیت' : 'Check Status Again')
-                      }
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Back Button */}
-            <div className="mt-8 text-center">
-              <Button
-                variant="outline"
-                onClick={() => navigate('/')}
-                className="inline-flex items-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                {language === 'fa' ? 'بازگشت به صفحه اصلی' : 'Back to Home'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      active: { color: 'bg-green-500', text: language === 'fa' ? 'فعال' : 'Active' },
+      pending: { color: 'bg-yellow-500', text: language === 'fa' ? 'در انتظار' : 'Pending' },
+      paid: { color: 'bg-blue-500', text: language === 'fa' ? 'پرداخت شده' : 'Paid' },
+      expired: { color: 'bg-red-500', text: language === 'fa' ? 'منقضی' : 'Expired' }
+    };
+    
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.active;
+    return <Badge className={`${config.color} text-white`}>{config.text}</Badge>;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
@@ -599,16 +390,6 @@ const DeliveryPage = () => {
                           'Subscription is being processed. Connection link will be available soon.'
                         }
                       </p>
-                      <Button
-                        onClick={refreshSubscription}
-                        disabled={isRefreshing}
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
-                      >
-                        <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                        {language === 'fa' ? 'بروزرسانی' : 'Refresh'}
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>

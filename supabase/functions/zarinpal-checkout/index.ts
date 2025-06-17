@@ -30,20 +30,15 @@ serve(async (req) => {
 
     console.log('Sending payment request to Zarinpal...');
 
-    // Convert Toman to Rial (multiply by 10) as Zarinpal expects Rial
-    const amountInRial = amount * 10;
-    console.log(`Converting ${amount} Toman to ${amountInRial} Rial for Zarinpal`);
-
-    // Use correct callback URL pointing to frontend domain
-    const callbackUrl = `https://bnets.co/zarinpal-verify?subscriptionId=${subscriptionId}`;
-    console.log('Callback URL:', callbackUrl);
+    // Amount should be in Toman (Zarinpal expects Toman, not Rial)
+    console.log(`Using amount: ${amount} Toman (NOT converting to Rial)`);
 
     // Create payment request to Zarinpal
     const zarinpalRequest = {
       merchant_id: merchantId,
-      amount: amountInRial, // Amount in Rial
+      amount: amount, // Keep in Toman
       description: description || `VPN Subscription Payment`,
-      callback_url: callbackUrl,
+      callback_url: `https://bnets.co/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`,
       metadata: {
         subscription_id: subscriptionId
       }

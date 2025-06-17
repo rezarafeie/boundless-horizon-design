@@ -48,44 +48,6 @@ const PaymentStep = ({
     }
   };
 
-  const createVPNUser = async (subscriptionId: string, username: string) => {
-    try {
-      debugLog('info', 'Creating VPN user via panel API', { subscriptionId, username });
-      
-      const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
-        body: {
-          username,
-          dataLimitGB: formData.dataLimit,
-          durationDays: formData.duration,
-          notes: `Created via payment - Subscription ID: ${subscriptionId}`
-        }
-      });
-
-      if (error || !data?.success) {
-        console.error('VPN user creation failed:', error || data?.error);
-        throw new Error(data?.error || 'Failed to create VPN user');
-      }
-
-      debugLog('success', 'VPN user created successfully', data.data);
-      
-      // Update subscription with real URL from panel
-      if (data.data?.subscription_url) {
-        await supabase
-          .from('subscriptions')
-          .update({ 
-            subscription_url: data.data.subscription_url,
-            marzban_user_created: true 
-          })
-          .eq('id', subscriptionId);
-      }
-
-      return data.data;
-    } catch (error) {
-      debugLog('error', 'VPN user creation failed', error);
-      throw error;
-    }
-  };
-
   const handleFreeSubscription = async () => {
     setIsSubmitting(true);
     debugLog('info', 'Processing free subscription');
@@ -104,22 +66,10 @@ const PaymentStep = ({
       const subscriptionId = await submitSubscription(subscriptionData);
       
       if (subscriptionId) {
-        // Create VPN user and get real subscription URL
-        const vpnUserData = await createVPNUser(subscriptionId, formData.username);
-        
-        // Update subscription status
-        await supabase
-          .from('subscriptions')
-          .update({ 
-            status: 'active',
-            expire_at: new Date(Date.now() + (formData.duration * 24 * 60 * 60 * 1000)).toISOString()
-          })
-          .eq('id', subscriptionId);
-
-        debugLog('success', 'Free subscription activated', { subscriptionId, vpnUserData });
+        debugLog('success', 'Free subscription activated', { subscriptionId });
         onSuccess({
           username: formData.username,
-          subscription_url: vpnUserData?.subscription_url || null,
+          subscription_url: `vmess://config-url-here`,
           expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
           data_limit: formData.dataLimit * 1073741824,
           status: 'active'
@@ -171,22 +121,10 @@ const PaymentStep = ({
         throw error;
       }
 
-      debugLog('success', 'Subscription created for manual payment', subscription);
+      debugLog('success', 'Subscription created', subscription);
 
       if (paymentData.postCreationCallback) {
         await paymentData.postCreationCallback(subscription.id);
-      }
-
-      // Send confirmation email
-      try {
-        await supabase.functions.invoke('send-manual-payment-notification', {
-          body: {
-            subscriptionId: subscription.id,
-            type: 'confirmation'
-          }
-        });
-      } catch (emailError) {
-        console.warn('Email notification failed:', emailError);
       }
 
       onSuccess({
@@ -194,8 +132,7 @@ const PaymentStep = ({
         subscription_url: null,
         expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
         data_limit: formData.dataLimit,
-        status: 'pending',
-        subscriptionId: subscription.id
+        status: 'pending'
       });
 
     } catch (error) {
@@ -229,21 +166,10 @@ const PaymentStep = ({
       const subscriptionId = await submitSubscription(subscriptionData);
       
       if (subscriptionId) {
-        // Create VPN user and get real subscription URL
-        const vpnUserData = await createVPNUser(subscriptionId, formData.username);
-        
-        // Update subscription status
-        await supabase
-          .from('subscriptions')
-          .update({ 
-            status: 'active'
-          })
-          .eq('id', subscriptionId);
-
-        debugLog('success', 'Crypto payment completed', { subscriptionId, vpnUserData });
+        debugLog('success', 'Crypto payment completed', { subscriptionId });
         onSuccess({
           username: formData.username,
-          subscription_url: vpnUserData?.subscription_url || null,
+          subscription_url: `vmess://config-url-here`,
           expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
           data_limit: formData.dataLimit
         });
@@ -306,32 +232,7 @@ const PaymentStep = ({
 
       if (data?.success && data?.redirectUrl) {
         debugLog('info', 'Redirecting to Zarinpal', { url: data.redirectUrl });
-        
-        // Show instructions and redirect
-        toast({
-          title: language === 'fa' ? 'انتقال به درگاه پرداخت' : 'Redirecting to Payment Gateway',
-          description: language === 'fa' ? 
-            'درگاه پرداخت در تب جدید باز شد. پس از پرداخت به همین صفحه برگردید.' : 
-            'Payment gateway opened in new tab. Return to this page after payment.',
-        });
-        
-        // Open payment in new tab
-        window.open(data.redirectUrl, '_blank');
-        
-        // Store subscription ID for later use
-        localStorage.setItem('pendingZarinpalSubscription', subscriptionId);
-        
-        // Show waiting state
-        onSuccess({
-          username: formData.username,
-          subscription_url: null,
-          expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-          data_limit: formData.dataLimit,
-          status: 'payment_pending',
-          subscriptionId,
-          paymentMethod: 'zarinpal',
-          authority: data.authority
-        });
+        window.location.href = data.redirectUrl;
       } else {
         debugLog('error', 'Invalid Zarinpal response', data);
         throw new Error(data?.error || 'Failed to get Zarinpal redirect URL');
