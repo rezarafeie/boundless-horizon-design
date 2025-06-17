@@ -48,6 +48,13 @@ const PaymentStep = ({
     }
   };
 
+  const generateSubscriptionUrl = (username: string) => {
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const token = `${username}_${timestamp}_${randomId}`;
+    return `https://id.rain.fail/sub/bnets_${timestamp}_v40/${token}`;
+  };
+
   const handleFreeSubscription = async () => {
     setIsSubmitting(true);
     debugLog('info', 'Processing free subscription');
@@ -66,10 +73,23 @@ const PaymentStep = ({
       const subscriptionId = await submitSubscription(subscriptionData);
       
       if (subscriptionId) {
-        debugLog('success', 'Free subscription activated', { subscriptionId });
+        // Generate proper subscription URL for free subscriptions
+        const subscriptionUrl = generateSubscriptionUrl(formData.username);
+        
+        // Update subscription with URL
+        await supabase
+          .from('subscriptions')
+          .update({ 
+            subscription_url: subscriptionUrl,
+            status: 'active',
+            expire_at: new Date(Date.now() + (formData.duration * 24 * 60 * 60 * 1000)).toISOString()
+          })
+          .eq('id', subscriptionId);
+
+        debugLog('success', 'Free subscription activated', { subscriptionId, subscriptionUrl });
         onSuccess({
           username: formData.username,
-          subscription_url: `vmess://config-url-here`,
+          subscription_url: subscriptionUrl,
           expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
           data_limit: formData.dataLimit * 1073741824,
           status: 'active'
@@ -127,6 +147,18 @@ const PaymentStep = ({
         await paymentData.postCreationCallback(subscription.id);
       }
 
+      // Send confirmation email
+      try {
+        await supabase.functions.invoke('send-manual-payment-notification', {
+          body: {
+            subscriptionId: subscription.id,
+            type: 'confirmation'
+          }
+        });
+      } catch (emailError) {
+        console.warn('Email notification failed:', emailError);
+      }
+
       onSuccess({
         username: formData.username,
         subscription_url: null,
@@ -166,10 +198,21 @@ const PaymentStep = ({
       const subscriptionId = await submitSubscription(subscriptionData);
       
       if (subscriptionId) {
-        debugLog('success', 'Crypto payment completed', { subscriptionId });
+        const subscriptionUrl = generateSubscriptionUrl(formData.username);
+        
+        // Update subscription with URL
+        await supabase
+          .from('subscriptions')
+          .update({ 
+            subscription_url: subscriptionUrl,
+            status: 'active'
+          })
+          .eq('id', subscriptionId);
+
+        debugLog('success', 'Crypto payment completed', { subscriptionId, subscriptionUrl });
         onSuccess({
           username: formData.username,
-          subscription_url: `vmess://config-url-here`,
+          subscription_url: subscriptionUrl,
           expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
           data_limit: formData.dataLimit
         });
@@ -232,7 +275,21 @@ const PaymentStep = ({
 
       if (data?.success && data?.redirectUrl) {
         debugLog('info', 'Redirecting to Zarinpal', { url: data.redirectUrl });
-        window.location.href = data.redirectUrl;
+        // Open in new tab for better UX
+        window.open(data.redirectUrl, '_blank');
+        
+        // Show loading state and redirect to delivery page after a delay
+        toast({
+          title: language === 'fa' ? 'در حال انتقال...' : 'Redirecting...',
+          description: language === 'fa' ? 
+            'در حال انتقال به درگاه پرداخت زرین‌پال' : 
+            'Redirecting to Zarinpal payment gateway',
+        });
+        
+        // Redirect to delivery page after a short delay
+        setTimeout(() => {
+          window.location.href = `/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`;
+        }, 2000);
       } else {
         debugLog('error', 'Invalid Zarinpal response', data);
         throw new Error(data?.error || 'Failed to get Zarinpal redirect URL');

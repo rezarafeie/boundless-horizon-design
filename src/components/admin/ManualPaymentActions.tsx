@@ -41,6 +41,13 @@ export const ManualPaymentActions = ({
     return null;
   }
 
+  const generateSubscriptionUrl = (username: string) => {
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const token = `${username}_${timestamp}_${randomId}`;
+    return `https://id.rain.fail/sub/bnets_${timestamp}_v40/${token}`;
+  };
+
   const handleDecision = async (decision: 'approved' | 'rejected') => {
     setIsProcessing(true);
     
@@ -55,10 +62,7 @@ export const ManualPaymentActions = ({
 
       if (decision === 'approved') {
         updateData.status = 'active';
-        // Generate subscription URL with proper format
-        const timestamp = Date.now();
-        const randomId = Math.random().toString(36).substring(2, 8);
-        updateData.subscription_url = `vmess://eyJ2IjoiMiIsInBzIjoiQm91bmRsZXNzTmV0LSR7dXNlcm5hbWV9IiwiYWRkIjoic2VydmVyLmJuZXRzLmNvIiwicG9ydCI6IjQ0MyIsImlkIjoiJHtyYW5kb21JZH0iLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6IndzIiwidHlwZSI6Im5vbmUiLCJob3N0IjoiIiwicGF0aCI6Ii8iLCJ0bHMiOiJ0bHMiLCJzbmkiOiIifQ==`;
+        updateData.subscription_url = generateSubscriptionUrl(username);
         updateData.expire_at = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString(); // 30 days from now
       }
 
@@ -70,6 +74,24 @@ export const ManualPaymentActions = ({
       if (error) {
         console.error('Database update error:', error);
         throw error;
+      }
+
+      // Send email notification
+      try {
+        const { error: emailError } = await supabase.functions.invoke('send-manual-payment-notification', {
+          body: {
+            subscriptionId,
+            type: decision,
+            adminDecision: decision
+          }
+        });
+
+        if (emailError) {
+          console.warn('Email notification failed:', emailError);
+          // Don't fail the whole operation for email issues
+        }
+      } catch (emailError) {
+        console.warn('Email notification error:', emailError);
       }
 
       toast({
@@ -114,7 +136,7 @@ export const ManualPaymentActions = ({
             <AlertDialogTitle>Approve Payment</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to approve the payment of {amount.toLocaleString()} Toman for {username}?
-              This will activate their VPN subscription immediately.
+              This will activate their VPN subscription immediately and send them an email notification.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -149,7 +171,7 @@ export const ManualPaymentActions = ({
             <AlertDialogTitle>Reject Payment</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to reject the payment of {amount.toLocaleString()} Toman for {username}?
-              This action cannot be undone and the user will be notified.
+              This action cannot be undone and the user will be notified via email.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     console.log('=== NOWPAYMENTS CREATE FUNCTION STARTED ===');
     
-    const { price_amount, price_currency, pay_currency, order_id, order_description, sandbox } = await req.json();
+    const { price_amount, price_currency, pay_currency, order_id, order_description, sandbox = true } = await req.json();
     console.log('Request body:', { price_amount, price_currency, pay_currency, order_id, order_description, sandbox });
 
     const nowpaymentsApiKey = Deno.env.get('NOWPAYMENTS_API_KEY');
@@ -36,7 +36,7 @@ serve(async (req) => {
       throw new Error('Order ID and description are required');
     }
 
-    // Use sandbox environment if requested
+    // Use sandbox environment by default for testing
     const baseUrl = sandbox ? 'https://api-sandbox.nowpayments.io' : 'https://api.nowpayments.io';
     console.log('Using API environment:', sandbox ? 'SANDBOX' : 'PRODUCTION');
 
@@ -53,7 +53,7 @@ serve(async (req) => {
       price_currency: price_currency || 'usd',
       pay_currency: pay_currency || 'usdttrc20',
       order_id,
-      order_description: `${order_description} (Min $${adjustedAmount})`,
+      order_description: `${order_description} (${sandbox ? 'TEST MODE - ' : ''}Min $${adjustedAmount})`,
       ipn_callback_url: `https://bnets.co/delivery?payment=crypto&orderId=${order_id}`,
     };
 
@@ -96,7 +96,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: true, 
         invoice: responseData,
-        sandbox_mode: !!sandbox
+        sandbox_mode: !!sandbox,
+        test_mode: sandbox
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
