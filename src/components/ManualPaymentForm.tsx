@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface ManualPaymentFormProps {
   amount: number;
-  onPaymentConfirm: (data: { receiptFile?: File; confirmed: boolean }) => void;
+  onPaymentConfirm: (data: { receiptFile?: File; confirmed: boolean; postCreationCallback?: (subscriptionId: string) => Promise<void> }) => void;
   isSubmitting: boolean;
 }
 
@@ -76,7 +77,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
               username: subscription.username,
               subscription_url: subscription.subscription_url,
               expire: Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
-              data_limit: subscription.data_limit_gb * 1073741824, // Convert GB to bytes
+              data_limit: subscription.data_limit_gb * 1073741824,
               status: 'active'
             }))}`;
             debugLog('info', 'Redirecting to delivery page', { url: deliveryUrl });
@@ -99,7 +100,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
         debugLog('error', 'Polling exception', error);
         console.error('Polling error:', error);
       }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 
     return () => clearInterval(pollInterval);
   }, [subscriptionId, isPolling, language, toast]);
@@ -122,7 +123,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) {
         debugLog('error', 'File size too large', { size: file.size });
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
@@ -187,6 +188,8 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
         }
       });
 
+      debugLog('info', 'Email function response', { data, error });
+
       if (error) {
         debugLog('error', 'Email sending failed', error);
         console.error('Email sending error:', error);
@@ -205,7 +208,6 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       console.error('Failed to send email notification:', error);
       debugLog('error', 'Email notification failed', error);
       
-      // Still show success to user but log the email issue
       toast({
         title: language === 'fa' ? 'توجه' : 'Notice',
         description: language === 'fa' ? 
@@ -235,42 +237,28 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       confirmed 
     });
 
-    // Pass the post-creation callback with the payment data
     onPaymentConfirm({
       receiptFile: receiptFile || undefined,
       confirmed,
-      // Store callback functions for later use
       postCreationCallback: async (subId: string) => {
         setSubscriptionId(subId);
         let receiptUrl = null;
         
-        // Upload receipt if provided
         if (receiptFile) {
           receiptUrl = await uploadReceiptToStorage(receiptFile, subId);
           if (!receiptUrl) {
-            return; // Upload failed, stop here
+            return;
           }
         }
         
-        // Send email notification to admin
         const emailSent = await sendEmailNotification(subId, receiptUrl);
         
-        // Show the specific Persian waiting message
-        toast({
-          title: language === 'fa' ? 'سفارش دریافت شد' : 'Order Received',
-          description: language === 'fa' ? 
-            'سفارش شما دریافت شد. پس از تایید رسید پرداخت لینک اتصال برای شما ساخته خواهد شد. لطفا منتظر بمانید.' : 
-            'Your order has been received. After payment receipt approval, the connection link will be created for you. Please wait.',
-        });
-        
-        // Start polling for admin approval and show waiting state
         setIsWaitingForApproval(true);
         setIsPolling(true);
       }
-    } as any);
+    });
   };
 
-  // Show waiting state when polling for approval
   if (isWaitingForApproval) {
     return (
       <div className="space-y-6">

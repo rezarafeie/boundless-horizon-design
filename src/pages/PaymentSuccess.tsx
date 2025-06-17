@@ -28,14 +28,12 @@ const PaymentSuccess = () => {
     const verifyPayment = async () => {
       try {
         debugLog('info', 'PaymentSuccess page loaded');
+        debugLog('info', 'Current URL', window.location.href);
+        debugLog('info', 'All URL parameters', Object.fromEntries(searchParams.entries()));
         
         // Get session_id from URL parameters
         const sessionId = searchParams.get('session_id');
-        debugLog('info', 'URL parameters check', { 
-          sessionId, 
-          allParams: Object.fromEntries(searchParams.entries()),
-          fullUrl: window.location.href 
-        });
+        debugLog('info', 'Session ID from URL', { sessionId });
 
         if (!sessionId) {
           debugLog('error', 'No session_id found in URL parameters');
@@ -44,12 +42,14 @@ const PaymentSuccess = () => {
           return;
         }
 
-        debugLog('info', 'Verifying Stripe session', { sessionId });
+        debugLog('info', 'Calling Stripe verification function', { sessionId });
 
         // Call the Stripe verification function
         const { data, error } = await supabase.functions.invoke('stripe-verify-session', {
           body: { sessionId }
         });
+
+        debugLog('info', 'Stripe verification response', { data, error });
 
         if (error) {
           debugLog('error', 'Stripe verification failed', error);

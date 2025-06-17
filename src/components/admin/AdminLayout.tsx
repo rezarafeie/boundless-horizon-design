@@ -8,8 +8,6 @@ interface AdminLayoutProps {
 }
 
 export const AdminLayout = ({ children }: AdminLayoutProps) => {
-  // Authentication completely removed - admin panel is now open access
-  
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex">

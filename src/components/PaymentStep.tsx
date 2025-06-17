@@ -1,8 +1,8 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft } from 'lucide-react';
 import PaymentMethodSelector, { PaymentMethod } from '@/components/PaymentMethodSelector';
 import ManualPaymentForm from '@/components/ManualPaymentForm';
 import CryptoPaymentForm from '@/components/CryptoPaymentForm';
@@ -44,7 +44,7 @@ const PaymentStep = ({
 
   const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
     if (window.debugPayment) {
-      window.debugPayment('zarinpal', type, message, data);
+      window.debugPayment(selectedPaymentMethod, type, message, data);
     }
   };
 
@@ -59,7 +59,6 @@ const PaymentStep = ({
     debugLog('info', 'Manual payment started', paymentData);
     
     try {
-      // Insert subscription with manual payment status
       const { data: subscription, error } = await supabase
         .from('subscriptions')
         .insert({
@@ -84,17 +83,9 @@ const PaymentStep = ({
 
       debugLog('success', 'Subscription created', subscription);
 
-      // Execute post-creation callback if provided
       if (paymentData.postCreationCallback) {
         await paymentData.postCreationCallback(subscription.id);
       }
-
-      toast({
-        title: language === 'fa' ? 'درخواست ثبت شد' : 'Request Submitted',
-        description: language === 'fa' ? 
-          'درخواست پرداخت شما به ادمین ارسال شد و پس از تأیید فعال خواهد شد' : 
-          'Your payment request has been sent to admin and will be activated after approval',
-      });
 
       onSuccess({
         username: formData.username,
@@ -184,8 +175,27 @@ const PaymentStep = ({
       const subscriptionId = await submitSubscription(subscriptionData);
       
       if (subscriptionId && finalPrice > 0) {
-        debugLog('info', 'Redirecting to Zarinpal', { subscriptionId });
-        // Redirect to Zarinpal (existing logic)
+        debugLog('info', 'Calling Zarinpal checkout function', { subscriptionId });
+        
+        const { data, error } = await supabase.functions.invoke('zarinpal-checkout', {
+          body: {
+            amount: finalPrice,
+            subscriptionId,
+            description: `VPN Subscription - ${formData.username}`
+          }
+        });
+
+        if (error) {
+          debugLog('error', 'Zarinpal checkout failed', error);
+          throw error;
+        }
+
+        if (data?.success && data?.redirectUrl) {
+          debugLog('info', 'Redirecting to Zarinpal', { url: data.redirectUrl });
+          window.location.href = data.redirectUrl;
+        } else {
+          throw new Error('Failed to get Zarinpal redirect URL');
+        }
       } else if (subscriptionId && finalPrice === 0) {
         debugLog('success', 'Free subscription activated', { subscriptionId });
         onSuccess({
