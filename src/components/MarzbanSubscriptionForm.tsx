@@ -589,7 +589,7 @@ const MarzbanSubscriptionForm = () => {
           // Get discount ID from database
           const { data: discountRecord } = await supabase
             .from('discount_codes')
-            .select('id')
+            .select('id, current_usage_count')
             .eq('code', discountUsed.code)
             .single();
 
@@ -606,11 +606,11 @@ const MarzbanSubscriptionForm = () => {
                 user_mobile: formData.mobile
               });
 
-            // Update usage count
+            // Update usage count by incrementing the current count
             await supabase
               .from('discount_codes')
               .update({ 
-                current_usage_count: supabase.sql`current_usage_count + 1` 
+                current_usage_count: discountRecord.current_usage_count + 1
               })
               .eq('id', discountRecord.id);
 
