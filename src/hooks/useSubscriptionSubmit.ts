@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { MarzbanApiService } from '@/services/marzbanApi';
 
 interface SubscriptionData {
   username: string;
@@ -78,38 +79,52 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         try {
           console.log(`Creating VPN user for free subscription using ${data.selectedPlan.apiType} API...`);
           
-          // Choose the correct edge function based on plan's API type
-          const edgeFunctionName = data.selectedPlan.apiType === 'marzban' ? 
-            'marzban-create-user' : 'marzneshin-create-user';
+          let vpnResult;
           
-          console.log(`Calling edge function: ${edgeFunctionName}`);
-          
-          const { data: vpnResult, error: vpnError } = await supabase.functions.invoke(
-            edgeFunctionName,
-            {
-              body: {
-                username: uniqueUsername,
-                dataLimitGB: data.dataLimit,
-                durationDays: data.duration,
-                notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
+          // Use shared services instead of edge functions for direct API calls
+          if (data.selectedPlan.apiType === 'marzban') {
+            console.log('Using shared Marzban API service');
+            vpnResult = await MarzbanApiService.createUser({
+              username: uniqueUsername,
+              dataLimitGB: data.dataLimit,
+              durationDays: data.duration,
+              notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
+            });
+          } else {
+            console.log('Using Marzneshin edge function');
+            const { data: edgeResult, error: vpnError } = await supabase.functions.invoke(
+              'marzneshin-create-user',
+              {
+                body: {
+                  username: uniqueUsername,
+                  dataLimitGB: data.dataLimit,
+                  durationDays: data.duration,
+                  notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
+                }
               }
+            );
+            
+            if (vpnError) {
+              console.error('Marzneshin edge function error:', vpnError);
+              throw new Error(`VPN user creation failed: ${vpnError.message}`);
             }
-          );
-          
-          if (vpnError) {
-            console.error(`${edgeFunctionName} error:`, vpnError);
-            throw new Error(`VPN user creation failed: ${vpnError.message}`);
+            
+            if (!edgeResult.success) {
+              throw new Error(`VPN user creation failed: ${edgeResult.error}`);
+            }
+            
+            vpnResult = edgeResult.data;
           }
           
-          console.log(`${edgeFunctionName} response:`, vpnResult);
+          console.log(`VPN creation response using ${data.selectedPlan.apiType}:`, vpnResult);
           
-          if (vpnResult.success && vpnResult.data?.subscription_url) {
+          if (vpnResult?.subscription_url) {
             // Update subscription with VPN details
             const { error: updateError } = await supabase
               .from('subscriptions')
               .update({
                 status: 'active',
-                subscription_url: vpnResult.data.subscription_url,
+                subscription_url: vpnResult.subscription_url,
                 marzban_user_created: true,
                 expire_at: new Date(Date.now() + data.duration * 24 * 60 * 60 * 1000).toISOString()
               })

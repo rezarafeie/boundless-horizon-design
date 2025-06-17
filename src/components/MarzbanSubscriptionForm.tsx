@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { AlertCircle, Loader2, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { MarzbanApiService } from '@/services/marzbanApi';
 import SubscriptionSuccess from './SubscriptionSuccess';
 import { useNavigate } from 'react-router-dom';
 
@@ -329,47 +330,35 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // STEP 2: Create VPN user via edge function with CORRECT API selection
-      console.log(`SUBSCRIPTION: Creating VPN user via ${selectedPlan.apiType} edge function...`);
+      // STEP 2: Create VPN user using shared services instead of edge functions
+      console.log(`SUBSCRIPTION: Creating VPN user via ${selectedPlan.apiType} service...`);
       
-      // Choose the correct edge function based on plan's API type
-      const edgeFunctionName = selectedPlan.apiType === 'marzban' ? 
-        'marzban-create-user' : 'marzneshin-create-user';
-      
-      console.log(`SUBSCRIPTION: Using edge function: ${edgeFunctionName}`);
-      
-      // Fix parameter names to match what the edge function expects
-      const vpnUserRequest = {
-        username: savedSubscription.username,
-        dataLimitGB: formData.dataLimit,  // Edge function expects this exact name
-        durationDays: formData.duration,   // Edge function expects this exact name
-        notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`  // Edge function expects this exact name
-      };
-
-      console.log(`SUBSCRIPTION: VPN user request data for ${edgeFunctionName}:`, vpnUserRequest);
-
       let vpnResponse;
-      if (selectedPlan.apiType === 'marzneshin') {
+      if (selectedPlan.apiType === 'marzban') {
+        console.log('SUBSCRIPTION: Using shared Marzban API service');
+        vpnResponse = await MarzbanApiService.createUser({
+          username: savedSubscription.username,
+          dataLimitGB: formData.dataLimit,
+          durationDays: formData.duration,
+          notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
+        });
+        
+        // Wrap in success format for consistency
+        vpnResponse = { success: true, data: vpnResponse };
+      } else {
         console.log('SUBSCRIPTION: Using Marzneshin edge function');
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
-          body: vpnUserRequest
+          body: {
+            username: savedSubscription.username,
+            dataLimitGB: formData.dataLimit,
+            durationDays: formData.duration,
+            notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
+          }
         });
         
         if (error) {
           console.error('SUBSCRIPTION: Marzneshin edge function error:', error);
           throw new Error(`Marzneshin service error: ${error.message}`);
-        }
-        
-        vpnResponse = data;
-      } else {
-        console.log('SUBSCRIPTION: Using Marzban edge function');
-        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
-          body: vpnUserRequest
-        });
-        
-        if (error) {
-          console.error('SUBSCRIPTION: Marzban edge function error:', error);
-          throw new Error(`Marzban service error: ${error.message}`);
         }
         
         vpnResponse = data;

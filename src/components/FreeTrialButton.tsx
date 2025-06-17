@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -8,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Gift, Zap, Shield, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MarzneshinApiService } from '@/services/marzneshinApi';
+import { MarzbanApiService } from '@/services/marzbanApi';
 import FreeTrialResult from './FreeTrialResult';
 
 interface TrialPlan {
@@ -85,80 +85,23 @@ const FreeTrialButton = () => {
     return `${prefix}${timestamp}_${random}`;
   };
 
-  // Create Marzban trial user
+  // Create Marzban trial user using shared service
   const createMarzbanTrial = async (): Promise<TrialResult> => {
     const username = generateTrialUsername();
-    const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
-    const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
 
     try {
-      // Get token
-      const tokenResponse = await fetch('https://file.shopifysb.xyz:8000/api/admin/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          username: 'bnets',
-          password: 'reza1234',
-          grant_type: 'password'
-        })
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to authenticate with Marzban API');
-      }
-
-      const tokenData = await tokenResponse.json();
-      const accessToken = tokenData.access_token;
-
-      // Create user with 1 day expiry and 1GB limit
-      const expireTimestamp = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 1 day
-      const dataLimitBytes = 1 * 1073741824; // 1GB
-
-      const userData = {
+      const result = await MarzbanApiService.createUser({
         username: username,
-        status: 'active',
-        expire: expireTimestamp,
-        data_limit: dataLimitBytes,
-        data_limit_reset_strategy: 'no_reset',
-        inbounds: {
-          vless: MARZBAN_INBOUND_TAGS
-        },
-        proxies: {
-          vless: {
-            id: FIXED_UUID
-          }
-        },
-        note: 'Free Trial - 1 Day / 1GB',
-        next_plan: {
-          add_remaining_traffic: false,
-          data_limit: 0,
-          expire: 0,
-          fire_on_either: true
-        }
-      };
-
-      const userResponse = await fetch('https://file.shopifysb.xyz:8000/api/user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify(userData)
+        dataLimitGB: 1, // 1GB
+        durationDays: 1, // 1 day
+        notes: 'Free Trial - 1 Day / 1GB'
       });
 
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        throw new Error(errorData.detail || 'Failed to create trial user');
-      }
-
-      const responseData = await userResponse.json();
       return {
-        username: responseData.username,
-        subscription_url: responseData.subscription_url,
-        expire: responseData.expire,
-        data_limit: responseData.data_limit,
+        username: result.username,
+        subscription_url: result.subscription_url,
+        expire: result.expire,
+        data_limit: result.data_limit,
         plan: trialPlans[0] // Lite plan
       };
     } catch (error) {
