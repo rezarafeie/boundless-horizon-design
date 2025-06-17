@@ -9,6 +9,221 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      admin_audit_logs: {
+        Row: {
+          action: string
+          admin_user_id: string | null
+          created_at: string
+          id: string
+          ip_address: unknown | null
+          new_values: Json | null
+          old_values: Json | null
+          record_id: string | null
+          table_name: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          admin_user_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address?: unknown | null
+          new_values?: Json | null
+          old_values?: Json | null
+          record_id?: string | null
+          table_name?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          admin_user_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address?: unknown | null
+          new_values?: Json | null
+          old_values?: Json | null
+          record_id?: string | null
+          table_name?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_logs_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admin_users: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      discount_codes: {
+        Row: {
+          applicable_plans: Json
+          code: string
+          created_at: string
+          current_usage_count: number
+          description: string | null
+          discount_type: string
+          discount_value: number
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          total_usage_limit: number | null
+          updated_at: string
+          usage_limit_per_user: number | null
+        }
+        Insert: {
+          applicable_plans?: Json
+          code: string
+          created_at?: string
+          current_usage_count?: number
+          description?: string | null
+          discount_type?: string
+          discount_value: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          total_usage_limit?: number | null
+          updated_at?: string
+          usage_limit_per_user?: number | null
+        }
+        Update: {
+          applicable_plans?: Json
+          code?: string
+          created_at?: string
+          current_usage_count?: number
+          description?: string | null
+          discount_type?: string
+          discount_value?: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          total_usage_limit?: number | null
+          updated_at?: string
+          usage_limit_per_user?: number | null
+        }
+        Relationships: []
+      }
+      discount_usage_logs: {
+        Row: {
+          discount_amount: number
+          discount_code_id: string
+          id: string
+          subscription_id: string | null
+          used_at: string
+          user_mobile: string | null
+        }
+        Insert: {
+          discount_amount: number
+          discount_code_id: string
+          id?: string
+          subscription_id?: string | null
+          used_at?: string
+          user_mobile?: string | null
+        }
+        Update: {
+          discount_amount?: number
+          discount_code_id?: string
+          id?: string
+          subscription_id?: string | null
+          used_at?: string
+          user_mobile?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discount_usage_logs_discount_code_id_fkey"
+            columns: ["discount_code_id"]
+            isOneToOne: false
+            referencedRelation: "discount_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "discount_usage_logs_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      panel_servers: {
+        Row: {
+          country_en: string
+          country_fa: string
+          created_at: string
+          default_inbounds: Json
+          health_status: string | null
+          id: string
+          is_active: boolean
+          last_health_check: string | null
+          name: string
+          panel_url: string
+          password: string
+          type: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          country_en: string
+          country_fa: string
+          created_at?: string
+          default_inbounds?: Json
+          health_status?: string | null
+          id?: string
+          is_active?: boolean
+          last_health_check?: string | null
+          name: string
+          panel_url: string
+          password: string
+          type: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          country_en?: string
+          country_fa?: string
+          created_at?: string
+          default_inbounds?: Json
+          health_status?: string | null
+          id?: string
+          is_active?: boolean
+          last_health_check?: string | null
+          name?: string
+          panel_url?: string
+          password?: string
+          type?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
       payment_logs: {
         Row: {
           created_at: string
@@ -52,6 +267,99 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      plan_panel_mappings: {
+        Row: {
+          created_at: string
+          id: string
+          inbound_ids: Json
+          is_primary: boolean
+          panel_id: string
+          plan_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inbound_ids?: Json
+          is_primary?: boolean
+          panel_id: string
+          plan_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inbound_ids?: Json
+          is_primary?: boolean
+          panel_id?: string
+          plan_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_panel_mappings_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "panel_servers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_panel_mappings_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_plans: {
+        Row: {
+          api_type: string
+          created_at: string
+          default_data_limit_gb: number
+          default_duration_days: number
+          description_en: string | null
+          description_fa: string | null
+          id: string
+          is_active: boolean
+          is_visible: boolean
+          name_en: string
+          name_fa: string
+          plan_id: string
+          price_per_gb: number
+          updated_at: string
+        }
+        Insert: {
+          api_type: string
+          created_at?: string
+          default_data_limit_gb?: number
+          default_duration_days?: number
+          description_en?: string | null
+          description_fa?: string | null
+          id?: string
+          is_active?: boolean
+          is_visible?: boolean
+          name_en: string
+          name_fa: string
+          plan_id: string
+          price_per_gb: number
+          updated_at?: string
+        }
+        Update: {
+          api_type?: string
+          created_at?: string
+          default_data_limit_gb?: number
+          default_duration_days?: number
+          description_en?: string | null
+          description_fa?: string | null
+          id?: string
+          is_active?: boolean
+          is_visible?: boolean
+          name_en?: string
+          name_fa?: string
+          plan_id?: string
+          price_per_gb?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       subscriptions: {
         Row: {
