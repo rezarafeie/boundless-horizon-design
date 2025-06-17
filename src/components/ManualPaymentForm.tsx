@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,7 +40,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       try {
         const { data: subscription, error } = await supabase
           .from('subscriptions')
-          .select('admin_decision, status, subscription_url')
+          .select('id, username, admin_decision, status, subscription_url, data_limit_gb, duration_days')
           .eq('id', subscriptionId)
           .single();
 
@@ -64,8 +65,8 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
             window.location.href = `/delivery?subscriptionData=${encodeURIComponent(JSON.stringify({
               username: subscription.username,
               subscription_url: subscription.subscription_url,
-              expire: Date.now() + (30 * 24 * 60 * 60 * 1000), // Default 30 days
-              data_limit: 50 * 1073741824, // Default 50GB
+              expire: Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
+              data_limit: subscription.data_limit_gb * 1073741824, // Convert GB to bytes
               status: 'active'
             }))}`;
           }, 2000);
