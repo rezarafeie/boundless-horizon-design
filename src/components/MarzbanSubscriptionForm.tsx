@@ -135,10 +135,24 @@ const MarzbanSubscriptionForm = () => {
 
       console.log('SUBSCRIPTION FORM: Plan panels:', panels);
       setPlanPanels(panels);
+
+      // Show helpful toast messages about panel configuration
+      if (panels.length === 0) {
+        console.warn('SUBSCRIPTION FORM: No panels configured for plan:', selectedPlan.id);
+        toast({
+          title: language === 'fa' ? 'هشدار پیکربندی' : 'Configuration Warning',
+          description: language === 'fa' ? 
+            'این پلن هنوز پیکربندی نشده است. لطفاً پلن دیگری انتخاب کنید یا با پشتیبانی تماس بگیرید.' : 
+            'This plan is not configured yet. Please select another plan or contact admin.',
+          variant: 'destructive',
+        });
+      } else {
+        console.log('SUBSCRIPTION FORM: Plan properly configured with', panels.length, 'panels');
+      }
     };
 
     fetchPlanPanels();
-  }, [selectedPlan]);
+  }, [selectedPlan, language, toast]);
 
   const applyDiscount = async () => {
     if (!discountCode) return;
@@ -195,25 +209,32 @@ const MarzbanSubscriptionForm = () => {
     console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
     console.log('SUBSCRIPTION FORM: Plan panels:', planPanels);
     
+    // Enhanced validation with better error messages
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
       console.error('SUBSCRIPTION FORM: Missing required fields');
       toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
+        title: language === 'fa' ? 'خطا در فرم' : 'Form Error',
         description: language === 'fa' ? 
-          'لطفاً تمام فیلدها را پر کنید' : 
-          'Please fill in all fields',
+          'لطفاً تمام فیلدها را پر کنید و یک پلن انتخاب کنید' : 
+          'Please fill in all fields and select a plan',
         variant: 'destructive',
       });
       return;
     }
 
+    // Critical validation: Check if plan has panel configurations
     if (planPanels.length === 0) {
-      console.error('SUBSCRIPTION FORM: No panels configured for this plan');
+      console.error('SUBSCRIPTION FORM: No panels configured for this plan - blocking submission');
+      setError(language === 'fa' ? 
+        'این پلن هنوز پیکربندی نشده است. لطفاً پلن دیگری انتخاب کنید یا با پشتیبانی تماس بگیرید.' : 
+        'This plan has not been configured yet. Please select another plan or contact support.'
+      );
+      
       toast({
         title: language === 'fa' ? 'خطا در پیکربندی پلن' : 'Plan Configuration Error',
         description: language === 'fa' ? 
-          'این پلن هنوز پیکربندی نشده است. لطفاً با مدیر سیستم تماس بگیرید.' : 
-          'This plan has not been configured yet. Please contact the system administrator.',
+          'این پلن هیچ سرور پیکربندی شده‌ای ندارد. نمی‌توان اشتراک ایجاد کرد.' : 
+          'This plan has no configured servers. Cannot create subscription.',
         variant: 'destructive',
       });
       return;
@@ -252,7 +273,7 @@ const MarzbanSubscriptionForm = () => {
         price_toman: finalPrice,
         status: 'pending',
         username: username,
-        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days, API: ${selectedPlan.apiType}`
+        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days, API: ${selectedPlan.apiType}, Panels: ${planPanels.length}`
       };
 
       console.log('SUBSCRIPTION: Saving to database:', subscriptionData);
@@ -269,6 +290,14 @@ const MarzbanSubscriptionForm = () => {
       }
 
       console.log('SUBSCRIPTION: Successfully saved to database:', savedSubscription);
+
+      // Show success toast for database save
+      toast({
+        title: language === 'fa' ? 'اشتراک ثبت شد' : 'Subscription Saved',
+        description: language === 'fa' ? 
+          'اشتراک شما در پایگاه داده ثبت شد. در حال ایجاد کاربر VPN...' : 
+          'Your subscription has been saved to database. Creating VPN user...',
+      });
 
       // Get primary panel or first available panel
       const targetPanel = planPanels.find(p => p.is_primary) || planPanels[0];
@@ -455,7 +484,7 @@ const MarzbanSubscriptionForm = () => {
               />
             </div>
 
-            {/* Plan Selection */}
+            {/* Plan Selection with better validation feedback */}
             <div>
               <Label className="text-sm font-medium">
                 {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
@@ -494,29 +523,35 @@ const MarzbanSubscriptionForm = () => {
               )}
             </div>
 
-            {/* Show panel info for selected plan */}
+            {/* Enhanced panel status display */}
             {selectedPlan && (
               <>
                 {planPanels.length > 0 ? (
                   <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                     <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                      {language === 'fa' ? 'سرورهای پیکربندی شده برای این پلن:' : 'Configured servers for this plan:'}
+                      ✅ {language === 'fa' ? 'سرورهای پیکربندی شده برای این پلن:' : 'Configured servers for this plan:'}
                     </p>
                     {planPanels.map((panel, index) => (
                       <div key={index} className="text-sm text-green-700 dark:text-green-300">
-                        • {panel.panel_name} ({panel.panel_type}) {panel.is_primary && '- Primary'}
+                        • {panel.panel_name} ({panel.panel_type}) {panel.is_primary && ' - Primary'}
                       </div>
                     ))}
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-2">
+                      {language === 'fa' ? 
+                        'این پلن آماده استفاده است و می‌توانید اشتراک خود را ایجاد کنید.' : 
+                        'This plan is ready to use and you can create your subscription.'
+                      }
+                    </p>
                   </div>
                 ) : (
                   <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                     <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
-                      {language === 'fa' ? '⚠️ هیچ سروری برای این پلن پیکربندی نشده است' : '⚠️ No servers configured for this plan'}
+                      ❌ {language === 'fa' ? 'این پلن پیکربندی نشده است' : 'This plan is not configured'}
                     </p>
                     <p className="text-xs text-red-600 dark:text-red-400">
                       {language === 'fa' ? 
-                        'لطفاً با مدیر سیستم تماس بگیرید تا سرورها را پیکربندی کند.' : 
-                        'Please contact the system administrator to configure servers for this plan.'
+                        'هیچ سروری برای این پلن تنظیم نشده است. لطفاً پلن دیگری انتخاب کنید یا با مدیر سیستم تماس بگیرید.' : 
+                        'No servers have been configured for this plan. Please select another plan or contact the system administrator.'
                       }
                     </p>
                   </div>
@@ -620,7 +655,12 @@ const MarzbanSubscriptionForm = () => {
               disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0 || (selectedPlan && planPanels.length === 0)}
             >
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {language === 'fa' ? 'ایجاد اشتراک' : 'Create Subscription'}
+              {!selectedPlan 
+                ? (language === 'fa' ? 'انتخاب پلن' : 'Select Plan')
+                : planPanels.length === 0 
+                ? (language === 'fa' ? 'پلن پیکربندی نشده' : 'Plan Not Configured')
+                : (language === 'fa' ? 'ایجاد اشتراک' : 'Create Subscription')
+              }
             </Button>
           </form>
         </CardContent>

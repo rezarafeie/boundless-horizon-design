@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Pencil, Plus, Trash2, Settings } from 'lucide-react';
+import { Pencil, Plus, Trash2, Settings, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan {
@@ -116,100 +115,126 @@ export const PlansManagement = () => {
 
   const savePlanMutation = useMutation({
     mutationFn: async (planData: Partial<Plan> & { id?: string; selectedPanels?: { panelId: string; isPrimary: boolean; inboundIds: string[] }[] }) => {
-      console.log('PLANS: Saving plan data:', planData);
+      console.log('=== PLANS: Starting save mutation ===');
+      console.log('PLANS: Full plan data received:', planData);
       
       const { selectedPanels, ...planFields } = planData;
       let planId = planData.id;
       
-      if (planData.id) {
-        // Update existing plan
-        console.log('PLANS: Updating existing plan');
-        const { id, ...updateData } = planFields;
-        const { error } = await supabase
-          .from('subscription_plans')
-          .update(updateData)
-          .eq('id', id);
-        if (error) {
-          console.error('PLANS: Update error:', error);
-          throw error;
-        }
-        planId = id;
-      } else {
-        // Create new plan
-        console.log('PLANS: Creating new plan');
-        const insertData = {
-          plan_id: planFields.plan_id!,
-          name_en: planFields.name_en!,
-          name_fa: planFields.name_fa!,
-          description_en: planFields.description_en || '',
-          description_fa: planFields.description_fa || '',
-          price_per_gb: planFields.price_per_gb!,
-          api_type: planFields.api_type!,
-          default_data_limit_gb: planFields.default_data_limit_gb!,
-          default_duration_days: planFields.default_duration_days!,
-          is_active: planFields.is_active ?? true,
-          is_visible: planFields.is_visible ?? true,
-        };
-        console.log('PLANS: Insert data:', insertData);
-        const { data, error } = await supabase
-          .from('subscription_plans')
-          .insert(insertData)
-          .select()
-          .single();
-        if (error) {
-          console.error('PLANS: Insert error:', error);
-          throw error;
-        }
-        console.log('PLANS: Insert successful:', data);
-        planId = data.id;
-      }
-      
-      // Handle panel mappings
-      if (selectedPanels && selectedPanels.length > 0 && planId) {
-        console.log('PLANS: Managing panel mappings for plan:', planId);
-        
-        // Delete existing mappings
-        const { error: deleteError } = await supabase
-          .from('plan_panel_mappings')
-          .delete()
-          .eq('plan_id', planId);
+      try {
+        if (planData.id) {
+          // Update existing plan
+          console.log('PLANS: Updating existing plan with ID:', planData.id);
+          const { id, ...updateData } = planFields;
+          const { data: updatedPlan, error } = await supabase
+            .from('subscription_plans')
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
           
-        if (deleteError) {
-          console.error('PLANS: Error deleting existing mappings:', deleteError);
-          throw deleteError;
-        }
-        
-        // Insert new mappings
-        const mappings = selectedPanels.map(panel => ({
-          plan_id: planId,
-          panel_id: panel.panelId,
-          is_primary: panel.isPrimary,
-          inbound_ids: panel.inboundIds
-        }));
-        
-        console.log('PLANS: Inserting new mappings:', mappings);
-        const { error: mappingError } = await supabase
-          .from('plan_panel_mappings')
-          .insert(mappings);
+          if (error) {
+            console.error('PLANS: Update plan error:', error);
+            throw new Error(`Failed to update plan: ${error.message}`);
+          }
+          console.log('PLANS: Plan updated successfully:', updatedPlan);
+          planId = id;
+        } else {
+          // Create new plan
+          console.log('PLANS: Creating new plan');
+          const insertData = {
+            plan_id: planFields.plan_id!,
+            name_en: planFields.name_en!,
+            name_fa: planFields.name_fa!,
+            description_en: planFields.description_en || '',
+            description_fa: planFields.description_fa || '',
+            price_per_gb: planFields.price_per_gb!,
+            api_type: planFields.api_type!,
+            default_data_limit_gb: planFields.default_data_limit_gb!,
+            default_duration_days: planFields.default_duration_days!,
+            is_active: planFields.is_active ?? true,
+            is_visible: planFields.is_visible ?? true,
+          };
           
-        if (mappingError) {
-          console.error('PLANS: Panel mapping error:', mappingError);
-          throw mappingError;
+          console.log('PLANS: Inserting plan with data:', insertData);
+          const { data: newPlan, error } = await supabase
+            .from('subscription_plans')
+            .insert(insertData)
+            .select()
+            .single();
+          
+          if (error) {
+            console.error('PLANS: Insert plan error:', error);
+            throw new Error(`Failed to create plan: ${error.message}`);
+          }
+          console.log('PLANS: Plan created successfully:', newPlan);
+          planId = newPlan.id;
         }
-        console.log('PLANS: Panel mappings created successfully');
+        
+        // Handle panel mappings - this is critical for subscriptions to work!
+        if (selectedPanels && selectedPanels.length > 0 && planId) {
+          console.log('PLANS: Processing panel mappings for plan:', planId);
+          console.log('PLANS: Selected panels data:', selectedPanels);
+          
+          // Delete existing mappings first
+          console.log('PLANS: Deleting existing mappings...');
+          const { error: deleteError } = await supabase
+            .from('plan_panel_mappings')
+            .delete()
+            .eq('plan_id', planId);
+            
+          if (deleteError) {
+            console.error('PLANS: Error deleting existing mappings:', deleteError);
+            throw new Error(`Failed to delete existing mappings: ${deleteError.message}`);
+          }
+          console.log('PLANS: Existing mappings deleted successfully');
+          
+          // Create new mappings
+          const mappings = selectedPanels.map(panel => ({
+            plan_id: planId,
+            panel_id: panel.panelId,
+            is_primary: panel.isPrimary,
+            inbound_ids: panel.inboundIds || []
+          }));
+          
+          console.log('PLANS: Creating new mappings:', mappings);
+          const { data: createdMappings, error: mappingError } = await supabase
+            .from('plan_panel_mappings')
+            .insert(mappings)
+            .select();
+            
+          if (mappingError) {
+            console.error('PLANS: Panel mapping creation error:', mappingError);
+            throw new Error(`Failed to create panel mappings: ${mappingError.message}`);
+          }
+          
+          console.log('PLANS: Panel mappings created successfully:', createdMappings);
+          console.log('PLANS: Mappings count created:', createdMappings?.length);
+        } else {
+          console.warn('PLANS: No panels selected or invalid plan ID');
+          if (!planId) console.error('PLANS: Plan ID is missing!');
+          if (!selectedPanels || selectedPanels.length === 0) console.error('PLANS: No panels selected!');
+        }
+        
+        console.log('PLANS: Save mutation completed successfully');
+        return { success: true, planId };
+        
+      } catch (error) {
+        console.error('PLANS: Save mutation failed:', error);
+        throw error;
       }
     },
-    onSuccess: () => {
-      console.log('PLANS: Save mutation successful');
+    onSuccess: (result) => {
+      console.log('PLANS: Save mutation onSuccess:', result);
       queryClient.invalidateQueries({ queryKey: ['admin-plans'] });
       queryClient.invalidateQueries({ queryKey: ['plan-panel-mappings'] });
       setEditingPlan(null);
       setShowNewPlanForm(false);
-      toast.success('Plan saved successfully');
+      toast.success('Plan saved successfully with panel configurations!');
     },
     onError: (error: any) => {
-      console.error('PLANS: Save mutation error:', error);
-      toast.error('Failed to save plan: ' + error.message);
+      console.error('PLANS: Save mutation onError:', error);
+      toast.error(`Failed to save plan: ${error.message}`);
     }
   });
 
@@ -282,23 +307,30 @@ export const PlansManagement = () => {
     }, [plan, planPanelMappings]);
 
     const togglePanelSelection = (panelId: string) => {
+      console.log('PLANS: Toggling panel selection for:', panelId);
       setSelectedPanels(prev => {
         const exists = prev.find(p => p.panelId === panelId);
         if (exists) {
-          return prev.filter(p => p.panelId !== panelId);
+          const updated = prev.filter(p => p.panelId !== panelId);
+          console.log('PLANS: Panel removed, new selection:', updated);
+          return updated;
         } else {
-          return [...prev, { panelId, isPrimary: false, inboundIds: [] }];
+          const updated = [...prev, { panelId, isPrimary: prev.length === 0, inboundIds: [] }];
+          console.log('PLANS: Panel added, new selection:', updated);
+          return updated;
         }
       });
     };
 
     const setPrimaryPanel = (panelId: string) => {
+      console.log('PLANS: Setting primary panel to:', panelId);
       setSelectedPanels(prev => 
         prev.map(p => ({ ...p, isPrimary: p.panelId === panelId }))
       );
     };
 
     const updateInbounds = (panelId: string, inboundIds: string[]) => {
+      console.log('PLANS: Updating inbounds for panel:', panelId, inboundIds);
       setSelectedPanels(prev =>
         prev.map(p => p.panelId === panelId ? { ...p, inboundIds } : p)
       );
@@ -306,7 +338,9 @@ export const PlansManagement = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      console.log('PLANS: Form submitted with data:', formData, 'selectedPanels:', selectedPanels);
+      console.log('PLANS: Form submitted');
+      console.log('PLANS: Form data:', formData);
+      console.log('PLANS: Selected panels:', selectedPanels);
       
       if (!panels || panels.length === 0) {
         toast.error('No active panels available. Add panels first before creating plans.');
@@ -314,22 +348,28 @@ export const PlansManagement = () => {
       }
 
       if (selectedPanels.length === 0) {
-        toast.error('Please select at least one panel for this plan.');
+        toast.error('Please select at least one panel for this plan. Plans without panels cannot be used for subscriptions.');
         return;
       }
 
-      // Ensure at least one panel is marked as primary when multiple panels are selected
+      // Ensure at least one panel is marked as primary
       const hasPrimary = selectedPanels.some(p => p.isPrimary);
       let finalSelectedPanels = selectedPanels;
 
       if (selectedPanels.length === 1) {
         // If only one panel, make it primary automatically
         finalSelectedPanels = [{ ...selectedPanels[0], isPrimary: true }];
+        console.log('PLANS: Single panel auto-set as primary');
       } else if (!hasPrimary) {
-        // If multiple panels but no primary, show error
         toast.error('Please select a primary panel when multiple panels are chosen.');
         return;
       }
+
+      console.log('PLANS: Final submission data:', { 
+        ...formData, 
+        id: plan?.id,
+        selectedPanels: finalSelectedPanels
+      });
 
       onSave({ 
         ...formData, 
@@ -342,7 +382,10 @@ export const PlansManagement = () => {
       return (
         <Card>
           <CardHeader>
-            <CardTitle>⚠️ No Active Panels Available</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-500" />
+              No Active Panels Available
+            </CardTitle>
             <CardDescription>
               You need to add and activate at least one panel server before creating subscription plans.
               Panels can have any health status (online, offline, or unknown) as long as they are marked as active.
@@ -361,6 +404,9 @@ export const PlansManagement = () => {
       <Card>
         <CardHeader>
           <CardTitle>{plan ? 'Edit Plan' : 'Add New Plan'}</CardTitle>
+          <CardDescription>
+            Configure the subscription plan details and select which panel servers will handle subscriptions for this plan.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -465,11 +511,14 @@ export const PlansManagement = () => {
             </div>
 
             {/* Panel Selection */}
-            <div className="space-y-4">
+            <div className="space-y-4 border-t pt-6">
               <div>
-                <Label className="text-lg font-semibold">Select Panels for this Plan</Label>
+                <Label className="text-lg font-semibold flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  Panel Configuration (Required)
+                </Label>
                 <p className="text-sm text-gray-600 mt-1">
-                  Choose which panel servers will handle subscriptions for this plan. At least one panel is required.
+                  Select which panel servers will handle subscriptions for this plan. At least one panel is required for the plan to be usable.
                   {selectedPanels.length > 1 && " Select one as the primary panel."}
                 </p>
               </div>
@@ -480,7 +529,7 @@ export const PlansManagement = () => {
                   const selectedPanel = selectedPanels.find(p => p.panelId === panel.id);
                   
                   return (
-                    <Card key={panel.id} className={`${isSelected ? 'ring-2 ring-blue-500' : ''}`}>
+                    <Card key={panel.id} className={`${isSelected ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center space-x-3">
@@ -541,13 +590,19 @@ export const PlansManagement = () => {
                 })}
               </div>
               
-              {selectedPanels.length > 0 && (
+              {selectedPanels.length > 0 ? (
                 <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                   <p className="text-sm text-green-800 dark:text-green-200">
-                    ✅ {selectedPanels.length} panel(s) selected
+                    ✅ {selectedPanels.length} panel(s) selected for this plan
                     {selectedPanels.length > 1 && selectedPanels.some(p => p.isPrimary) && 
                       ` (Primary: ${panels.find(p => p.id === selectedPanels.find(sp => sp.isPrimary)?.panelId)?.name})`
                     }
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-sm text-red-800 dark:text-red-200">
+                    ⚠️ No panels selected. This plan will not be usable for subscriptions until panels are configured.
                   </p>
                 </div>
               )}
@@ -575,7 +630,7 @@ export const PlansManagement = () => {
 
             <div className="flex space-x-2">
               <Button type="submit" disabled={selectedPanels.length === 0}>
-                Save Plan
+                {selectedPanels.length === 0 ? 'Select Panels to Save' : 'Save Plan'}
               </Button>
               <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
             </div>
