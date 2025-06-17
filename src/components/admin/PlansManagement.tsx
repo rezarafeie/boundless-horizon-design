@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -113,19 +112,23 @@ export const PlansManagement = () => {
 
   const deletePlanMutation = useMutation({
     mutationFn: async (id: string) => {
-      console.log('Deleting plan:', id);
+      console.log('PLANS: Deleting plan:', id);
       const { error } = await supabase
         .from('subscription_plans')
         .delete()
         .eq('id', id);
-      if (error) throw error;
+      if (error) {
+        console.error('PLANS: Delete error:', error);
+        throw error;
+      }
+      console.log('PLANS: Delete successful');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-plans'] });
       toast.success('Plan deleted successfully');
     },
     onError: (error: any) => {
-      console.error('Error deleting plan:', error);
+      console.error('PLANS: Delete mutation error:', error);
       toast.error('Failed to delete plan: ' + error.message);
     }
   });
@@ -288,29 +291,6 @@ export const PlansManagement = () => {
       </Card>
     );
   };
-
-  const deletePlanMutation = useMutation({
-    mutationFn: async (id: string) => {
-      console.log('PLANS: Deleting plan:', id);
-      const { error } = await supabase
-        .from('subscription_plans')
-        .delete()
-        .eq('id', id);
-      if (error) {
-        console.error('PLANS: Delete error:', error);
-        throw error;
-      }
-      console.log('PLANS: Delete successful');
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-plans'] });
-      toast.success('Plan deleted successfully');
-    },
-    onError: (error: any) => {
-      console.error('PLANS: Delete mutation error:', error);
-      toast.error('Failed to delete plan: ' + error.message);
-    }
-  });
 
   console.log('PLANS: Component render - isLoading:', isLoading, 'plans count:', plans?.length, 'error:', error);
 
