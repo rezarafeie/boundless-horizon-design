@@ -20,15 +20,15 @@ const ZarinpalVerificationHandler = () => {
     subscriptionData?: any;
   } | null>(null);
 
-  const createVPNUser = async (subscriptionId: string, username: string, dataLimit: number, duration: number) => {
+  const createVPNUser = async (subscriptionId: string, subscription: any) => {
     try {
-      console.log('Creating VPN user via panel API', { subscriptionId, username });
+      console.log('Creating VPN user via panel API', { subscriptionId, username: subscription.username });
       
       const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
         body: {
-          username,
-          dataLimitGB: dataLimit,
-          durationDays: duration,
+          username: subscription.username,
+          dataLimitGB: subscription.data_limit_gb,
+          durationDays: subscription.duration_days,
           notes: `Created via Zarinpal payment - Subscription ID: ${subscriptionId}`
         }
       });
@@ -107,12 +107,7 @@ const ZarinpalVerificationHandler = () => {
           console.log('Payment verified successfully. Creating VPN user...');
           
           // Create VPN user and get real subscription URL
-          const vpnUserData = await createVPNUser(
-            subscriptionId,
-            subscription.username,
-            subscription.data_limit_gb,
-            subscription.duration_days
-          );
+          const vpnUserData = await createVPNUser(subscriptionId, subscription);
 
           // Update subscription with Zarinpal details
           await supabase
@@ -133,7 +128,8 @@ const ZarinpalVerificationHandler = () => {
               subscription_url: vpnUserData?.subscription_url || null,
               expire: Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
               data_limit: subscription.data_limit_gb * 1073741824,
-              status: 'active'
+              status: 'active',
+              subscriptionId: subscriptionId
             }
           });
 

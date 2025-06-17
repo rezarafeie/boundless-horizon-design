@@ -39,7 +39,7 @@ serve(async (req) => {
       merchant_id: merchantId,
       amount: amountInRial, // Amount in Rial
       description: description || `VPN Subscription Payment`,
-      callback_url: `https://bnets.co/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`,
+      callback_url: `https://bnets.co/zarinpal/verify?subscriptionId=${subscriptionId}`,
       metadata: {
         subscription_id: subscriptionId
       }

@@ -1,544 +1,120 @@
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
-// Required service names for Pro plan (matching actual API services)
-const REQUIRED_SERVICE_NAMES = [
-  'UserInfo',
-  'FinlandTunnel',
-  'GermanyDirect', 
-  'GermanyTunnel',
-  'NetherlandsDirect',
-  'NetherlandsTunnel',
-  'TurkeyDirect',
-  'TurkeyTunnel',
-  'UkDirect',
-  'UkTunnel',
-  'UsDirect',
-  'UsTunnel',
-  'PolandTunnel'
-];
-
-// Supported protocols including WebSocket
-const SUPPORTED_PROTOCOLS = ['vmess', 'vless', 'trojan', 'shadowsocks', 'ws', 'websocket'];
-
-interface MarzneshinService {
-  id: number;
-  name: string;
-  inbound_ids: number[];
-  user_ids?: number[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface MarzneshinServicesResponse {
-  items: MarzneshinService[];
-  total: number;
-  page: number;
-  size: number;
-  pages: number;
-  links: any;
-}
-
-interface MarzneshinInbound {
-  id: number;
-  tag: string;
-  protocol: string;
-  network: string;
-  tls: string;
-  port: number;
-}
-
-interface MarzneshinUserRequest {
-  username: string;
-  expire_strategy: string;
-  expire_after?: number;
-  usage_duration?: number;
-  data_limit: number;
-  service_ids: number[];
-  note: string;
-  data_limit_reset_strategy?: string;
-}
-
-interface MarzneshinUserResponse {
-  username: string;
-  subscription_url: string;
-  expire: number;
-  data_limit: number;
-  usage_duration: number;
-  service_ids: number[];
-}
-
-async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
-  console.log('Attempting to authenticate with Marzneshin API');
-  
-  const tokenResponse = await fetch(`${baseUrl}/api/admins/token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      username: username,
-      password: password,
-      grant_type: 'password'
-    })
-  });
-
-  if (!tokenResponse.ok) {
-    const errorText = await tokenResponse.text();
-    console.error('Authentication failed:', errorText);
-    throw new Error(`Failed to authenticate with Marzneshin API: ${errorText}`);
-  }
-
-  const tokenData = await tokenResponse.json();
-  console.log('Authentication successful');
-  return tokenData.access_token;
-}
-
-async function getServices(baseUrl: string, token: string): Promise<MarzneshinService[]> {
-  console.log('Fetching services from Marzneshin API');
-  
-  const response = await fetch(`${baseUrl}/api/services`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Failed to fetch services:', errorText);
-    throw new Error(`Failed to fetch services from Marzneshin API: ${response.status} ${errorText}`);
-  }
-
-  const data: MarzneshinServicesResponse = await response.json();
-  console.log('Services response:', data);
-  
-  return data.items || [];
-}
-
-async function getInbounds(baseUrl: string, token: string): Promise<MarzneshinInbound[]> {
-  console.log('Fetching inbounds from Marzneshin API to check for WS protocol support');
-  
-  const response = await fetch(`${baseUrl}/api/inbounds`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Failed to fetch inbounds:', errorText);
-    return []; // Don't fail the whole process if inbounds can't be fetched
-  }
-
-  const data = await response.json();
-  console.log('Inbounds response for WS protocol check:', data);
-  
-  // Filter for WebSocket compatible inbounds
-  const wsInbounds = (data.items || []).filter((inbound: MarzneshinInbound) => 
-    inbound.protocol === 'vmess' || inbound.protocol === 'vless' || 
-    inbound.network === 'ws' || inbound.network === 'websocket'
-  );
-  
-  console.log(`Found ${wsInbounds.length} WebSocket compatible inbounds`);
-  return wsInbounds;
-}
-
-function getRequiredServiceIds(services: MarzneshinService[]): number[] {
-  const serviceIds: number[] = [];
-  
-  for (const serviceName of REQUIRED_SERVICE_NAMES) {
-    const service = services.find(s => s.name === serviceName);
-    if (service) {
-      serviceIds.push(service.id);
-      console.log(`Found service: ${serviceName} with ID: ${service.id}`);
-    } else {
-      console.warn(`Service not found: ${serviceName}`);
-    }
-  }
-  
-  console.log(`Found ${serviceIds.length} out of ${REQUIRED_SERVICE_NAMES.length} required services`);
-  return serviceIds;
-}
-
-function formatDateToMMDDYYYY(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${month}/${day}/${year}`;
-}
-
-function formatDateToISO(date: Date): string {
-  return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD
-}
-
-function formatDateToYYYYMMDD(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function validateDuration(durationDays: number): boolean {
-  return durationDays > 0 && durationDays <= 365; // Max 1 year
-}
-
-async function createMarzneshinUser(
-  baseUrl: string,
-  token: string,
-  userData: {
-    username: string;
-    dataLimitGB: number;
-    durationDays: number;
-    notes: string;
-  },
-  serviceIds: number[]
-): Promise<MarzneshinUserResponse> {
-  
-  console.log('Starting user creation with data:', userData);
-  
-  // Validate duration
-  if (!validateDuration(userData.durationDays)) {
-    throw new Error(`Invalid duration: ${userData.durationDays} days. Must be between 1 and 365 days.`);
-  }
-  
-  // Calculate expiration date
-  const expirationDate = new Date();
-  expirationDate.setDate(expirationDate.getDate() + userData.durationDays);
-  
-  // Ensure the date is in the future
-  if (expirationDate <= new Date()) {
-    throw new Error('Calculated expiration date is not in the future');
-  }
-  
-  const formattedExpireDateMM = formatDateToMMDDYYYY(expirationDate);
-  const formattedExpireDateISO = formatDateToISO(expirationDate);
-  const formattedExpireDateYYYY = formatDateToYYYYMMDD(expirationDate);
-  
-  console.log(`Calculated expiration date: ${formattedExpireDateMM} (${userData.durationDays} days from now)`);
-  console.log(`Alternative formats: ISO=${formattedExpireDateISO}, YYYY-MM-DD=${formattedExpireDateYYYY}`);
-  
-  // Focus only on fixed_date strategy with different formats and field names
-  const strategies = [
-    {
-      name: 'fixed_date_expire_date_mmddyyyy',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expire_date: formattedExpireDateMM,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    },
-    {
-      name: 'fixed_date_expire_mmddyyyy',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expire: formattedExpireDateMM,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    },
-    {
-      name: 'fixed_date_expire_date_iso',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expire_date: formattedExpireDateISO,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    },
-    {
-      name: 'fixed_date_expire_iso',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expire: formattedExpireDateISO,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    },
-    {
-      name: 'fixed_date_expire_date_yyyymmdd',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expire_date: formattedExpireDateYYYY,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    },
-    {
-      name: 'fixed_date_expire_yyyymmdd',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expire: formattedExpireDateYYYY,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    },
-    {
-      name: 'fixed_date_expiration_date',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expiration_date: formattedExpireDateMM,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    }
-  ];
-
-  let lastError: any = null;
-
-  for (const strategy of strategies) {
-    try {
-      console.log(`Trying strategy: ${strategy.name}`);
-      const userRequest = strategy.createRequest();
-      
-      console.log('Request payload:', JSON.stringify(userRequest, null, 2));
-
-      const response = await fetch(`${baseUrl}/api/users`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userRequest)
-      });
-
-      console.log(`Strategy ${strategy.name} response status: ${response.status}`);
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log(`Strategy ${strategy.name} succeeded:`, result);
-        console.log(`✅ User created successfully with ${strategy.name} strategy`);
-        console.log(`📅 Requested expiration format: ${JSON.stringify(userRequest).match(/"expire[^"]*":"[^"]*"/g)}`);
-        console.log(`📋 Full API response:`, JSON.stringify(result, null, 2));
-        return result;
-      } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        console.error(`Strategy ${strategy.name} failed with status ${response.status}:`, errorData);
-        lastError = errorData;
-        
-        // If it's a username conflict, don't try other strategies
-        if (response.status === 409) {
-          throw new Error('This username is already taken. Please choose a different one');
-        }
-        
-        // Log detailed error information
-        if (errorData.detail) {
-          console.error(`Detailed error for ${strategy.name}:`, JSON.stringify(errorData.detail, null, 2));
-        }
-        
-        // Continue to next strategy for other errors
-        continue;
-      }
-    } catch (error) {
-      console.error(`Strategy ${strategy.name} threw error:`, error);
-      lastError = error;
-      
-      // If it's a username conflict, don't try other strategies
-      if (error.message?.includes('already taken')) {
-        throw error;
-      }
-      
-      continue;
-    }
-  }
-
-  // If all strategies failed, throw the last error with comprehensive details
-  console.error('❌ All fixed_date strategies failed. Last error details:', lastError);
-  
-  if (lastError) {
-    if (lastError.detail) {
-      if (typeof lastError.detail === 'string') {
-        throw new Error(`All fixed_date strategies failed. API error: ${lastError.detail}`);
-      } else if (Array.isArray(lastError.detail)) {
-        const validationErrors = lastError.detail.map((err: any) => 
-          `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
-        ).join(', ');
-        throw new Error(`Validation error: ${validationErrors}`);
-      } else {
-        throw new Error(`API error: ${JSON.stringify(lastError.detail)}`);
-      }
-    }
-    throw new Error(`Failed to create user: ${lastError.message || 'Unknown error'}`);
-  }
-
-  throw new Error('Failed to create user with fixed_date strategy - all format attempts failed');
-}
-
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('Received request, parsing body...');
-    const requestBody = await req.json();
-    console.log('Raw request body:', JSON.stringify(requestBody, null, 2));
+    console.log('=== MARZNESHIN CREATE USER FUNCTION STARTED ===');
+    
+    const { username, dataLimitGB, durationDays, notes } = await req.json();
+    console.log('Create user request:', { username, dataLimitGB, durationDays });
 
-    // Extract parameters - now supporting CORRECTED parameter names
-    const {
-      username,
-      dataLimitGB,
-      durationDays,
-      notes
-    } = requestBody;
-
-    console.log('Extracted parameters (with corrected names):', {
-      username,
-      dataLimitGB,
-      durationDays,
-      notes: notes ? 'provided' : 'empty'
-    });
-
-    // Validate required parameters with corrected parameter names
-    if (!username) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Username is required' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+    if (!username || !dataLimitGB || !durationDays) {
+      throw new Error('Username, data limit, and duration are required');
     }
 
-    if (!dataLimitGB || typeof dataLimitGB !== 'number' || dataLimitGB <= 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Valid dataLimitGB is required and must be a positive number' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!durationDays || typeof durationDays !== 'number' || durationDays <= 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Valid durationDays is required and must be a positive number' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Get secrets from environment
+    // Get Marzneshin configuration from environment
     const baseUrl = Deno.env.get('MARZNESHIN_BASE_URL');
     const adminUsername = Deno.env.get('MARZNESHIN_ADMIN_USERNAME');
     const adminPassword = Deno.env.get('MARZNESHIN_ADMIN_PASSWORD');
 
     if (!baseUrl || !adminUsername || !adminPassword) {
-      console.error('Missing required environment variables');
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Server configuration error. Please contact support.' 
-        }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      console.error('Marzneshin configuration missing:', { 
+        hasBaseUrl: !!baseUrl, 
+        hasUsername: !!adminUsername, 
+        hasPassword: !!adminPassword 
+      });
+      throw new Error('Marzneshin panel configuration not complete');
     }
 
-    console.log('Starting Marzneshin user creation process with WS protocol support');
+    console.log('Authenticating with Marzneshin panel...');
 
     // Get authentication token
-    const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
-    
-    // Get available services
-    const services = await getServices(baseUrl, token);
-    console.log(`Fetched ${services.length} services from API`);
-    
-    // Check for WebSocket support in inbounds
-    const wsInbounds = await getInbounds(baseUrl, token);
-    console.log(`Found ${wsInbounds.length} WebSocket compatible inbounds`);
-    
-    // Get required service IDs for Pro plan
-    const requiredServiceIds = getRequiredServiceIds(services);
-    
-    if (requiredServiceIds.length === 0) {
-      throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
+    const authResponse = await fetch(`${baseUrl}/api/admin/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        'username': adminUsername,
+        'password': adminPassword
+      })
+    });
+
+    if (!authResponse.ok) {
+      const authError = await authResponse.text();
+      console.error('Marzneshin authentication failed:', authResponse.status, authError);
+      throw new Error(`Failed to authenticate with Marzneshin panel: ${authResponse.status}`);
     }
 
-    // Create the user with corrected parameter names
-    const result = await createMarzneshinUser(
-      baseUrl,
-      token,
-      { 
-        username, 
-        dataLimitGB, 
-        durationDays, 
-        notes: notes || '' 
+    const authData = await authResponse.json();
+    console.log('Authentication successful, creating user...');
+
+    // Calculate expiry timestamp (current time + duration in days)
+    const expireTimestamp = Math.floor((Date.now() + (durationDays * 24 * 60 * 60 * 1000)) / 1000);
+    
+    // Create user
+    const createUserResponse = await fetch(`${baseUrl}/api/user`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authData.access_token}`
       },
-      requiredServiceIds
-    );
+      body: JSON.stringify({
+        username: username,
+        proxies: {
+          vmess: {},
+          vless: {}
+        },
+        data_limit: dataLimitGB * 1073741824, // Convert GB to bytes
+        expire: expireTimestamp,
+        status: 'active',
+        note: notes || `Created via BoundlessNets - ${new Date().toISOString()}`
+      })
+    });
 
-    console.log('Marzneshin user creation completed successfully with WS protocol support');
+    if (!createUserResponse.ok) {
+      const createError = await createUserResponse.text();
+      console.error('User creation failed:', createUserResponse.status, createError);
+      throw new Error(`Failed to create user in Marzneshin panel: ${createUserResponse.status}`);
+    }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: result
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    const userData = await createUserResponse.json();
+    console.log('User created successfully:', userData);
+
+    // Generate subscription URL
+    const subscriptionUrl = `${baseUrl}/sub/${userData.subscription_token}`;
+    
+    return new Response(JSON.stringify({ 
+      success: true, 
+      data: {
+        username: userData.username,
+        subscription_url: subscriptionUrl,
+        subscription_token: userData.subscription_token,
+        data_limit: userData.data_limit,
+        expire: userData.expire,
+        status: userData.status
       }
-    );
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error) {
-    console.error('Marzneshin API Error Details:');
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: error.message || 'Failed to create user' 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    console.error('Marzneshin create user error:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
   }
 });
