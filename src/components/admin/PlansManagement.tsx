@@ -33,23 +33,35 @@ export const PlansManagement = () => {
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: plans, isLoading } = useQuery({
+  const { data: plans, isLoading, error } = useQuery({
     queryKey: ['admin-plans'],
     queryFn: async () => {
+      console.log('Fetching subscription plans...');
+      
+      // Try to fetch with explicit error handling
       const { data, error } = await supabase
         .from('subscription_plans')
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      console.log('Plans query result:', { data, error });
+      
+      if (error) {
+        console.error('Error fetching plans:', error);
+        throw error;
+      }
+      
+      console.log(`Successfully fetched ${data?.length || 0} plans`);
       return data as Plan[];
-    }
+    },
+    retry: 1
   });
 
   const savePlanMutation = useMutation({
     mutationFn: async (planData: Partial<Plan> & { id?: string }) => {
+      console.log('Saving plan:', planData);
+      
       if (planData.id) {
-        // For updates, remove the id from the data
         const { id, ...updateData } = planData;
         const { error } = await supabase
           .from('subscription_plans')
@@ -57,7 +69,6 @@ export const PlansManagement = () => {
           .eq('id', id);
         if (error) throw error;
       } else {
-        // For inserts, ensure all required fields are present
         const insertData = {
           plan_id: planData.plan_id!,
           name_en: planData.name_en!,
@@ -71,6 +82,7 @@ export const PlansManagement = () => {
           is_visible: planData.is_visible ?? true,
           is_active: planData.is_active ?? true,
         };
+        console.log('Inserting plan:', insertData);
         const { error } = await supabase
           .from('subscription_plans')
           .insert(insertData);
@@ -84,12 +96,14 @@ export const PlansManagement = () => {
       toast.success('Plan saved successfully');
     },
     onError: (error: any) => {
+      console.error('Error saving plan:', error);
       toast.error('Failed to save plan: ' + error.message);
     }
   });
 
   const deletePlanMutation = useMutation({
     mutationFn: async (id: string) => {
+      console.log('Deleting plan:', id);
       const { error } = await supabase
         .from('subscription_plans')
         .delete()
@@ -101,6 +115,7 @@ export const PlansManagement = () => {
       toast.success('Plan deleted successfully');
     },
     onError: (error: any) => {
+      console.error('Error deleting plan:', error);
       toast.error('Failed to delete plan: ' + error.message);
     }
   });
@@ -263,6 +278,27 @@ export const PlansManagement = () => {
     );
   };
 
+  // Show error state
+  if (error) {
+    console.error('Plans component error:', error);
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Subscription Plans</h1>
+          <p className="text-gray-600">Error loading plans</p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-red-600">
+              <p>Error loading plans: {error?.message || 'Unknown error'}</p>
+              <p className="text-sm mt-2">Check the browser console for more details.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -279,7 +315,9 @@ export const PlansManagement = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Subscription Plans</h1>
-          <p className="text-gray-600">Manage your subscription plans</p>
+          <p className="text-gray-600">
+            Manage your subscription plans ({plans?.length || 0} plans found)
+          </p>
         </div>
         <Button onClick={() => setShowNewPlanForm(true)}>
           <Plus className="w-4 h-4 mr-2" />
@@ -357,6 +395,18 @@ export const PlansManagement = () => {
             </CardContent>
           </Card>
         ))}
+        
+        {(!plans || plans.length === 0) && !isLoading && (
+          <Card>
+            <CardContent className="text-center py-12">
+              <p className="text-gray-500 mb-4">No subscription plans found.</p>
+              <Button onClick={() => setShowNewPlanForm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Your First Plan
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

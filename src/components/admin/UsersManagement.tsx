@@ -26,17 +26,27 @@ export const UsersManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const { data: subscriptions, isLoading } = useQuery({
+  const { data: subscriptions, isLoading, error } = useQuery({
     queryKey: ['admin-subscriptions'],
     queryFn: async () => {
+      console.log('Fetching subscriptions...');
+      
       const { data, error } = await supabase
         .from('subscriptions')
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      console.log('Subscriptions query result:', { data, error });
+      
+      if (error) {
+        console.error('Error fetching subscriptions:', error);
+        throw error;
+      }
+      
+      console.log(`Successfully fetched ${data?.length || 0} subscriptions`);
       return data as Subscription[];
-    }
+    },
+    retry: 1
   });
 
   const filteredSubscriptions = subscriptions?.filter(sub => {
@@ -69,6 +79,27 @@ export const UsersManagement = () => {
     totalRevenue: subscriptions.reduce((sum, s) => sum + s.price_toman, 0),
   } : { total: 0, active: 0, pending: 0, totalRevenue: 0 };
 
+  // Show error state
+  if (error) {
+    console.error('Users component error:', error);
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
+          <p className="text-gray-600">Error loading users and orders</p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-red-600">
+              <p>Error loading subscriptions: {error?.message || 'Unknown error'}</p>
+              <p className="text-sm mt-2">Check the browser console for more details.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -84,7 +115,9 @@ export const UsersManagement = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
-        <p className="text-gray-600">Manage user subscriptions and orders</p>
+        <p className="text-gray-600">
+          Manage user subscriptions and orders ({subscriptions?.length || 0} subscriptions found)
+        </p>
       </div>
 
       {/* Stats Cards */}
@@ -216,10 +249,15 @@ export const UsersManagement = () => {
         ))}
       </div>
 
-      {filteredSubscriptions?.length === 0 && (
+      {(!filteredSubscriptions || filteredSubscriptions.length === 0) && !isLoading && (
         <Card>
           <CardContent className="text-center py-12">
-            <p className="text-gray-500">No subscriptions found matching your criteria.</p>
+            <p className="text-gray-500">
+              {subscriptions?.length === 0 
+                ? 'No subscriptions found. Users will appear here once they make orders.'
+                : 'No subscriptions found matching your criteria.'
+              }
+            </p>
           </CardContent>
         </Card>
       )}

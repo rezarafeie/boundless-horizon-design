@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Plus, Trash2, Server, AlertCircle } from 'lucide-react';
+import { Pencil, Plus, Trash2, Server } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Panel {
@@ -32,23 +32,34 @@ export const PanelsManagement = () => {
   const [showNewPanelForm, setShowNewPanelForm] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: panels, isLoading } = useQuery({
+  const { data: panels, isLoading, error } = useQuery({
     queryKey: ['admin-panels'],
     queryFn: async () => {
+      console.log('Fetching panel servers...');
+      
       const { data, error } = await supabase
         .from('panel_servers')
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      console.log('Panels query result:', { data, error });
+      
+      if (error) {
+        console.error('Error fetching panels:', error);
+        throw error;
+      }
+      
+      console.log(`Successfully fetched ${data?.length || 0} panels`);
       return data as Panel[];
-    }
+    },
+    retry: 1
   });
 
   const savePanelMutation = useMutation({
     mutationFn: async (panelData: Partial<Panel> & { id?: string }) => {
+      console.log('Saving panel:', panelData);
+      
       if (panelData.id) {
-        // For updates, remove the id from the data
         const { id, ...updateData } = panelData;
         const { error } = await supabase
           .from('panel_servers')
@@ -56,7 +67,6 @@ export const PanelsManagement = () => {
           .eq('id', id);
         if (error) throw error;
       } else {
-        // For inserts, ensure all required fields are present
         const insertData = {
           name: panelData.name!,
           type: panelData.type!,
@@ -68,6 +78,7 @@ export const PanelsManagement = () => {
           default_inbounds: panelData.default_inbounds || [],
           is_active: panelData.is_active ?? true,
         };
+        console.log('Inserting panel:', insertData);
         const { error } = await supabase
           .from('panel_servers')
           .insert(insertData);
@@ -81,12 +92,14 @@ export const PanelsManagement = () => {
       toast.success('Panel saved successfully');
     },
     onError: (error: any) => {
+      console.error('Error saving panel:', error);
       toast.error('Failed to save panel: ' + error.message);
     }
   });
 
   const deletePanelMutation = useMutation({
     mutationFn: async (id: string) => {
+      console.log('Deleting panel:', id);
       const { error } = await supabase
         .from('panel_servers')
         .delete()
@@ -98,6 +111,7 @@ export const PanelsManagement = () => {
       toast.success('Panel deleted successfully');
     },
     onError: (error: any) => {
+      console.error('Error deleting panel:', error);
       toast.error('Failed to delete panel: ' + error.message);
     }
   });
@@ -242,6 +256,27 @@ export const PanelsManagement = () => {
     }
   };
 
+  // Show error state
+  if (error) {
+    console.error('Panels component error:', error);
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Panel Servers</h1>
+          <p className="text-gray-600">Error loading panels</p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-red-600">
+              <p>Error loading panels: {error?.message || 'Unknown error'}</p>
+              <p className="text-sm mt-2">Check the browser console for more details.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -258,7 +293,9 @@ export const PanelsManagement = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Panel Servers</h1>
-          <p className="text-gray-600">Manage your VPN panel servers</p>
+          <p className="text-gray-600">
+            Manage your VPN panel servers ({panels?.length || 0} panels found)
+          </p>
         </div>
         <Button onClick={() => setShowNewPanelForm(true)}>
           <Plus className="w-4 h-4 mr-2" />
@@ -335,6 +372,18 @@ export const PanelsManagement = () => {
             </CardContent>
           </Card>
         ))}
+        
+        {(!panels || panels.length === 0) && !isLoading && (
+          <Card>
+            <CardContent className="text-center py-12">
+              <p className="text-gray-500 mb-4">No panel servers found.</p>
+              <Button onClick={() => setShowNewPanelForm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Your First Panel
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

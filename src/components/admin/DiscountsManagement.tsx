@@ -33,23 +33,34 @@ export const DiscountsManagement = () => {
   const [showNewDiscountForm, setShowNewDiscountForm] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: discounts, isLoading } = useQuery({
+  const { data: discounts, isLoading, error } = useQuery({
     queryKey: ['admin-discounts'],
     queryFn: async () => {
+      console.log('Fetching discount codes...');
+      
       const { data, error } = await supabase
         .from('discount_codes')
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      console.log('Discounts query result:', { data, error });
+      
+      if (error) {
+        console.error('Error fetching discounts:', error);
+        throw error;
+      }
+      
+      console.log(`Successfully fetched ${data?.length || 0} discounts`);
       return data as DiscountCode[];
-    }
+    },
+    retry: 1
   });
 
   const saveDiscountMutation = useMutation({
     mutationFn: async (discountData: Partial<DiscountCode> & { id?: string }) => {
+      console.log('Saving discount:', discountData);
+      
       if (discountData.id) {
-        // For updates, remove the id from the data
         const { id, ...updateData } = discountData;
         const { error } = await supabase
           .from('discount_codes')
@@ -57,7 +68,6 @@ export const DiscountsManagement = () => {
           .eq('id', id);
         if (error) throw error;
       } else {
-        // For inserts, ensure all required fields are present
         const insertData = {
           code: discountData.code!,
           discount_type: discountData.discount_type!,
@@ -69,6 +79,7 @@ export const DiscountsManagement = () => {
           expires_at: discountData.expires_at,
           is_active: discountData.is_active ?? true,
         };
+        console.log('Inserting discount:', insertData);
         const { error } = await supabase
           .from('discount_codes')
           .insert(insertData);
@@ -82,12 +93,14 @@ export const DiscountsManagement = () => {
       toast.success('Discount code saved successfully');
     },
     onError: (error: any) => {
+      console.error('Error saving discount:', error);
       toast.error('Failed to save discount code: ' + error.message);
     }
   });
 
   const deleteDiscountMutation = useMutation({
     mutationFn: async (id: string) => {
+      console.log('Deleting discount:', id);
       const { error } = await supabase
         .from('discount_codes')
         .delete()
@@ -99,6 +112,7 @@ export const DiscountsManagement = () => {
       toast.success('Discount code deleted successfully');
     },
     onError: (error: any) => {
+      console.error('Error deleting discount:', error);
       toast.error('Failed to delete discount code: ' + error.message);
     }
   });
@@ -249,6 +263,27 @@ export const DiscountsManagement = () => {
     return <Badge className="bg-green-100 text-green-800">Active</Badge>;
   };
 
+  // Show error state
+  if (error) {
+    console.error('Discounts component error:', error);
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Discount Codes</h1>
+          <p className="text-gray-600">Error loading discount codes</p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-red-600">
+              <p>Error loading discount codes: {error?.message || 'Unknown error'}</p>
+              <p className="text-sm mt-2">Check the browser console for more details.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -271,7 +306,9 @@ export const DiscountsManagement = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Discount Codes</h1>
-          <p className="text-gray-600">Manage discount codes and promotions</p>
+          <p className="text-gray-600">
+            Manage discount codes and promotions ({discounts?.length || 0} codes found)
+          </p>
         </div>
         <Button onClick={() => setShowNewDiscountForm(true)}>
           <Plus className="w-4 h-4 mr-2" />
@@ -391,6 +428,18 @@ export const DiscountsManagement = () => {
             </CardContent>
           </Card>
         ))}
+        
+        {(!discounts || discounts.length === 0) && !isLoading && (
+          <Card>
+            <CardContent className="text-center py-12">
+              <p className="text-gray-500 mb-4">No discount codes found.</p>
+              <Button onClick={() => setShowNewDiscountForm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Your First Discount Code
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
