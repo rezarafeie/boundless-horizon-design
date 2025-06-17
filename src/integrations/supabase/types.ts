@@ -372,6 +372,7 @@ export type Database = {
           mobile: string
           notes: string | null
           price_toman: number
+          protocol: string | null
           status: string
           subscription_url: string | null
           updated_at: string
@@ -390,6 +391,7 @@ export type Database = {
           mobile: string
           notes?: string | null
           price_toman: number
+          protocol?: string | null
           status?: string
           subscription_url?: string | null
           updated_at?: string
@@ -408,6 +410,7 @@ export type Database = {
           mobile?: string
           notes?: string | null
           price_toman?: number
+          protocol?: string | null
           status?: string
           subscription_url?: string | null
           updated_at?: string

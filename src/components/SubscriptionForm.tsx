@@ -6,14 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { QrCode, Copy, Download, CheckCircle, AlertCircle, Globe, Shield, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useSubscriptionSubmit } from '@/hooks/useSubscriptionSubmit';
 
 interface SubscriptionFormData {
-  email: string;
+  mobile: string;
   username: string;
   dataVolume: string;
   duration: string;
@@ -33,8 +33,10 @@ interface ConfigResult {
 const SubscriptionForm = () => {
   const { language, t } = useLanguage();
   const { toast } = useToast();
+  const { isSubmitting, submitSubscription } = useSubscriptionSubmit();
+  
   const [formData, setFormData] = useState<SubscriptionFormData>({
-    email: '',
+    mobile: '',
     username: '',
     dataVolume: '',
     duration: '',
@@ -42,20 +44,19 @@ const SubscriptionForm = () => {
     location: '',
     promoCode: ''
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [configResult, setConfigResult] = useState<ConfigResult | null>(null);
   const [step, setStep] = useState(1);
 
   const dataVolumeOptions = [
-    { value: '10gb', labelEn: '10 GB', labelFa: '۱۰ گیگابایت', price: '$5' },
-    { value: '50gb', labelEn: '50 GB', labelFa: '۵۰ گیگابایت', price: '$15' },
-    { value: 'unlimited', labelEn: 'Unlimited', labelFa: 'نامحدود', price: '$25' }
+    { value: '10gb', labelEn: '10 GB', labelFa: '۱۰ گیگابایت', price: '$5', gb: 10 },
+    { value: '50gb', labelEn: '50 GB', labelFa: '۵۰ گیگابایت', price: '$15', gb: 50 },
+    { value: 'unlimited', labelEn: 'Unlimited', labelFa: 'نامحدود', price: '$25', gb: 500 }
   ];
 
   const durationOptions = [
-    { value: '7days', labelEn: '7 Days', labelFa: '۷ روز' },
-    { value: '30days', labelEn: '30 Days', labelFa: '۳۰ روز' },
-    { value: '90days', labelEn: '90 Days', labelFa: '۹۰ روز' }
+    { value: '7days', labelEn: '7 Days', labelFa: '۷ روز', days: 7 },
+    { value: '30days', labelEn: '30 Days', labelFa: '۳۰ روز', days: 30 },
+    { value: '90days', labelEn: '90 Days', labelFa: '۹۰ روز', days: 90 }
   ];
 
   const protocolOptions = [
@@ -82,7 +83,7 @@ const SubscriptionForm = () => {
   };
 
   const validateForm = () => {
-    if (!formData.email || !formData.username || !formData.dataVolume || 
+    if (!formData.mobile || !formData.username || !formData.dataVolume || 
         !formData.duration || !formData.protocol || !formData.location) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
@@ -92,11 +93,11 @@ const SubscriptionForm = () => {
       return false;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
+    const mobileRegex = /^09\d{9}$/;
+    if (!mobileRegex.test(formData.mobile)) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'لطفاً ایمیل معتبری وارد کنید' : 'Please enter a valid email address',
+        description: language === 'fa' ? 'لطفاً شماره موبایل معتبری وارد کنید (مثال: 09123456789)' : 'Please enter a valid mobile number (example: 09123456789)',
         variant: 'destructive'
       });
       return false;
@@ -105,46 +106,61 @@ const SubscriptionForm = () => {
     return true;
   };
 
-  const createMarzbanUser = async (formData: SubscriptionFormData): Promise<ConfigResult> => {
-    // Mock API call - replace with actual Marzban API integration
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simulate API response
-    const mockConfig = {
-      configUrl: `vmess://eyJ2IjoiMiIsInBzIjoi7J207J287YWM77yM7J207YW47ZqM7Yq4IiwiaWQiOiI1Njg5ZTI0ZS03ZWI4LTQ5MDUtOWNmMy0zZjkwNzg4YzQwZTQiLCJhZGQiOiIxODUuMTQyLjEuMjU1IiwicG9ydCI6IjgwODAiLCJ0eXBlIjoidm1lc3MiLCJuZXQiOiJ3cyIsInBhdGgiOiIvdm1lc3MifQ==`,
-      qrCode: `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
-      username: formData.username,
-      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      dataLimit: formData.dataVolume
-    };
-
-    return mockConfig;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) return;
 
-    setIsSubmitting(true);
-    
     try {
-      const result = await createMarzbanUser(formData);
-      setConfigResult(result);
-      setStep(3);
+      console.log('Form submission started with data:', formData);
       
-      toast({
-        title: language === 'fa' ? 'موفق' : 'Success',
-        description: language === 'fa' ? 'اشتراک شما با موفقیت ایجاد شد' : 'Your subscription has been created successfully',
-      });
+      // Find selected options
+      const selectedDataVolume = dataVolumeOptions.find(opt => opt.value === formData.dataVolume);
+      const selectedDuration = durationOptions.find(opt => opt.value === formData.duration);
+      
+      if (!selectedDataVolume || !selectedDuration) {
+        throw new Error('Invalid data volume or duration selection');
+      }
+
+      const subscriptionData = {
+        username: formData.username,
+        mobile: formData.mobile,
+        dataLimit: selectedDataVolume.gb,
+        duration: selectedDuration.days,
+        protocol: formData.protocol,
+        selectedPlan: {
+          pricePerGB: 800, // Default price per GB
+          name: 'Boundless Network'
+        },
+        appliedDiscount: null // TODO: Implement discount code validation
+      };
+
+      const subscriptionId = await submitSubscription(subscriptionData);
+      
+      if (subscriptionId) {
+        console.log('Subscription created successfully:', subscriptionId);
+        
+        // Create mock config result for demonstration
+        const mockConfig = {
+          configUrl: `vmess://eyJ2IjoiMiIsInBzIjoi7J207J287YWM77yM7J207YW47ZqM7Yq4IiwiaWQiOiI1Njg5ZTI0ZS03ZWI4LTQ5MDUtOWNmMy0zZjkwNzg4YzQwZTQiLCJhZGQiOiIxODUuMTQyLjEuMjU1IiwicG9ydCI6IjgwODAiLCJ0eXBlIjoidm1lc3MiLCJuZXQiOiJ3cyIsInBhdGgiOiIvdm1lc3MifQ==`,
+          qrCode: `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
+          username: formData.username,
+          expiryDate: new Date(Date.now() + selectedDuration.days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          dataLimit: formData.dataVolume
+        };
+        
+        setConfigResult(mockConfig);
+        setStep(3);
+      }
     } catch (error) {
+      console.error('Form submission error:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'خطا در ایجاد اشتراک. لطفاً دوباره تلاش کنید' : 'Failed to create subscription. Please try again',
+        description: error instanceof Error ? error.message : (
+          language === 'fa' ? 'خطا در ایجاد اشتراک. لطفاً دوباره تلاش کنید' : 'Failed to create subscription. Please try again'
+        ),
         variant: 'destructive'
       });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -310,15 +326,15 @@ const SubscriptionForm = () => {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">
-                    {language === 'fa' ? 'ایمیل' : 'Email'} *
+                  <Label htmlFor="mobile">
+                    {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'} *
                   </Label>
                   <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    placeholder={language === 'fa' ? 'example@email.com' : 'example@email.com'}
+                    id="mobile"
+                    type="tel"
+                    value={formData.mobile}
+                    onChange={(e) => handleInputChange('mobile', e.target.value)}
+                    placeholder={language === 'fa' ? '09123456789' : '09123456789'}
                     required
                   />
                 </div>

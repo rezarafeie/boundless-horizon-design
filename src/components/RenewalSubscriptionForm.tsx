@@ -12,14 +12,16 @@ import DiscountField from './DiscountField';
 import { Search, RefreshCw, Calendar, Database, CheckCircle, CreditCard, Loader } from 'lucide-react';
 import { SubscriptionPlan, DiscountCode } from '@/types/subscription';
 import { useToast } from '@/hooks/use-toast';
+import { useSubscriptionData } from '@/hooks/useSubscriptionData';
 
 const RenewalSubscriptionForm = () => {
   const { language, t } = useLanguage();
   const { toast } = useToast();
+  const { searchByMobile, isLoading: dataLoading } = useSubscriptionData();
   const isRTL = language === 'fa';
   
-  const [searchUsername, setSearchUsername] = useState('');
-  const [userFound, setUserFound] = useState(false);
+  const [searchMobile, setSearchMobile] = useState('');
+  const [userSubscriptions, setUserSubscriptions] = useState<any[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [dataLimit, setDataLimit] = useState(10);
   const [duration, setDuration] = useState(30);
@@ -27,24 +29,38 @@ const RenewalSubscriptionForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
-  
-  // Mock user data for demonstration
-  const mockUserData = {
-    username: 'user123',
-    currentPlan: 'pro',
-    expiryDate: '2024-12-25',
-    remainingData: '5.2 GB',
-    status: 'active'
-  };
 
   // Merchant ID for Zarinpal
   const MERCHANT_ID = '10f6ea92-fb53-468c-bcc9-36ef4d9f539c';
 
-  const handleSearch = () => {
-    if (searchUsername.trim()) {
-      setUserFound(true);
-      // Auto-select a plan based on current plan
-      if (mockUserData.currentPlan === 'pro') {
+  const handleSearch = async () => {
+    if (!searchMobile.trim()) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'لطفاً شماره موبایل را وارد کنید' : 'Please enter mobile number',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      console.log('Searching for subscriptions with mobile:', searchMobile);
+      const subscriptions = await searchByMobile(searchMobile);
+      
+      console.log('Found subscriptions:', subscriptions);
+      setUserSubscriptions(subscriptions);
+      
+      if (subscriptions.length === 0) {
+        toast({
+          title: language === 'fa' ? 'کاربر یافت نشد' : 'User Not Found',
+          description: language === 'fa' ? 
+            'هیچ اشتراکی با این شماره موبایل یافت نشد' : 
+            'No subscriptions found for this mobile number',
+          variant: 'destructive'
+        });
+      } else {
+        // Auto-select a plan based on most recent subscription
+        const latestSubscription = subscriptions[0];
         setSelectedPlan({
           id: 'pro',
           name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
@@ -52,15 +68,20 @@ const RenewalSubscriptionForm = () => {
           pricePerGB: 800,
           apiType: 'marzneshin'
         });
-      } else {
-        setSelectedPlan({
-          id: 'lite',
-          name: language === 'fa' ? 'شبکه بدون مرز لایت' : 'Boundless Network Lite',
-          description: language === 'fa' ? 'دسترسی به سرورهای اصلی' : 'Access to main servers',
-          pricePerGB: 500,
-          apiType: 'marzban'
-        });
+        
+        // Set defaults based on existing subscription
+        setDataLimit(latestSubscription.data_limit_gb || 10);
+        setDuration(latestSubscription.duration_days || 30);
       }
+    } catch (error) {
+      console.error('Search error:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'خطا در جستجو. لطفاً دوباره تلاش کنید' : 
+          'Search failed. Please try again',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -95,13 +116,25 @@ const RenewalSubscriptionForm = () => {
       return false;
     }
 
-    // Username validation
-    if (!searchUsername.trim()) {
+    // Mobile validation
+    if (!searchMobile.trim()) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
-          'لطفاً نام کاربری را وارد کنید' : 
-          'Please enter username',
+          'لطفاً شماره موبایل را وارد کنید' : 
+          'Please enter mobile number',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    // User found validation
+    if (userSubscriptions.length === 0) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'ابتدا باید کاربر را جستجو کنید' : 
+          'Please search for user first',
         variant: 'destructive'
       });
       return false;
@@ -142,7 +175,7 @@ const RenewalSubscriptionForm = () => {
     
     const paymanRequest = {
       merchant_id: MERCHANT_ID,
-      mobile: '09123456789', // Use user's mobile from account info
+      mobile: searchMobile,
       expire_at: Math.floor(expireAt.getTime() / 1000),
       max_daily_count: 100,
       max_monthly_count: 1000,
@@ -207,7 +240,7 @@ const RenewalSubscriptionForm = () => {
       
       // Store renewal data for after payment
       const renewalData = {
-        username: searchUsername,
+        mobile: searchMobile,
         dataLimit,
         duration,
         selectedPlan,
@@ -286,25 +319,25 @@ const RenewalSubscriptionForm = () => {
               </CardTitle>
               <CardDescription>
                 {language === 'fa' ? 
-                  'نام کاربری خود را وارد کنید تا اطلاعات اشتراک نمایش داده شود' : 
-                  'Enter your username to display subscription information'
+                  'شماره موبایل خود را وارد کنید تا اطلاعات اشتراک نمایش داده شود' : 
+                  'Enter your mobile number to display subscription information'
                 }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <Label htmlFor="search-username">{t('subscription.username')}</Label>
+                  <Label htmlFor="search-mobile">{language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}</Label>
                   <Input
-                    id="search-username"
-                    value={searchUsername}
-                    onChange={(e) => setSearchUsername(e.target.value)}
-                    placeholder={language === 'fa' ? 'نام کاربری...' : 'Username...'}
+                    id="search-mobile"
+                    value={searchMobile}
+                    onChange={(e) => setSearchMobile(e.target.value)}
+                    placeholder={language === 'fa' ? '09123456789' : '09123456789'}
                     className="mt-1"
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button onClick={handleSearch}>
+                  <Button onClick={handleSearch} disabled={dataLoading}>
                     <Search className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
                     {language === 'fa' ? 'جستجو' : 'Search'}
                   </Button>
@@ -314,7 +347,7 @@ const RenewalSubscriptionForm = () => {
           </Card>
 
           {/* Account Information Section */}
-          {userFound && (
+          {userSubscriptions.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -323,46 +356,48 @@ const RenewalSubscriptionForm = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm text-muted-foreground">{t('subscription.username')}</Label>
-                    <p className="font-medium">{mockUserData.username}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-muted-foreground">{t('subscription.plan-type')}</Label>
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">
-                        {mockUserData.currentPlan === 'pro' ? 
-                          (language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro') :
-                          (language === 'fa' ? 'شبکه بدون مرز لایت' : 'Boundless Network Lite')
-                        }
-                      </p>
-                      <Badge variant={mockUserData.currentPlan === 'pro' ? 'default' : 'secondary'}>
-                        {mockUserData.currentPlan.toUpperCase()}
-                      </Badge>
+                <div className="space-y-4">
+                  {userSubscriptions.map((subscription, index) => (
+                    <div key={subscription.id} className="p-4 border rounded-lg">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label className="text-sm text-muted-foreground">{t('subscription.username')}</Label>
+                          <p className="font-medium">{subscription.username}</p>
+                        </div>
+                        <div>
+                          <Label className="text-sm text-muted-foreground">{language === 'fa' ? 'حجم داده' : 'Data Limit'}</Label>
+                          <p className="font-medium">{subscription.data_limit_gb} GB</p>
+                        </div>
+                        <div>
+                          <Label className="text-sm text-muted-foreground">{t('subscription.status')}</Label>
+                          <Badge variant={subscription.status === 'active' ? 'default' : 'secondary'}>
+                            {subscription.status}
+                          </Badge>
+                        </div>
+                        <div>
+                          <Label className="text-sm text-muted-foreground">{language === 'fa' ? 'پروتکل' : 'Protocol'}</Label>
+                          <p className="font-medium">{subscription.protocol || 'vmess'}</p>
+                        </div>
+                        <div>
+                          <Label className="text-sm text-muted-foreground">{language === 'fa' ? 'تاریخ ایجاد' : 'Created'}</Label>
+                          <p className="font-medium">{new Date(subscription.created_at).toLocaleDateString()}</p>
+                        </div>
+                        {subscription.expire_at && (
+                          <div>
+                            <Label className="text-sm text-muted-foreground">{t('subscription.expiry-date')}</Label>
+                            <p className="font-medium">{new Date(subscription.expire_at).toLocaleDateString()}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-muted-foreground">{t('subscription.expiry-date')}</Label>
-                    <p className="font-medium">{mockUserData.expiryDate}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-muted-foreground">{t('subscription.remaining-data')}</Label>
-                    <p className="font-medium">{mockUserData.remainingData}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-muted-foreground">{t('subscription.status')}</Label>
-                    <Badge variant="outline" className="text-green-600 border-green-600">
-                      {language === 'fa' ? 'فعال' : 'Active'}
-                    </Badge>
-                  </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
           )}
 
           {/* Renewal Options */}
-          {userFound && (
+          {userSubscriptions.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -499,11 +534,14 @@ const RenewalSubscriptionForm = () => {
           )}
 
           {/* User Not Found Message */}
-          {searchUsername && !userFound && (
+          {searchMobile && userSubscriptions.length === 0 && !dataLoading && (
             <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
               <CardContent className="pt-6">
                 <p className="text-red-600 dark:text-red-400 text-center">
-                  {t('subscription.user-not-found')}
+                  {language === 'fa' ? 
+                    'هیچ اشتراکی با این شماره موبایل یافت نشد' : 
+                    'No subscriptions found for this mobile number'
+                  }
                 </p>
               </CardContent>
             </Card>
