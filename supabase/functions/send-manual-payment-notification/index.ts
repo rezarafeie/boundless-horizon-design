@@ -43,6 +43,59 @@ serve(async (req) => {
 
     console.log('Subscription found:', subscription.username, subscription.mobile);
 
+    // If this is an approval notification, create VPN user first
+    let vpnUserData = null;
+    if (type === 'approved' && !subscription.marzban_user_created) {
+      try {
+        console.log('Creating VPN user for approved subscription...');
+        
+        // Call Marzneshin API to create user
+        const createUserResponse = await fetch(`${Deno.env.get('MARZNESHIN_BASE_URL')}/api/user`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${await getMarzneshinToken()}`
+          },
+          body: JSON.stringify({
+            username: subscription.username,
+            proxies: {
+              vmess: {},
+              vless: {}
+            },
+            data_limit: subscription.data_limit_gb * 1073741824, // Convert GB to bytes
+            expire: Math.floor((Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)) / 1000),
+            status: 'active'
+          })
+        });
+
+        if (createUserResponse.ok) {
+          const userData = await createUserResponse.json();
+          console.log('VPN user created successfully:', userData);
+          
+          // Get subscription URL
+          if (userData.subscription_url) {
+            vpnUserData = userData;
+            
+            // Update subscription with VPN details
+            await supabase
+              .from('subscriptions')
+              .update({
+                subscription_url: userData.subscription_url,
+                marzban_user_created: true,
+                status: 'active',
+                expire_at: new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString()
+              })
+              .eq('id', subscriptionId);
+          }
+        } else {
+          console.error('Failed to create VPN user:', await createUserResponse.text());
+        }
+      } catch (vpnError) {
+        console.error('VPN user creation error:', vpnError);
+        // Continue with notification even if VPN creation fails
+      }
+    }
+
     // Initialize Resend
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
@@ -85,10 +138,11 @@ serve(async (req) => {
           <li><strong>Duration:</strong> ${subscription.duration_days} days</li>
           <li><strong>Expires:</strong> ${subscription.expire_at ? new Date(subscription.expire_at).toLocaleDateString() : 'Not set'}</li>
         </ul>
-        ${subscription.subscription_url ? `
+        ${vpnUserData?.subscription_url ? `
         <h3>Connection Details:</h3>
-        <p>Your subscription URL: <code>${subscription.subscription_url}</code></p>
+        <p>Your subscription URL: <code>${vpnUserData.subscription_url}</code></p>
         <p>You can also visit your delivery page to get the QR code and setup instructions.</p>
+        <p><a href="https://bnets.co/delivery?subscriptionId=${subscriptionId}" style="background-color: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Subscription Details</a></p>
         ` : '<p>Your subscription URL will be available shortly on your delivery page.</p>'}
         <p>Thank you for choosing our VPN service!</p>
         <p>Best regards,<br>BoundlessNets Team</p>
@@ -127,7 +181,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       emailId: emailResponse.id,
-      message: 'Notification sent successfully' 
+      message: 'Notification sent successfully',
+      vpnUserCreated: !!vpnUserData
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -143,3 +198,29 @@ serve(async (req) => {
     });
   }
 });
+
+// Helper function to get Marzneshin authentication token
+async function getMarzneshinToken() {
+  try {
+    const response = await fetch(`${Deno.env.get('MARZNESHIN_BASE_URL')}/api/admin/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        'username': Deno.env.get('MARZNESHIN_ADMIN_USERNAME') ?? '',
+        'password': Deno.env.get('MARZNESHIN_ADMIN_PASSWORD') ?? ''
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to authenticate with Marzneshin');
+    }
+
+    const data = await response.json();
+    return data.access_token;
+  } catch (error) {
+    console.error('Marzneshin authentication error:', error);
+    throw error;
+  }
+}

@@ -1,118 +1,107 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { 
-        status: 405, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    );
-  }
-
   try {
-    const requestBody = await req.json()
-    console.log('Verify request received:', requestBody)
+    console.log('=== ZARINPAL VERIFY FUNCTION STARTED ===');
+    
+    const { merchant_id, authority, amount } = await req.json();
+    console.log('Verify request received:', { merchant_id, authority, amount });
 
-    const { merchant_id, authority } = requestBody
-
-    const verifyRequest = {
-      merchant_id,
-      authority
+    if (!merchant_id || !authority || !amount) {
+      throw new Error('Merchant ID, authority, and amount are required');
     }
 
-    console.log('Sending verify request to Zarinpal:', verifyRequest)
+    // Get Zarinpal merchant ID from environment if not provided
+    const merchantIdToUse = merchant_id || Deno.env.get('ZARINPAL_MERCHANT_ID');
+    if (!merchantIdToUse) {
+      console.error('ZARINPAL_MERCHANT_ID not configured');
+      throw new Error('Zarinpal merchant ID not configured');
+    }
 
-    const zarinpalResponse = await fetch('https://api.zarinpal.com/pg/v4/payman/verify.json', {
+    console.log('Sending verification request to Zarinpal...');
+
+    // Create verification request to Zarinpal
+    const zarinpalRequest = {
+      merchant_id: merchantIdToUse,
+      authority: authority,
+      amount: amount // Amount should already be in Rial
+    };
+
+    console.log('Sending request to Zarinpal:', zarinpalRequest);
+
+    const response = await fetch('https://api.zarinpal.com/pg/v4/payment/verify.json', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify(verifyRequest)
-    })
+      body: JSON.stringify(zarinpalRequest)
+    });
 
-    console.log('Zarinpal verify response status:', zarinpalResponse.status)
+    console.log('Zarinpal verification response status:', response.status);
 
-    const responseText = await zarinpalResponse.text()
-    console.log('Zarinpal verify raw response:', responseText)
+    const responseText = await response.text();
+    console.log('Zarinpal verification raw response:', responseText);
 
-    let responseData
+    let responseData;
     try {
-      responseData = JSON.parse(responseText)
+      responseData = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('Failed to parse JSON response:', parseError)
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Invalid response from Zarinpal',
-          details: {
-            status: zarinpalResponse.status,
-            rawResponse: responseText.substring(0, 500),
-            parseError: parseError.message
-          }
-        }),
-        { 
-          status: 502, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      console.error('Failed to parse JSON response:', parseError);
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Invalid response from Zarinpal',
+        details: {
+          status: response.status,
+          rawResponse: responseText.substring(0, 500),
+          parseError: parseError.message
         }
-      )
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 502,
+      });
     }
 
-    if (!zarinpalResponse.ok) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Zarinpal API error',
-          details: responseData,
-          status: zarinpalResponse.status,
-          rawResponse: responseText
-        }),
-        { 
-          status: zarinpalResponse.status, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
-    }
+    if (response.ok && responseData.data) {
+      console.log('Payment verification successful:', responseData);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
+      return new Response(JSON.stringify({ 
+        success: true, 
         data: responseData,
-        status: zarinpalResponse.status,
-        rawResponse: responseText
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
+        verified: responseData.data.code === 100
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } else {
+      console.error('Zarinpal verification error:', responseData);
+      return new Response(JSON.stringify({
+        success: false,
+        error: responseData.errors?.join(', ') || 'Payment verification failed',
+        details: responseData
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: response.status,
+      });
+    }
 
   } catch (error) {
-    console.error('Payment verification error:', error)
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'Server error',
-        message: error.message,
-        details: error.stack
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
+    console.error('Zarinpal verification error:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
   }
-})
+});

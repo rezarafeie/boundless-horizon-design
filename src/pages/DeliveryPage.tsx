@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -11,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import QRCodeCanvas from 'qrcode';
 import Navigation from '@/components/Navigation';
+import ZarinpalVerificationHandler from '@/components/ZarinpalVerificationHandler';
 
 interface SubscriptionData {
   username: string;
@@ -18,6 +18,9 @@ interface SubscriptionData {
   expire: number;
   data_limit: number;
   status: string;
+  subscriptionId?: string;
+  paymentMethod?: string;
+  authority?: string;
 }
 
 const DeliveryPage = () => {
@@ -32,6 +35,59 @@ const DeliveryPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showPendingMessage, setShowPendingMessage] = useState(false);
+
+  // Check if this is a Zarinpal callback
+  const isZarinpalCallback = searchParams.get('Authority') && searchParams.get('Status');
+
+  // If this is a Zarinpal callback, show verification handler
+  if (isZarinpalCallback) {
+    return <ZarinpalVerificationHandler />;
+  }
+
+  const createVPNUserIfNeeded = async (subscriptionId: string, subscription: any) => {
+    try {
+      // Check if VPN user already created
+      if (subscription.marzban_user_created || subscription.subscription_url) {
+        return subscription.subscription_url;
+      }
+
+      console.log('Creating VPN user for subscription:', subscriptionId);
+      
+      const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
+        body: {
+          username: subscription.username,
+          dataLimitGB: subscription.data_limit_gb,
+          durationDays: subscription.duration_days,
+          notes: `Created for subscription ID: ${subscriptionId}`
+        }
+      });
+
+      if (error || !data?.success) {
+        console.error('VPN user creation failed:', error || data?.error);
+        throw new Error(data?.error || 'Failed to create VPN user');
+      }
+
+      console.log('VPN user created successfully:', data.data);
+      
+      // Update subscription with real URL from panel
+      if (data.data?.subscription_url) {
+        await supabase
+          .from('subscriptions')
+          .update({ 
+            subscription_url: data.data.subscription_url,
+            marzban_user_created: true
+          })
+          .eq('id', subscriptionId);
+
+        return data.data.subscription_url;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('VPN user creation failed:', error);
+      return null;
+    }
+  };
 
   useEffect(() => {
     const loadSubscriptionData = async () => {
@@ -88,12 +144,19 @@ const DeliveryPage = () => {
                 .single();
 
               if (subscription && !error) {
+                // Try to create VPN user if needed and subscription is active
+                let subscriptionUrl = subscription.subscription_url;
+                if (subscription.status === 'active' && !subscriptionUrl) {
+                  subscriptionUrl = await createVPNUserIfNeeded(id, subscription);
+                }
+
                 data = {
                   username: subscription.username,
-                  subscription_url: subscription.subscription_url,
+                  subscription_url: subscriptionUrl,
                   expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
                   data_limit: subscription.data_limit_gb * 1073741824,
-                  status: subscription.status || 'active'
+                  status: subscription.status || 'active',
+                  subscriptionId: subscription.id
                 };
                 console.log('Fetched subscription from database:', data);
 
@@ -105,6 +168,32 @@ const DeliveryPage = () => {
             } catch (fetchError) {
               console.error('Failed to fetch subscription from database:', fetchError);
             }
+          }
+        }
+
+        // 5. Check for pending Zarinpal payment
+        const pendingSubscriptionId = localStorage.getItem('pendingZarinpalSubscription');
+        if (pendingSubscriptionId && !data) {
+          try {
+            const { data: subscription, error } = await supabase
+              .from('subscriptions')
+              .select('*')
+              .eq('id', pendingSubscriptionId)
+              .single();
+
+            if (subscription && !error) {
+              data = {
+                username: subscription.username,
+                subscription_url: subscription.subscription_url,
+                expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
+                data_limit: subscription.data_limit_gb * 1073741824,
+                status: subscription.status || 'payment_pending',
+                subscriptionId: subscription.id,
+                paymentMethod: 'zarinpal'
+              };
+            }
+          } catch (fetchError) {
+            console.error('Failed to fetch pending subscription:', fetchError);
           }
         }
 
@@ -184,21 +273,31 @@ const DeliveryPage = () => {
     setIsRefreshing(true);
     try {
       // Try to refresh subscription data from database
+      const searchKey = subscriptionData.subscriptionId || subscriptionData.username;
+      const searchField = subscriptionData.subscriptionId ? 'id' : 'username';
+      
       const { data: subscription, error } = await supabase
         .from('subscriptions')
         .select('*')
-        .eq('username', subscriptionData.username)
+        .eq(searchField, searchKey)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
 
       if (subscription && !error) {
+        // Try to create VPN user if needed and subscription is active
+        let subscriptionUrl = subscription.subscription_url;
+        if (subscription.status === 'active' && !subscriptionUrl) {
+          subscriptionUrl = await createVPNUserIfNeeded(subscription.id, subscription);
+        }
+
         const updatedData = {
           username: subscription.username,
-          subscription_url: subscription.subscription_url,
+          subscription_url: subscriptionUrl,
           expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
           data_limit: subscription.data_limit_gb * 1073741824,
-          status: subscription.status || 'active'
+          status: subscription.status || 'active',
+          subscriptionId: subscription.id
         };
         
         setSubscriptionData(updatedData);
@@ -291,6 +390,7 @@ const DeliveryPage = () => {
     const statusConfig = {
       active: { color: 'bg-green-500', text: language === 'fa' ? 'فعال' : 'Active' },
       pending: { color: 'bg-yellow-500', text: language === 'fa' ? 'در انتظار تایید' : 'Pending Approval' },
+      payment_pending: { color: 'bg-blue-500', text: language === 'fa' ? 'در انتظار پرداخت' : 'Payment Pending' },
       paid: { color: 'bg-blue-500', text: language === 'fa' ? 'پرداخت شده' : 'Paid' },
       expired: { color: 'bg-red-500', text: language === 'fa' ? 'منقضی' : 'Expired' }
     };
@@ -408,6 +508,86 @@ const DeliveryPage = () => {
                 <ArrowLeft className="w-4 h-4" />
                 {language === 'fa' ? 'بازگشت به صفحه اصلی' : 'Back to Home'}
               </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle payment pending status for Zarinpal
+  if (subscriptionData.status === 'payment_pending' && subscriptionData.paymentMethod === 'zarinpal') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
+        <Navigation />
+        <div className="pt-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <Clock className="w-8 h-8 text-blue-600" />
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                  {language === 'fa' ? 'در انتظار پرداخت' : 'Awaiting Payment'}
+                </h1>
+              </div>
+              <p className="text-gray-600 dark:text-gray-300">
+                {language === 'fa' ? 
+                  'لطفا پرداخت خود را در تب باز شده تکمیل کنید' : 
+                  'Please complete your payment in the opened tab'
+                }
+              </p>
+            </div>
+
+            <div className="max-w-2xl mx-auto">
+              <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/20">
+                <CardHeader>
+                  <CardTitle className="text-center text-blue-800 dark:text-blue-200">
+                    {language === 'fa' ? '💳 پرداخت زرین‌پال' : '💳 Zarinpal Payment'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="text-center space-y-4">
+                    <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-center gap-4 text-2xl">
+                          <span>💳</span>
+                          <span>🔄</span>
+                          <span>✅</span>
+                        </div>
+                        <p className="text-sm">
+                          {language === 'fa' ? 
+                            'پس از تکمیل پرداخت، به طور خودکار به این صفحه برگردانده خواهید شد.' : 
+                            'After completing payment, you will be automatically redirected back to this page.'
+                          }
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="bg-white/30 p-3 rounded">
+                        <span className="font-medium">{language === 'fa' ? 'نام کاربری:' : 'Username:'}</span>
+                        <p className="font-mono">{subscriptionData.username}</p>
+                      </div>
+                      <div className="bg-white/30 p-3 rounded">
+                        <span className="font-medium">{language === 'fa' ? 'وضعیت:' : 'Status:'}</span>
+                        <div className="mt-1">{getStatusBadge(subscriptionData.status)}</div>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={refreshSubscription}
+                      disabled={isRefreshing}
+                      className="w-full"
+                      variant="outline"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      {isRefreshing ? 
+                        (language === 'fa' ? 'در حال بررسی...' : 'Checking...') :
+                        (language === 'fa' ? 'بررسی وضعیت پرداخت' : 'Check Payment Status')
+                      }
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
@@ -534,6 +714,16 @@ const DeliveryPage = () => {
                           'Subscription is being processed. Connection link will be available soon.'
                         }
                       </p>
+                      <Button
+                        onClick={refreshSubscription}
+                        disabled={isRefreshing}
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        {language === 'fa' ? 'بروزرسانی' : 'Refresh'}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
