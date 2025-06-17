@@ -1,20 +1,21 @@
 
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { lazy, Suspense } from "react";
-import PWAInstallPrompt from "./components/PWAInstallPrompt";
-
-// Lazy load pages for better performance
-const Index = lazy(() => import("./pages/Index"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Subscription = lazy(() => import("./pages/Subscription"));
-const Renewal = lazy(() => import("./pages/Renewal"));
-const DeliveryPage = lazy(() => import("./pages/DeliveryPage"));
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import { Toaster } from "@/components/ui/sonner";
+import Index from "./pages/Index";
+import Subscription from "./pages/Subscription";
+import Renewal from "./pages/Renewal";
+import DeliveryPage from "./pages/DeliveryPage";
+import NotFound from "./pages/NotFound";
+import AdminLoginPage from "./pages/AdminLogin";
+import { AdminDashboard } from "./pages/AdminDashboard";
+import { AdminPlans } from "./pages/AdminPlans";
+import { AdminPanels } from "./pages/AdminPanels";
+import { AdminUsers } from "./pages/AdminUsers";
+import { AdminDiscounts } from "./pages/AdminDiscounts";
+import "./App.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,38 +26,38 @@ const queryClient = new QueryClient({
   },
 });
 
-// Loading component for lazy loaded pages
-const PageLoader = () => (
-  <div className="min-h-screen bg-background flex items-center justify-center">
-    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
-  </div>
+const QueryClient = ({ children }: { children: React.ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 );
 
-const App = () => {
+function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <LanguageProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/subscription" element={<Subscription />} />
-                  <Route path="/renewal" element={<Renewal />} />
-                  <Route path="/delivery" element={<DeliveryPage />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-              <PWAInstallPrompt />
-            </BrowserRouter>
-          </TooltipProvider>
-        </LanguageProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <QueryClient>
+      <LanguageProvider>
+        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+          <Toaster />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/subscription" element={<Subscription />} />
+              <Route path="/renewal" element={<Renewal />} />
+              <Route path="/delivery/:id" element={<DeliveryPage />} />
+              
+              {/* Admin Routes */}
+              <Route path="/admin/login" element={<AdminLoginPage />} />
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/plans" element={<AdminPlans />} />
+              <Route path="/admin/panels" element={<AdminPanels />} />
+              <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/discounts" element={<AdminDiscounts />} />
+              
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </ThemeProvider>
+      </LanguageProvider>
+    </QueryClient>
   );
-};
+}
 
 export default App;
