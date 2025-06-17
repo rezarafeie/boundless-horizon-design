@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -29,21 +28,27 @@ const PaymentSuccess = () => {
           throw new Error('No session ID found');
         }
 
-        // Here you would typically verify the payment with Stripe
-        // and create the subscription in your database
-        // For now, we'll simulate a successful payment
+        if (window.debugPayment) {
+          window.debugPayment('stripe', 'info', 'Verifying Stripe session', { sessionId });
+        }
 
-        // Simulate subscription creation
-        const mockSubscriptionData = {
-          username: 'stripe_user_' + Date.now(),
-          subscription_url: 'vmess://mock-stripe-config',
-          expire: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days
-          data_limit: 50 * 1073741824, // 50GB in bytes
-          status: 'active'
-        };
+        // Verify the Stripe session and create subscription
+        const { data: stripeData, error: stripeError } = await supabase.functions.invoke('stripe-verify-session', {
+          body: { sessionId }
+        });
+
+        if (stripeError) {
+          throw stripeError;
+        }
+
+        if (!stripeData.success) {
+          throw new Error(stripeData.error || 'Payment verification failed');
+        }
+
+        const subscriptionData = stripeData.subscription;
 
         if (window.debugPayment) {
-          window.debugPayment('stripe', 'success', 'Stripe payment verified successfully', mockSubscriptionData);
+          window.debugPayment('stripe', 'success', 'Stripe payment verified and subscription created', subscriptionData);
         }
 
         toast({
@@ -53,10 +58,10 @@ const PaymentSuccess = () => {
             'Your payment has been confirmed. Redirecting...',
         });
 
-        // Redirect to delivery page with subscription data
+        // Redirect to delivery page with real subscription data
         setTimeout(() => {
           navigate('/delivery', { 
-            state: { subscriptionData: mockSubscriptionData },
+            state: { subscriptionData },
             replace: true 
           });
         }, 2000);

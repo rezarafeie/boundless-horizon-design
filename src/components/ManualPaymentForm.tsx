@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,12 +22,72 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
 
   const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
     if (window.debugPayment) {
       window.debugPayment('manual', type, message, data);
     }
   };
+
+  // Poll for payment approval
+  useEffect(() => {
+    if (!subscriptionId || !isPolling) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data: subscription, error } = await supabase
+          .from('subscriptions')
+          .select('admin_decision, status, subscription_url')
+          .eq('id', subscriptionId)
+          .single();
+
+        if (error) {
+          console.error('Polling error:', error);
+          return;
+        }
+
+        if (subscription.admin_decision === 'approved' && subscription.status === 'active') {
+          debugLog('success', 'Manual payment approved by admin', subscription);
+          setIsPolling(false);
+          
+          toast({
+            title: language === 'fa' ? 'پرداخت تأیید شد' : 'Payment Approved',
+            description: language === 'fa' ? 
+              'پرداخت شما تأیید شد. در حال انتقال...' : 
+              'Your payment has been approved. Redirecting...',
+          });
+
+          // Redirect to delivery page with subscription data
+          setTimeout(() => {
+            window.location.href = `/delivery?subscriptionData=${encodeURIComponent(JSON.stringify({
+              username: subscription.username,
+              subscription_url: subscription.subscription_url,
+              expire: Date.now() + (30 * 24 * 60 * 60 * 1000), // Default 30 days
+              data_limit: 50 * 1073741824, // Default 50GB
+              status: 'active'
+            }))}`;
+          }, 2000);
+        } else if (subscription.admin_decision === 'rejected') {
+          debugLog('error', 'Manual payment rejected by admin', subscription);
+          setIsPolling(false);
+          
+          toast({
+            title: language === 'fa' ? 'پرداخت رد شد' : 'Payment Rejected',
+            description: language === 'fa' ? 
+              'پرداخت شما رد شد. لطفا با پشتیبانی تماس بگیرید.' : 
+              'Your payment was rejected. Please contact support.',
+            variant: 'destructive'
+          });
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [subscriptionId, isPolling, language, toast]);
 
   const bankInfo = {
     bankName: language === 'fa' ? 'بانک ملت' : 'Bank Mellat',
@@ -82,7 +141,6 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
       debugLog('success', 'Receipt uploaded successfully', { fileName, path: data.path });
 
-      // Get public URL (even though bucket is private, we can get signed URL later if needed)
       const { data: { publicUrl } } = supabase.storage
         .from('manual-payment-receipts')
         .getPublicUrl(fileName);
@@ -126,22 +184,18 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       }
 
       debugLog('success', 'Email sent successfully', data);
-      toast({
-        title: language === 'fa' ? 'ارسال شد' : 'Sent Successfully',
-        description: language === 'fa' ? 
-          'اطلاعات پرداخت به ادمین ارسال شد' : 
-          'Payment information sent to admin',
-      });
-
+      
       return true;
     } catch (error) {
       console.error('Failed to send email notification:', error);
       debugLog('error', 'Email notification failed', error);
+      
+      // Still show success to user but log the email issue
       toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
+        title: language === 'fa' ? 'توجه' : 'Notice',
         description: language === 'fa' ? 
-          'خطا در ارسال ایمیل به ادمین' : 
-          'Failed to send email to admin',
+          'سفارش ثبت شد اما ایمیل به ادمین ارسال نشد. لطفا با پشتیبانی تماس بگیرید.' : 
+          'Order saved but email to admin failed. Please contact support.',
         variant: 'destructive'
       });
       return false;
@@ -171,19 +225,31 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       receiptFile: receiptFile || undefined,
       confirmed,
       // Store callback functions for later use
-      postCreationCallback: async (subscriptionId: string) => {
+      postCreationCallback: async (subId: string) => {
+        setSubscriptionId(subId);
         let receiptUrl = null;
         
         // Upload receipt if provided
         if (receiptFile) {
-          receiptUrl = await uploadReceiptToStorage(receiptFile, subscriptionId);
+          receiptUrl = await uploadReceiptToStorage(receiptFile, subId);
           if (!receiptUrl) {
             return; // Upload failed, stop here
           }
         }
         
         // Send email notification to admin
-        await sendEmailNotification(subscriptionId, receiptUrl);
+        await sendEmailNotification(subId, receiptUrl);
+        
+        // Show success message with specific Persian text
+        toast({
+          title: language === 'fa' ? 'سفارش دریافت شد' : 'Order Received',
+          description: language === 'fa' ? 
+            'سفارش شما دریافت شد. پس از تایید رسید پرداخت لینک اتصال برای شما ساخته خواهد شد. لطفا منتظر بمانید.' : 
+            'Your order has been received. After payment receipt approval, the connection link will be created for you. Please wait.',
+        });
+        
+        // Start polling for admin approval
+        setIsPolling(true);
       }
     } as any);
   };
@@ -335,6 +401,15 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
               language === 'fa' ? 'تأیید پرداخت' : 'Confirm Payment'
             )}
           </Button>
+
+          {isPolling && (
+            <p className="text-xs text-blue-600 text-center mt-2">
+              {language === 'fa' ? 
+                'در انتظار تأیید ادمین... (هر ۵ ثانیه بررسی می‌شود)' : 
+                'Waiting for admin approval... (checking every 5 seconds)'
+              }
+            </p>
+          )}
 
           <p className="text-xs text-muted-foreground text-center mt-2">
             {language === 'fa' ? 
