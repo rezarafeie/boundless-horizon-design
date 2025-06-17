@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Plus, Trash2, Server } from 'lucide-react';
+import { Pencil, Plus, Trash2, Server, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Panel {
@@ -24,6 +24,14 @@ interface Panel {
   is_active: boolean;
   health_status: 'online' | 'offline' | 'unknown';
   last_health_check?: string;
+}
+
+interface Inbound {
+  tag: string;
+  country_en: string;
+  country_fa: string;
+  protocol: string;
+  port?: number;
 }
 
 export const PanelsManagement = () => {
@@ -143,14 +151,49 @@ export const PanelsManagement = () => {
       password: panel?.password || '',
       country_en: panel?.country_en || '',
       country_fa: panel?.country_fa || '',
-      default_inbounds: panel?.default_inbounds || [],
       is_active: panel?.is_active ?? true,
     });
 
+    const [inbounds, setInbounds] = useState<Inbound[]>(
+      panel?.default_inbounds || [{ tag: '', country_en: '', country_fa: '', protocol: 'vless' }]
+    );
+
+    const addInbound = () => {
+      setInbounds([...inbounds, { tag: '', country_en: '', country_fa: '', protocol: 'vless' }]);
+    };
+
+    const removeInbound = (index: number) => {
+      if (inbounds.length > 1) {
+        setInbounds(inbounds.filter((_, i) => i !== index));
+      }
+    };
+
+    const updateInbound = (index: number, field: keyof Inbound, value: string | number) => {
+      const updated = inbounds.map((inbound, i) => 
+        i === index ? { ...inbound, [field]: value } : inbound
+      );
+      setInbounds(updated);
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      console.log('PANELS: Form submitted with data:', formData);
-      onSave({ ...formData, id: panel?.id });
+      console.log('PANELS: Form submitted with data:', formData, 'inbounds:', inbounds);
+      
+      // Validate inbounds
+      const validInbounds = inbounds.filter(inbound => 
+        inbound.tag.trim() && inbound.country_en.trim() && inbound.country_fa.trim()
+      );
+
+      if (validInbounds.length === 0) {
+        toast.error('At least one valid inbound is required');
+        return;
+      }
+
+      onSave({ 
+        ...formData, 
+        id: panel?.id,
+        default_inbounds: validInbounds
+      });
     };
 
     return (
@@ -159,7 +202,7 @@ export const PanelsManagement = () => {
           <CardTitle>{panel ? 'Edit Panel' : 'Add New Panel'}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="name">Panel Name</Label>
@@ -220,7 +263,7 @@ export const PanelsManagement = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="country_en">Country (English)</Label>
+                <Label htmlFor="country_en">Panel Country (English)</Label>
                 <Input
                   id="country_en"
                   value={formData.country_en}
@@ -230,7 +273,7 @@ export const PanelsManagement = () => {
                 />
               </div>
               <div>
-                <Label htmlFor="country_fa">Country (Persian)</Label>
+                <Label htmlFor="country_fa">Panel Country (Persian)</Label>
                 <Input
                   id="country_fa"
                   value={formData.country_fa}
@@ -239,6 +282,95 @@ export const PanelsManagement = () => {
                   required
                 />
               </div>
+            </div>
+
+            {/* Inbounds Configuration */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-lg font-semibold">Inbound Configuration</Label>
+                <Button type="button" onClick={addInbound} size="sm">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Inbound
+                </Button>
+              </div>
+              
+              {inbounds.map((inbound, index) => (
+                <Card key={index} className="p-4 bg-gray-50 dark:bg-gray-800">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium">Inbound #{index + 1}</span>
+                    {inbounds.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeInbound(index)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor={`tag-${index}`}>Inbound Tag</Label>
+                      <Input
+                        id={`tag-${index}`}
+                        value={inbound.tag}
+                        onChange={(e) => updateInbound(index, 'tag', e.target.value)}
+                        placeholder="e.g., VLESS_TCP_GERMANY"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`protocol-${index}`}>Protocol</Label>
+                      <Select 
+                        value={inbound.protocol} 
+                        onValueChange={(value) => updateInbound(index, 'protocol', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="vless">VLESS</SelectItem>
+                          <SelectItem value="vmess">VMess</SelectItem>
+                          <SelectItem value="trojan">Trojan</SelectItem>
+                          <SelectItem value="shadowsocks">Shadowsocks</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor={`country_en-${index}`}>Country (English)</Label>
+                      <Input
+                        id={`country_en-${index}`}
+                        value={inbound.country_en}
+                        onChange={(e) => updateInbound(index, 'country_en', e.target.value)}
+                        placeholder="Germany"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`country_fa-${index}`}>Country (Persian)</Label>
+                      <Input
+                        id={`country_fa-${index}`}
+                        value={inbound.country_fa}
+                        onChange={(e) => updateInbound(index, 'country_fa', e.target.value)}
+                        placeholder="آلمان"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`port-${index}`}>Port (Optional)</Label>
+                      <Input
+                        id={`port-${index}`}
+                        type="number"
+                        value={inbound.port || ''}
+                        onChange={(e) => updateInbound(index, 'port', parseInt(e.target.value) || '')}
+                        placeholder="443"
+                      />
+                    </div>
+                  </div>
+                </Card>
+              ))}
             </div>
 
             <div className="flex items-center space-x-2">
@@ -372,7 +504,7 @@ export const PanelsManagement = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
                 <div>
                   <span className="font-medium">Panel URL:</span>
                   <p className="text-blue-600">{panel.panel_url}</p>
@@ -386,6 +518,27 @@ export const PanelsManagement = () => {
                   <p>{panel.last_health_check ? new Date(panel.last_health_check).toLocaleString() : 'Never'}</p>
                 </div>
               </div>
+              
+              {/* Show Inbounds */}
+              {panel.default_inbounds && panel.default_inbounds.length > 0 && (
+                <div>
+                  <span className="font-medium text-sm">Configured Inbounds:</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                    {panel.default_inbounds.map((inbound: any, index: number) => (
+                      <div key={index} className="p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-sm">{inbound.tag}</span>
+                          <Badge variant="outline">{inbound.protocol}</Badge>
+                        </div>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          {inbound.country_en} ({inbound.country_fa})
+                          {inbound.port && ` - Port: ${inbound.port}`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}

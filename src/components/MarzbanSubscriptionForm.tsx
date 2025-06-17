@@ -1,1260 +1,424 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { QrCode, Copy, Download, CheckCircle, AlertCircle, User, Zap, ChevronDown, ChevronUp, Bug, CreditCard, Phone, Loader } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { AlertCircle, Loader2, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import QRCodeCanvas from 'qrcode';
 import { supabase } from '@/integrations/supabase/client';
-import { SubscriptionPlan } from '@/types/subscription';
-import { MarzneshinApiService } from '@/services/marzneshinApi';
-import PlanSelector from '@/components/PlanSelector';
-import DiscountField from '@/components/DiscountField';
-import FreeTrialButton from '@/components/FreeTrialButton';
-import { DiscountCode } from '@/types/subscription';
+import SubscriptionSuccess from './SubscriptionSuccess';
 
-interface MarzbanFormData {
-  username: string;
-  dataLimit: number; // in GB
-  duration: number; // in days
-  notes: string;
-  mobile: string;
-  selectedPlan: SubscriptionPlan | null;
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description: string;
+  pricePerGB: number;
+  apiType: 'marzban' | 'marzneshin';
+  durationDays?: number;
 }
 
-interface SubscriptionResponse {
-  username: string;
-  subscription_url: string;
-  expire: number;
-  data_limit: number;
-}
-
-interface PaymanResponse {
-  payman_authority: string;
-  code: number;
-  message?: string;
-}
-
-interface DebugInfo {
-  endpoint: string;
-  status: number;
-  request: any;
-  response: any;
-  error?: string;
-  timestamp: string;
-  type: 'success' | 'error' | 'info';
+interface DiscountCode {
+  code: string;
+  percentage: number;
+  description: string;
 }
 
 const MarzbanSubscriptionForm = () => {
-  const { language, t } = useLanguage();
+  const { language } = useLanguage();
   const { toast } = useToast();
-  const [formData, setFormData] = useState<MarzbanFormData>({
-    username: '',
-    dataLimit: 10,
-    duration: 30,
-    notes: '',
+
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [formData, setFormData] = useState({
     mobile: '',
-    selectedPlan: null
+    dataLimit: 0,
+    duration: 0,
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [result, setResult] = useState<SubscriptionResponse | null>(null);
-  const [step, setStep] = useState(1); // 1: Form, 2: Payment, 3: Success
-  const [debugMode, setDebugMode] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<DebugInfo[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
-  const [rateLimitMap, setRateLimitMap] = useState<Map<string, number>>(new Map());
-  const [paymanData, setPaymanData] = useState<PaymanResponse | null>(null);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [discountCode, setDiscountCode] = useState('');
+  const [discountUsed, setDiscountUsed] = useState<DiscountCode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
-  const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
-
-  // Marzban configuration (for Lite plan)
-  const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
-  const MERCHANT_ID = '10f6ea92-fb53-468c-bcc9-36ef4d9f539c'; // Updated merchant ID
-  const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<any>(null);
 
   useEffect(() => {
-    // Check for debug mode in URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    setDebugMode(urlParams.get('debug') === 'true');
-    
-    // Check for payment callback
-    const status = urlParams.get('Status');
-    const authority = urlParams.get('Authority');
-    if (status && authority) {
-      handlePaymentCallback(status, authority);
-    }
-  }, []);
+    const fetchPlans = async () => {
+      const { data, error } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_visible', true);
 
-  useEffect(() => {
-    if (result?.subscription_url) {
-      generateQRCode(result.subscription_url);
-    }
-  }, [result]);
-
-  const generateQRCode = async (url: string) => {
-    try {
-      const qrDataUrl = await QRCodeCanvas.toDataURL(url, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-      setQrCodeDataUrl(qrDataUrl);
-    } catch (error) {
-      console.error('Error generating QR code:', error);
-    }
-  };
-
-  const calculatePrice = () => {
-    if (!formData.selectedPlan) return 0;
-    const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
-    
-    if (appliedDiscount) {
-      const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
-      return Math.max(0, basePrice - discountAmount);
-    }
-    
-    return basePrice;
-  };
-
-  const calculateDiscount = () => {
-    if (!formData.selectedPlan || !appliedDiscount) return 0;
-    const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
-    return (basePrice * appliedDiscount.percentage) / 100;
-  };
-
-  const generateUsername = () => {
-    const prefix = 'bnets_';
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.random().toString(36).substring(2, 5);
-    return `${prefix}${timestamp}_${random}`;
-  };
-
-  const addDebugInfo = (info: Omit<DebugInfo, 'timestamp'>) => {
-    const debugEntry: DebugInfo = {
-      ...info,
-      timestamp: new Date().toISOString()
-    };
-    setDebugInfo(prev => [...prev, debugEntry]);
-    
-    if (info.type === 'error') {
-      setShowDebug(true);
-    }
-  };
-
-  const checkRateLimit = (): boolean => {
-    const clientIP = 'user_ip';
-    const now = Date.now();
-    const lastRequest = rateLimitMap.get(clientIP) || 0;
-    
-    if (now - lastRequest < 30000) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'لطفاً ۳۰ ثانیه صبر کنید قبل از تلاش مجدد' : 
-          'Please wait 30 seconds before trying again',
-        variant: 'destructive'
-      });
-      return false;
-    }
-    
-    setRateLimitMap(prev => new Map(prev.set(clientIP, now)));
-    return true;
-  };
-
-  const validateForm = (): boolean => {
-    // Plan selection validation
-    if (!formData.selectedPlan) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'لطفاً یکی از پلن‌ها را انتخاب کنید' : 
-          'Please select a plan',
-        variant: 'destructive'
-      });
-      return false;
-    }
-
-    // Username validation
-    const usernameRegex = /^[a-z0-9_]+$/;
-    if (!formData.username || !usernameRegex.test(formData.username)) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'نام کاربری فقط می‌تواند شامل حروف انگلیسی کوچک، اعداد و زیرخط باشد' : 
-          'Username can only contain lowercase letters, numbers, and underscores',
-        variant: 'destructive'
-      });
-      return false;
-    }
-
-    // Mobile validation
-    const mobileRegex = /^09[0-9]{9}$/;
-    if (!formData.mobile || !mobileRegex.test(formData.mobile)) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'شماره موبایل باید با 09 شروع شده و 11 رقم باشد' : 
-          'Mobile number must start with 09 and be 11 digits',
-        variant: 'destructive'
-      });
-      return false;
-    }
-
-    // Data limit validation
-    if (formData.dataLimit < 1 || formData.dataLimit > 500) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'حجم داده باید بین ۱ تا ۵۰۰ گیگابایت باشد' : 
-          'Data volume must be between 1 and 500 GB',
-        variant: 'destructive'
-      });
-      return false;
-    }
-
-    // Duration validation
-    if (formData.duration < 1 || formData.duration > 180) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'مدت زمان باید بین ۱ تا ۱۸۰ روز باشد' : 
-          'Duration must be between 1 and 180 days',
-        variant: 'destructive'
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  const sanitizeInput = (input: string): string => {
-    return input.replace(/[<>'"]/g, '').trim();
-  };
-
-  const createMarzbanUser = async (formData: MarzbanFormData): Promise<SubscriptionResponse> => {
-    const tokenEndpoint = 'https://file.shopifysb.xyz:8000/api/admin/token';
-    const tokenRequestData = {
-      username: 'bnets',
-      password: 'reza1234',
-      grant_type: 'password'
-    };
-
-    try {
-      const tokenResponse = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(tokenRequestData)
-      });
-
-      addDebugInfo({
-        endpoint: tokenEndpoint,
-        status: tokenResponse.status,
-        request: tokenRequestData,
-        response: tokenResponse.ok ? 'Token received' : 'Token failed',
-        type: tokenResponse.ok ? 'success' : 'error'
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to authenticate with Marzban API');
-      }
-
-      const tokenData = await tokenResponse.json();
-      const accessToken = tokenData.access_token;
-
-      const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.duration * 86400);
-      const dataLimitBytes = formData.dataLimit * 1073741824;
-
-      const userData = {
-        username: sanitizeInput(formData.username),
-        status: 'active',
-        expire: expireTimestamp,
-        data_limit: dataLimitBytes,
-        data_limit_reset_strategy: 'no_reset',
-        inbounds: {
-          vless: MARZBAN_INBOUND_TAGS
-        },
-        proxies: {
-          vless: {
-            id: FIXED_UUID
-          }
-        },
-        note: `From bnets.co form - ${sanitizeInput(formData.notes)} - Mobile: ${formData.mobile}`,
-        next_plan: {
-          add_remaining_traffic: false,
-          data_limit: 0,
-          expire: 0,
-          fire_on_either: true
-        }
-      };
-
-      const userEndpoint = 'https://file.shopifysb.xyz:8000/api/user';
-      const userResponse = await fetch(userEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify(userData)
-      });
-
-      addDebugInfo({
-        endpoint: userEndpoint,
-        status: userResponse.status,
-        request: userData,
-        response: userResponse.ok ? 'User created' : 'User creation failed',
-        type: userResponse.ok ? 'success' : 'error'
-      });
-
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        if (userResponse.status === 409) {
-          throw new Error(language === 'fa' ? 
-            'این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید' : 
-            'This username is already taken. Please choose a different one'
-          );
-        }
-        throw new Error(errorData.detail || 'Failed to create user');
-      }
-
-      const responseData = await userResponse.json();
-      return {
-        username: responseData.username,
-        subscription_url: responseData.subscription_url,
-        expire: responseData.expire,
-        data_limit: responseData.data_limit
-      };
-    } catch (error) {
-      console.error('Marzban API Error:', error);
-      throw error;
-    }
-  };
-
-  const createMarzneshinUser = async (formData: MarzbanFormData): Promise<SubscriptionResponse> => {
-    try {
-      const result = await MarzneshinApiService.createUser({
-        username: sanitizeInput(formData.username),
-        dataLimitGB: formData.dataLimit,
-        durationDays: formData.duration,
-        notes: sanitizeInput(formData.notes)
-      });
-
-      addDebugInfo({
-        endpoint: 'marzneshin-edge-function',
-        status: 200,
-        request: { username: formData.username, dataLimit: formData.dataLimit, duration: formData.duration },
-        response: result,
-        type: 'success'
-      });
-
-      return {
-        username: result.username,
-        subscription_url: result.subscription_url,
-        expire: result.expire || Math.floor(Date.now() / 1000) + (formData.duration * 86400),
-        data_limit: result.data_limit
-      };
-    } catch (error) {
-      addDebugInfo({
-        endpoint: 'marzneshin-edge-function',
-        status: 0,
-        request: { username: formData.username, dataLimit: formData.dataLimit, duration: formData.duration },
-        response: { error: error.message },
-        error: error.message,
-        type: 'error'
-      });
-      throw error;
-    }
-  };
-
-  const handlePaymentCallback = async (status: string, authority: string) => {
-    if (status === 'OK') {
-      setIsLoading(true);
-      setLoadingMessage(language === 'fa' ? 'در حال تأیید پرداخت...' : 'Verifying payment...');
-      
-      try {
-        // Verify payment without authentication
-        const verifyResponse = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-verify`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
-          },
-          body: JSON.stringify({
-            merchant_id: MERCHANT_ID,
-            authority: authority
-          })
-        });
-        
-        const verifyData = await verifyResponse.json();
-        
-        addDebugInfo({
-          endpoint: 'zarinpal-verify',
-          status: verifyResponse.status,
-          request: { merchant_id: MERCHANT_ID, authority },
-          response: verifyData,
-          type: verifyResponse.ok ? 'success' : 'error'
-        });
-
-        if (verifyData?.success && verifyData?.data?.data?.code === 100) {
-          // Checkout
-          setLoadingMessage(language === 'fa' ? 'در حال تکمیل پرداخت...' : 'Completing payment...');
-          
-          const checkoutResponse = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-checkout`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
-            },
-            body: JSON.stringify({
-              merchant_id: MERCHANT_ID,
-              authority: authority,
-              signature: verifyData.data.data.signature
-            })
-          });
-
-          const checkoutData = await checkoutResponse.json();
-
-          addDebugInfo({
-            endpoint: 'zarinpal-checkout',
-            status: checkoutResponse.status,
-            request: { merchant_id: MERCHANT_ID, authority, signature: verifyData.data.data.signature },
-            response: checkoutData,
-            type: checkoutResponse.ok ? 'error' : 'success'
-          });
-          
-          if (checkoutData?.success && checkoutData?.data?.data?.code === 100) {
-            // Payment successful, create user
-            setLoadingMessage(language === 'fa' ? 'در حال ایجاد اشتراک...' : 'Creating subscription...');
-            
-            const userData = JSON.parse(localStorage.getItem('pendingUserData') || '{}');
-            const pendingDiscount = JSON.parse(localStorage.getItem('pendingDiscount') || 'null');
-            const pendingPrice = parseInt(localStorage.getItem('pendingPrice') || '0');
-            
-            let result: SubscriptionResponse;
-            
-            if (userData.selectedPlan?.apiType === 'marzneshin') {
-              result = await createMarzneshinUser(userData);
-            } else {
-              result = await createMarzbanUser(userData);
-            }
-            
-            // Save to database
-            await saveSubscriptionToDatabase(userData, result, pendingPrice, pendingDiscount);
-            
-            setResult(result);
-            setStep(3);
-            
-            // Clean up localStorage
-            localStorage.removeItem('pendingUserData');
-            localStorage.removeItem('pendingDiscount');
-            localStorage.removeItem('pendingPrice');
-            
-            toast({
-              title: language === 'fa' ? 'موفق' : 'Success',
-              description: language === 'fa' ? 
-                'پرداخت موفق و اشتراک ایجاد شد' : 
-                'Payment successful and subscription created',
-            });
-          } else {
-            throw new Error('Payment checkout failed');
-          }
-        } else {
-          throw new Error('Payment verification failed');
-        }
-      } catch (error) {
-        console.error('Payment verification error:', error);
+      if (error) {
+        console.error('Error fetching plans:', error);
         toast({
-          title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
-          description: language === 'fa' ? 
-            'خطا در تأیید پرداخت' : 
-            'Payment verification failed',
-          variant: 'destructive'
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 'مشکلی در دریافت پلن‌ها وجود دارد.' : 'There was an issue fetching the plans.',
+          variant: 'destructive',
         });
-      } finally {
-        setIsLoading(false);
-        setLoadingMessage('');
+      } else {
+        setPlans(data as SubscriptionPlan[]);
       }
-    } else {
-      toast({
-        title: language === 'fa' ? 'پرداخت ناموفق' : 'Payment Failed',
-        description: language === 'fa' ? 
-          'پرداخت لغو شد یا ناموفق بود' : 
-          'Payment was cancelled or failed',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const createPaymanContract = async (): Promise<string> => {
-    setLoadingMessage(language === 'fa' ? 'در حال ایجاد قرارداد پرداخت مستقیم...' : 'Creating Direct Debit contract...');
-    
-    const expireAt = new Date();
-    expireAt.setDate(expireAt.getDate() + 30);
-    
-    const directDebitRequest = {
-      merchant_id: MERCHANT_ID,
-      mobile: formData.mobile,
-      expire_at: Math.floor(expireAt.getTime() / 1000),
-      max_daily_count: 100,
-      max_monthly_count: 1000,
-      max_amount: calculatePrice() * 10, // Convert Toman to Rial
-      callback_url: `${window.location.origin}/subscription?payment_callback=1`
     };
 
-    try {
-      const response = await fetch(`https://feamvyruipxtafzhptkh.supabase.co/functions/v1/zarinpal-contract`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
-        },
-        body: JSON.stringify(directDebitRequest)
+    fetchPlans();
+  }, [language, toast]);
+
+  const applyDiscount = async () => {
+    if (!discountCode) return;
+
+    const { data, error } = await supabase
+      .from('discount_codes')
+      .select('*')
+      .eq('code', discountCode)
+      .eq('is_active', true)
+      .single();
+
+    if (error) {
+      console.error('Error fetching discount:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'کد تخفیف معتبر نیست.' : 'Invalid discount code.',
+        variant: 'destructive',
       });
-
-      const data = await response.json();
-
-      addDebugInfo({
-        endpoint: 'zarinpal-contract',
-        status: response.status,
-        request: directDebitRequest,
-        response: data,
-        type: response.ok ? 'success' : 'error'
+      setDiscountUsed(null);
+    } else {
+      setDiscountUsed(data as DiscountCode);
+      toast({
+        title: language === 'fa' ? 'تخفیف اعمال شد' : 'Discount Applied',
+        description: language === 'fa' ? `تخفیف ${data.percentage}% اعمال شد!` : `Discount of ${data.percentage}% applied!`,
       });
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to create Direct Debit contract');
-      }
-
-      if (!data.data?.data?.payman_authority) {
-        throw new Error(language === 'fa' ? 
-          'پاسخ نامعتبر از درگاه پرداخت مستقیم' : 
-          'Invalid response from Direct Debit gateway');
-      }
-
-      return data.data.data.payman_authority;
-    } catch (error) {
-      console.error('Direct Debit contract creation error:', error);
-      throw error;
     }
   };
 
-  const saveSubscriptionToDatabase = async (
-    formData: MarzbanFormData, 
-    subscriptionResult: SubscriptionResponse,
-    finalPrice: number,
-    discountUsed?: DiscountCode
-  ) => {
+  const getFinalPrice = () => {
+    let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
+    if (discountUsed && discountUsed.percentage > 0) {
+      finalPrice = finalPrice - Math.round((finalPrice * discountUsed.percentage) / 100);
+    }
+    return finalPrice;
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً تمام فیلدها را پر کنید' : 
+          'Please fill in all fields',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
     try {
-      console.log('=== SUBSCRIPTION: Saving to database ===');
+      console.log('=== SUBSCRIPTION: Starting process ===');
       
+      // Calculate final price with discount
+      let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
+      let discountAmount = 0;
+      
+      if (discountUsed && discountUsed.percentage > 0) {
+        discountAmount = Math.round((finalPrice * discountUsed.percentage) / 100);
+        finalPrice = finalPrice - discountAmount;
+      }
+
+      console.log('SUBSCRIPTION: Price calculation:', { 
+        originalPrice: formData.dataLimit * selectedPlan.pricePerGB,
+        discountAmount,
+        finalPrice 
+      });
+
+      // First, save the subscription to database
       const subscriptionData = {
-        username: formData.username,
         mobile: formData.mobile,
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: finalPrice,
-        status: finalPrice === 0 ? 'active' : 'paid',
-        subscription_url: subscriptionResult.subscription_url,
-        expire_at: new Date(subscriptionResult.expire * 1000).toISOString(),
-        notes: `${formData.notes} - Plan: ${formData.selectedPlan?.name || 'Unknown'} - Created via form`,
-        marzban_user_created: true
+        status: 'pending',
+        username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days`
       };
 
-      const { data: subscription, error: subscriptionError } = await supabase
+      console.log('SUBSCRIPTION: Saving to database:', subscriptionData);
+
+      const { data: savedSubscription, error: saveError } = await supabase
         .from('subscriptions')
         .insert(subscriptionData)
         .select()
         .single();
 
-      if (subscriptionError) {
-        console.error('SUBSCRIPTION: Error saving subscription:', subscriptionError);
-        throw subscriptionError;
+      if (saveError) {
+        console.error('SUBSCRIPTION: Database save error:', saveError);
+        throw new Error(`Failed to save subscription: ${saveError.message}`);
       }
 
-      console.log('SUBSCRIPTION: Saved successfully:', subscription);
+      console.log('SUBSCRIPTION: Saved to database:', savedSubscription);
 
-      // Log discount usage if discount was applied
-      if (discountUsed && finalPrice < (formData.dataLimit * (formData.selectedPlan?.pricePerGB || 0))) {
-        try {
-          // Get discount ID from database
-          const { data: discountRecord } = await supabase
-            .from('discount_codes')
-            .select('id, current_usage_count')
-            .eq('code', discountUsed.code)
-            .single();
-
-          if (discountRecord) {
-            const discountAmount = (formData.dataLimit * (formData.selectedPlan?.pricePerGB || 0)) - finalPrice;
-            
-            // Log usage
-            await supabase
-              .from('discount_usage_logs')
-              .insert({
-                discount_code_id: discountRecord.id,
-                subscription_id: subscription.id,
-                discount_amount: discountAmount,
-                user_mobile: formData.mobile
-              });
-
-            // Update usage count by incrementing the current count
-            await supabase
-              .from('discount_codes')
-              .update({ 
-                current_usage_count: discountRecord.current_usage_count + 1
-              })
-              .eq('id', discountRecord.id);
-
-            console.log('SUBSCRIPTION: Discount usage logged');
-          }
-        } catch (discountError) {
-          console.error('SUBSCRIPTION: Error logging discount usage:', discountError);
-          // Don't fail the main operation for discount logging errors
-        }
-      }
-
-      return subscription;
-    } catch (error) {
-      console.error('SUBSCRIPTION: Database save error:', error);
-      throw error;
-    }
-  };
-
-  const handleInputChange = (field: keyof MarzbanFormData, value: string | number | SubscriptionPlan) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!checkRateLimit()) return;
-    if (!validateForm()) return;
-
-    setIsSubmitting(true);
-    setIsLoading(true);
-    setDebugInfo([]);
-    
-    try {
-      const finalPrice = calculatePrice();
+      // Create VPN user via API
+      console.log('SUBSCRIPTION: Creating VPN user...');
       
-      // If price is 0 (due to discount), bypass payment and create subscription directly
-      if (finalPrice === 0) {
-        setLoadingMessage(language === 'fa' ? 'در حال ایجاد اشتراک رایگان...' : 'Creating free subscription...');
-        
-        let result: SubscriptionResponse;
-        
-        if (formData.selectedPlan?.apiType === 'marzneshin') {
-          result = await createMarzneshinUser(formData);
-        } else {
-          result = await createMarzbanUser(formData);
-        }
-        
-        // Save to database
-        await saveSubscriptionToDatabase(formData, result, finalPrice, appliedDiscount);
-        
-        setResult(result);
-        setStep(3);
-        
-        toast({
-          title: language === 'fa' ? 'موفق' : 'Success',
-          description: language === 'fa' ? 
-            'اشتراک رایگان با موفقیت ایجاد شد' : 
-            'Free subscription created successfully',
+      const vpnUserRequest = {
+        username: savedSubscription.username,
+        data_limit: formData.dataLimit * 1073741824, // Convert GB to bytes
+        expire_duration: formData.duration,
+        note: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}`
+      };
+
+      let vpnResponse;
+      if (selectedPlan.apiType === 'marzneshin') {
+        const marzneshinResponse = await fetch('/api/marzneshin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vpnUserRequest)
         });
-        
-        return;
+        vpnResponse = await marzneshinResponse.json();
+      } else {
+        const marzbanResponse = await fetch('/api/marzban/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vpnUserRequest)
+        });
+        vpnResponse = await marzbanResponse.json();
       }
-      
-      // Store form data for after payment
-      localStorage.setItem('pendingUserData', JSON.stringify(formData));
-      localStorage.setItem('pendingDiscount', JSON.stringify(appliedDiscount));
-      localStorage.setItem('pendingPrice', finalPrice.toString());
-      
-      // Create Payman contract for paid subscriptions
-      const paymanAuthority = await createPaymanContract();
-      
-      // Redirect to Zarinpal payment page
-      window.location.href = `https://www.zarinpal.com/pg/StartPayman/${paymanAuthority}/1`;
-      
-    } catch (error) {
-      console.error('Subscription creation error:', error);
+
+      if (!vpnResponse.success) {
+        console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse.error);
+        throw new Error(`Failed to create VPN user: ${vpnResponse.error}`);
+      }
+
+      console.log('SUBSCRIPTION: VPN user created:', vpnResponse.data);
+
+      // Update subscription with VPN details
+      const updateData = {
+        subscription_url: vpnResponse.data.subscription_url,
+        status: 'active',
+        marzban_user_created: true,
+        expire_at: new Date(vpnResponse.data.expire * 1000).toISOString()
+      };
+
+      const { error: updateError } = await supabase
+        .from('subscriptions')
+        .update(updateData)
+        .eq('id', savedSubscription.id);
+
+      if (updateError) {
+        console.error('SUBSCRIPTION: Update error:', updateError);
+        throw new Error(`Failed to update subscription: ${updateError.message}`);
+      }
+
+      console.log('SUBSCRIPTION: Updated with VPN details');
+
+      // Log discount usage if applicable
+      if (discountUsed && discountUsed.code) {
+        console.log('SUBSCRIPTION: Logging discount usage');
+        
+        // Get discount ID from database
+        const { data: discountRecord } = await supabase
+          .from('discount_codes')
+          .select('id, current_usage_count')
+          .eq('code', discountUsed.code)
+          .single();
+
+        if (discountRecord) {
+          // Log the discount usage
+          await supabase
+            .from('discount_usage_logs')
+            .insert({
+              discount_code_id: discountRecord.id,
+              subscription_id: savedSubscription.id,
+              discount_amount: discountAmount,
+              user_mobile: formData.mobile
+            });
+
+          // Update usage count
+          await supabase
+            .from('discount_codes')
+            .update({ 
+              current_usage_count: discountRecord.current_usage_count + 1
+            })
+            .eq('id', discountRecord.id);
+
+          console.log('SUBSCRIPTION: Discount usage logged');
+        }
+      }
+
+      // Set success result with complete data
+      const successResult = {
+        username: vpnResponse.data.username,
+        subscription_url: vpnResponse.data.subscription_url,
+        expire: vpnResponse.data.expire,
+        data_limit: vpnResponse.data.data_limit,
+        planName: selectedPlan.name
+      };
+
+      console.log('SUBSCRIPTION: Process completed successfully');
+      setResult(successResult);
+
+    } catch (error: any) {
+      console.error('SUBSCRIPTION: Process failed:', error);
+      setError(error.message || 'An unexpected error occurred');
       
       toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: error instanceof Error ? error.message : (
-          language === 'fa' ? 
-            'خطا در ایجاد اشتراک. لطفاً دوباره تلاش کنید' : 
-            'Failed to create subscription. Please try again'
-        ),
-        variant: 'destructive'
+        title: language === 'fa' ? 'خطا در ایجاد اشتراک' : 'Subscription Creation Error',
+        description: error.message,
+        variant: 'destructive',
       });
     } finally {
-      setIsSubmitting(false);
       setIsLoading(false);
-      setLoadingMessage('');
     }
   };
+  
+  if (result) {
+    return <SubscriptionSuccess result={result} />;
+  }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: language === 'fa' ? 'کپی شد' : 'Copied',
-      description: language === 'fa' ? 
-        'لینک اشتراک کپی شد' : 
-        'Subscription link copied to clipboard',
-    });
-  };
-
-  const downloadConfig = () => {
-    if (!result) return;
-    
-    const blob = new Blob([result.subscription_url], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${result.username}-subscription.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const autoGenerateUsername = () => {
-    const generated = generateUsername();
-    setFormData(prev => ({ ...prev, username: generated }));
-  };
-
-  const handleDiscountApply = (discount: DiscountCode | null) => {
-    setAppliedDiscount(discount);
-  };
-
-  // Enhanced Debug Component
-  const DebugSection = () => {
-    if (!debugMode || debugInfo.length === 0) return null;
-
-    return (
-      <Card className="mt-6 border-orange-200 dark:border-orange-800">
+  return (
+    <div className="space-y-6">
+      <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Bug className="w-4 h-4 text-orange-600" />
-              {language === 'fa' ? 'اطلاعات دیباگ' : 'Debug Information'}
-              <Badge variant="outline" className="ml-2">
-                {debugInfo.length}
-              </Badge>
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDebug(!showDebug)}
-            >
-              {showDebug ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </Button>
-          </div>
+          <CardTitle className="flex items-center gap-3 text-blue-800 dark:text-blue-200">
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center">
+              <Zap className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+            </div>
+            {language === 'fa' ? 'ایجاد اشتراک VPN' : 'Create VPN Subscription'}
+          </CardTitle>
         </CardHeader>
-        {showDebug && (
-          <CardContent>
-            <div className="space-y-4">
-              {debugInfo.map((info, index) => (
-                <div 
-                  key={index} 
-                  className={`p-3 rounded-lg text-xs border-l-4 ${
-                    info.type === 'success' 
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-500' 
-                      : info.type === 'error'
-                      ? 'bg-red-50 dark:bg-red-900/20 border-red-500'
-                      : 'bg-gray-50 dark:bg-gray-900 border-gray-500'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant={info.type === 'success' ? "default" : "destructive"}>
-                      HTTP {info.status}
-                    </Badge>
-                    <code className={`text-xs ${
-                      info.type === 'success' ? 'text-green-600 dark:text-green-400' : 
-                      info.type === 'error' ? 'text-red-600 dark:text-red-400' : 
-                      'text-blue-600 dark:text-blue-400'
-                    }`}>
-                      {info.endpoint}
-                    </code>
-                    <span className="text-xs text-gray-500 ml-auto">
-                      {new Date(info.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 gap-2">
-                    <div>
-                      <strong className={info.type === 'error' ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'}>
-                        {language === 'fa' ? 'درخواست:' : 'Request Body:'}
-                      </strong>
-                      <pre className="mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto max-h-32">
-                        {JSON.stringify(info.request, null, 2)}
-                      </pre>
-                    </div>
-                    
-                    <div>
-                      <strong className={info.type === 'error' ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'}>
-                        {language === 'fa' ? 'پاسخ:' : 'Response:'}
-                      </strong>
-                      <pre className={`mt-1 bg-white dark:bg-gray-800 p-2 rounded text-xs overflow-auto max-h-32 ${
-                        info.type === 'error' ? 'text-red-600' : ''
-                      }`}>
-                        {JSON.stringify(info.response, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
-                  
-                  {info.error && (
-                    <div className="mt-2">
-                      <strong className="text-red-600">
-                        {language === 'fa' ? 'خطای سیستم:' : 'System Error:'}
-                      </strong>
-                      <p className="text-red-600 text-xs mt-1 font-mono">{info.error}</p>
-                    </div>
-                  )}
+        <CardContent>
+          <form onSubmit={handleFormSubmit} className="space-y-6">
+            {/* Mobile Field */}
+            <div>
+              <Label htmlFor="mobile" className="text-sm font-medium">
+                {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
+              </Label>
+              <Input
+                id="mobile"
+                type="tel"
+                placeholder={language === 'fa' ? '09123456789' : '09123456789'}
+                value={formData.mobile}
+                onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
+                className="mt-1"
+                required
+              />
+            </div>
+
+            {/* Plan Selection */}
+            <div>
+              <Label className="text-sm font-medium">
+                {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
+              </Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                {plans.map((plan) => (
+                  <Card 
+                    key={plan.id}
+                    className={`cursor-pointer transition-all ${
+                      selectedPlan?.id === plan.id 
+                        ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                    onClick={() => setSelectedPlan(plan)}
+                  >
+                    <CardContent className="p-4">
+                      <h3 className="font-bold text-lg">{plan.name}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{plan.description}</p>
+                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
+                        {plan.pricePerGB.toLocaleString()} {language === 'fa' ? 'تومان/گیگ' : 'Toman/GB'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Data Limit */}
+            <div>
+              <Label htmlFor="dataLimit" className="text-sm font-medium">
+                {language === 'fa' ? 'حجم (گیگابایت)' : 'Data Volume (GB)'}
+              </Label>
+              <Select value={formData.dataLimit?.toString()} onValueChange={(value) => 
+                setFormData(prev => ({ ...prev, dataLimit: parseInt(value) }))}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder={language === 'fa' ? 'انتخاب حجم' : 'Select volume'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 30, 50, 75, 100, 150, 200].map((gb) => (
+                    <SelectItem key={gb} value={gb.toString()}>
+                      {gb} GB
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Duration */}
+            <div>
+              <Label htmlFor="duration" className="text-sm font-medium">
+                {language === 'fa' ? 'مدت زمان (روز)' : 'Duration (Days)'}
+              </Label>
+              <Select value={formData.duration?.toString()} onValueChange={(value) => 
+                setFormData(prev => ({ ...prev, duration: parseInt(value) }))}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder={language === 'fa' ? 'انتخاب مدت' : 'Select duration'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[7, 15, 30, 60, 90].map((days) => (
+                    <SelectItem key={days} value={days.toString()}>
+                      {days} {language === 'fa' ? 'روز' : 'days'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Price Summary */}
+            {selectedPlan && formData.dataLimit && (
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span>{language === 'fa' ? 'قیمت پایه:' : 'Base Price:'}</span>
+                  <span>{(formData.dataLimit * selectedPlan.pricePerGB).toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        )}
-      </Card>
-    );
-  };
-
-  // Loading Overlay
-  const LoadingOverlay = () => {
-    if (!isLoading) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <Card className="p-6 max-w-sm w-full mx-4">
-          <CardContent className="text-center space-y-4">
-            <Loader className="w-8 h-8 animate-spin mx-auto text-primary" />
-            <p className="text-sm font-medium">{loadingMessage}</p>
-            <div className="text-xs text-muted-foreground">
-              {language === 'fa' ? 'لطفاً صبر کنید...' : 'Please wait...'}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  };
-
-  // Success page with animation
-  if (step === 3 && result) {
-    return (
-      <div className="max-w-2xl mx-auto p-6 space-y-6 animate-fade-in">
-        <LoadingOverlay />
-        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-20 h-20 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mb-4 animate-scale-in">
-              <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400 animate-pulse" />
-            </div>
-            <CardTitle className="text-2xl text-green-800 dark:text-green-200">
-              {language === 'fa' ? '🎉 اشتراک VPN آماده است!' : '🎉 VPN Subscription Ready!'}
-            </CardTitle>
-            <CardDescription className="text-green-600 dark:text-green-400 text-lg">
-              {language === 'fa' ? 
-                'پرداخت موفق و پیکربندی VLESS شما ایجاد شد' : 
-                'Payment successful and your VLESS configuration is ready'
-              }
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-                <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'نام کاربری' : 'Username'}</Label>
-                <p className="font-mono text-lg font-bold">{result.username}</p>
-              </div>
-              <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-                <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}</Label>
-                <p className="font-bold">{new Date(result.expire * 1000).toLocaleDateString()}</p>
-              </div>
-              <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-                <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'حجم' : 'Volume'}</Label>
-                <p className="font-bold">{Math.round(result.data_limit / 1073741824)} GB</p>
-              </div>
-            </div>
-
-            {/* QR Code Section */}
-            {qrCodeDataUrl && (
-              <div className="text-center space-y-4">
-                <Label className="text-lg font-semibold">
-                  {language === 'fa' ? 'کد QR اشتراک' : 'Subscription QR Code'}
-                </Label>
-                <div className="flex justify-center">
-                  <div className="p-4 bg-white rounded-lg shadow-lg">
-                    <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-64 h-64" />
+                {discountUsed && (
+                  <div className="flex justify-between text-green-600">
+                    <span>{language === 'fa' ? 'تخفیف:' : 'Discount:'}</span>
+                    <span>-{Math.round((formData.dataLimit * selectedPlan.pricePerGB * discountUsed.percentage) / 100).toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
                   </div>
+                )}
+                <Separator />
+                <div className="flex justify-between font-bold text-lg">
+                  <span>{language === 'fa' ? 'قیمت نهایی:' : 'Final Price:'}</span>
+                  <span className="text-blue-600 dark:text-blue-400">
+                    {getFinalPrice().toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}
+                  </span>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {language === 'fa' ? 
-                    'این کد را با اپ V2Ray اسکن کنید' : 
-                    'Scan this QR code with your V2Ray app'
-                  }
-                </p>
               </div>
             )}
 
-            {/* Subscription URL */}
-            <div className="space-y-4">
-              <Label className="text-lg font-semibold">
-                {language === 'fa' ? 'لینک اشتراک VLESS' : 'VLESS Subscription Link'}
-              </Label>
-              
-              <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {language === 'fa' ? 'لینک پیکربندی' : 'Configuration Link'}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => copyToClipboard(result.subscription_url)}
-                    >
-                      <Copy className="w-4 h-4 mr-1" />
-                      {language === 'fa' ? 'کپی' : 'Copy'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={downloadConfig}
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      {language === 'fa' ? 'دانلود' : 'Download'}
-                    </Button>
-                  </div>
-                </div>
-                <code className="text-xs break-all text-gray-800 dark:text-gray-200 block p-2 bg-white dark:bg-gray-900 rounded">
-                  {result.subscription_url}
-                </code>
+            {error && (
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
+                <AlertCircle className="w-5 h-5" />
+                <span className="text-sm">{error}</span>
               </div>
-            </div>
+            )}
 
-            {/* Server Info */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <div className="flex flex-wrap gap-2 mb-2">
-                {MARZBAN_INBOUND_TAGS.map(tag => (
-                  <Badge key={tag} variant="outline" className="text-blue-700 dark:text-blue-300">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-              <p className="text-sm text-blue-600 dark:text-blue-400">
-                {language === 'fa' ? 
-                  'تمام سرورها برای شما فعال شده‌اند' : 
-                  'All servers are activated for you'
-                }
-              </p>
-            </div>
-
-            {/* Important Notes */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                <div className="text-sm text-blue-800 dark:text-blue-200">
-                  <p className="font-semibold mb-1">
-                    {language === 'fa' ? 'نکات مهم' : 'Important Notes'}
-                  </p>
-                  <ul className="space-y-1 text-blue-700 dark:text-blue-300">
-                    <li>
-                      {language === 'fa' ? 
-                        '• از V2Ray یا کلاینت‌های سازگار با VLESS استفاده کنید' : 
-                        '• Use V2Ray or VLESS-compatible clients'
-                      }
-                    </li>
-                    <li>
-                      {language === 'fa' ? 
-                        '• این لینک را در مکان امن نگهداری کنید' : 
-                        '• Keep this link in a secure place'
-                      }
-                    </li>
-                    <li>
-                      {language === 'fa' ? 
-                        '• برای پشتیبانی با تلگرام ما تماس بگیرید' : 
-                        '• Contact our Telegram support for help'
-                      }
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-center pt-4">
-              <Button onClick={() => window.open('https://t.me/getbnbot', '_blank')} size="lg">
-                {language === 'fa' ? 'دریافت پشتیبانی' : 'Get Support'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <DebugSection />
-      </div>
-    );
-  }
-
-  // Form page
-  return (
-    <div className="max-w-2xl mx-auto p-6">
-      {/* Free Trial Button */}
-      <div className="mb-8 text-center">
-        <FreeTrialButton />
-        <div className="mt-4 text-sm text-muted-foreground">
-          {language === 'fa' ? 
-            'یا اشتراک سفارشی خود را بسازید:' : 
-            'Or create your custom subscription:'
-          }
-        </div>
-      </div>
-
-      <LoadingOverlay />
-      <Card className="bg-background border-border">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-foreground mb-2">
-            {language === 'fa' ? 'خرید اشتراک VPN شبکه بدون مرز' : 'Boundless Network VPN Subscription'}
-          </CardTitle>
-          <CardDescription>
-            {language === 'fa' ? 
-              'پلن مناسب خود را انتخاب کرده و اشتراک سفارشی ایجاد کنید' : 
-              'Choose your plan and create a custom subscription'
-            }
-          </CardDescription>
-        </CardHeader>
-        
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Plan Selection */}
-            <PlanSelector
-              selectedPlan={formData.selectedPlan}
-              onPlanSelect={(plan) => handleInputChange('selectedPlan', plan)}
-              dataLimit={formData.dataLimit}
-            />
-
-            {/* User Information */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <User className="w-5 h-5 text-primary" />
-                {language === 'fa' ? 'اطلاعات کاربری' : 'User Information'}
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">
-                    {language === 'fa' ? 'نام کاربری' : 'Username'} *
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="username"
-                      type="text"
-                      value={formData.username}
-                      onChange={(e) => handleInputChange('username', e.target.value.toLowerCase())}
-                      placeholder={language === 'fa' ? 'نام کاربری (a-z, 0-9, _)' : 'Username (a-z, 0-9, _)'}
-                      className="flex-1"
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={autoGenerateUsername}
-                    >
-                      {language === 'fa' ? 'تولید' : 'Generate'}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="mobile">
-                    {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'} *
-                  </Label>
-                  <Input
-                    id="mobile"
-                    type="tel"
-                    value={formData.mobile}
-                    onChange={(e) => handleInputChange('mobile', e.target.value)}
-                    placeholder={language === 'fa' ? '09123456789' : '09123456789'}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">
-                  {language === 'fa' ? 'یادداشت (اختیاری)' : 'Notes (Optional)'}
-                </Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => handleInputChange('notes', e.target.value)}
-                  placeholder={language === 'fa' ? 'توضیحات اضافی' : 'Additional description'}
-                  rows={3}
-                />
-              </div>
-            </div>
-
-            {/* Subscription Configuration */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <Zap className="w-5 h-5 text-primary" />
-                {language === 'fa' ? 'پیکربندی اشتراک' : 'Subscription Configuration'}
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="dataLimit">
-                    {language === 'fa' ? 'حجم داده (گیگابایت)' : 'Data Volume (GB)'} *
-                  </Label>
-                  <Input
-                    id="dataLimit"
-                    type="number"
-                    min="1"
-                    max="500"
-                    value={formData.dataLimit}
-                    onChange={(e) => handleInputChange('dataLimit', parseInt(e.target.value) || 0)}
-                    placeholder={language === 'fa' ? '۱۰' : '10'}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="duration">
-                    {language === 'fa' ? 'مدت زمان (روز)' : 'Duration (Days)'} *
-                  </Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    min="1"
-                    max="180"
-                    value={formData.duration}
-                    onChange={(e) => handleInputChange('duration', parseInt(e.target.value) || 0)}
-                    placeholder={language === 'fa' ? '۳۰' : '30'}
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Discount Field */}
-              <DiscountField
-                onDiscountApply={handleDiscountApply}
-                appliedDiscount={appliedDiscount}
-              />
-
-              {/* Price Calculation */}
-              {formData.selectedPlan && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-semibold text-blue-800 dark:text-blue-200">
-                          {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
-                        </h4>
-                        <p className="text-sm text-blue-600 dark:text-blue-400">
-                          {language === 'fa' ? 
-                            `${formData.dataLimit} گیگابایت × ${formData.selectedPlan.pricePerGB.toLocaleString()} تومان` : 
-                            `${formData.dataLimit} GB × ${formData.selectedPlan.pricePerGB.toLocaleString()} Toman`
-                          }
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        {appliedDiscount && (
-                          <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
-                            {(formData.dataLimit * formData.selectedPlan.pricePerGB).toLocaleString()}
-                            {language === 'fa' ? ' تومان' : ' Toman'}
-                          </div>
-                        )}
-                        <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
-                          {calculatePrice().toLocaleString()} 
-                          {language === 'fa' ? ' تومان' : ' Toman'}
-                        </div>
-                        {appliedDiscount && (
-                          <div className="text-sm text-green-600 dark:text-green-400">
-                            {language === 'fa' ? 'صرفه‌جویی: ' : 'You save: '}
-                            {calculateDiscount().toLocaleString()}
-                            {language === 'fa' ? ' تومان' : ' Toman'}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Plan Info */}
-              {formData.selectedPlan && (
-                <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {formData.selectedPlan.apiType === 'marzban' ? (
-                      MARZBAN_INBOUND_TAGS.map(tag => (
-                        <Badge key={tag} variant="outline" className="text-green-700 dark:text-green-300">
-                          {tag}
-                        </Badge>
-                      ))
-                    ) : (
-                      <Badge variant="outline" className="text-green-700 dark:text-green-300">
-                        {language === 'fa' ? 'تمام سرورهای پرو' : 'All Pro Servers'}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-green-600 dark:text-green-400">
-                    {language === 'fa' ? 
-                      `${formData.selectedPlan.name} - ${formData.selectedPlan.description}` : 
-                      `${formData.selectedPlan.name} - ${formData.selectedPlan.description}`
-                    }
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitting || isLoading || !formData.selectedPlan}
-              size="lg"
+            <Button 
+              type="submit" 
+              size="lg" 
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
+              disabled={isLoading || !selectedPlan || !formData.dataLimit}
             >
-              {isSubmitting || isLoading ? (
-                <>
-                  <Loader className="w-5 h-5 mr-2 animate-spin" />
-                  {loadingMessage || (language === 'fa' ? 'در حال پردازش...' : 'Processing...')}
-                </>
-              ) : (
-                <>
-                  <CreditCard className="w-5 h-5 mr-2" />
-                  {calculatePrice() === 0 ? (
-                    language === 'fa' ? 'دریافت رایگان' : 'Get Free'
-                  ) : (
-                    language === 'fa' ? 
-                      `پرداخت ${calculatePrice().toLocaleString()} تومان` : 
-                      `Pay ${calculatePrice().toLocaleString()} Toman`
-                  )}
-                </>
-              )}
+              {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {language === 'fa' ? 'ایجاد اشتراک' : 'Create Subscription'}
             </Button>
-
-            {/* Terms */}
-            <p className="text-sm text-muted-foreground text-center">
-              {language === 'fa' ? 
-                'با ادامه، شما با قوانین و مقررات شبکه بدون مرز موافقت می‌کنید' : 
-                'By continuing, you agree to Boundless Network terms and conditions'
-              }
-            </p>
           </form>
         </CardContent>
       </Card>
-
-      <DebugSection />
     </div>
   );
 };
