@@ -128,7 +128,9 @@ const MarzbanSubscriptionForm = () => {
         panel_url: mapping.panel_servers?.panel_url || '',
         panel_type: mapping.panel_servers?.type as 'marzban' | 'marzneshin',
         is_primary: mapping.is_primary,
-        inbound_ids: mapping.inbound_ids || []
+        inbound_ids: Array.isArray(mapping.inbound_ids) 
+          ? mapping.inbound_ids.map(id => String(id))
+          : []
       })) || [];
 
       console.log('SUBSCRIPTION FORM: Plan panels:', panels);
