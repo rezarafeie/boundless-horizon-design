@@ -1,4 +1,5 @@
-import { useState } from 'react';
+
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -82,7 +83,7 @@ export const PlansManagement = () => {
       const { data, error } = await supabase
         .from('panel_servers')
         .select('*')
-        .eq('is_active', true); // Accept any health status as long as panel is active
+        .eq('is_active', true);
       
       console.log('PLANS: Panels response:', { data, error, count: data?.length });
       
@@ -118,8 +119,10 @@ export const PlansManagement = () => {
       console.log('PLANS: Saving plan data:', planData);
       
       const { selectedPanels, ...planFields } = planData;
+      let planId = planData.id;
       
       if (planData.id) {
+        // Update existing plan
         console.log('PLANS: Updating existing plan');
         const { id, ...updateData } = planFields;
         const { error } = await supabase
@@ -130,33 +133,9 @@ export const PlansManagement = () => {
           console.error('PLANS: Update error:', error);
           throw error;
         }
-        
-        // Update panel mappings for existing plan
-        if (selectedPanels && selectedPanels.length > 0) {
-          // Delete existing mappings
-          await supabase
-            .from('plan_panel_mappings')
-            .delete()
-            .eq('plan_id', id);
-          
-          // Insert new mappings
-          const mappings = selectedPanels.map(panel => ({
-            plan_id: id,
-            panel_id: panel.panelId,
-            is_primary: panel.isPrimary,
-            inbound_ids: panel.inboundIds
-          }));
-          
-          const { error: mappingError } = await supabase
-            .from('plan_panel_mappings')
-            .insert(mappings);
-            
-          if (mappingError) {
-            console.error('PLANS: Panel mapping update error:', mappingError);
-            throw mappingError;
-          }
-        }
+        planId = id;
       } else {
+        // Create new plan
         console.log('PLANS: Creating new plan');
         const insertData = {
           plan_id: planFields.plan_id!,
@@ -182,28 +161,42 @@ export const PlansManagement = () => {
           throw error;
         }
         console.log('PLANS: Insert successful:', data);
+        planId = data.id;
+      }
+      
+      // Handle panel mappings
+      if (selectedPanels && selectedPanels.length > 0 && planId) {
+        console.log('PLANS: Managing panel mappings for plan:', planId);
         
-        // Now handle panel mappings for new plan
-        if (selectedPanels && selectedPanels.length > 0) {
-          console.log('PLANS: Creating panel mappings for new plan');
-          const mappings = selectedPanels.map(panel => ({
-            plan_id: data.id,
-            panel_id: panel.panelId,
-            is_primary: panel.isPrimary,
-            inbound_ids: panel.inboundIds
-          }));
+        // Delete existing mappings
+        const { error: deleteError } = await supabase
+          .from('plan_panel_mappings')
+          .delete()
+          .eq('plan_id', planId);
           
-          console.log('PLANS: Inserting mappings:', mappings);
-          const { error: mappingError } = await supabase
-            .from('plan_panel_mappings')
-            .insert(mappings);
-            
-          if (mappingError) {
-            console.error('PLANS: Panel mapping error:', mappingError);
-            throw mappingError;
-          }
-          console.log('PLANS: Panel mappings created successfully');
+        if (deleteError) {
+          console.error('PLANS: Error deleting existing mappings:', deleteError);
+          throw deleteError;
         }
+        
+        // Insert new mappings
+        const mappings = selectedPanels.map(panel => ({
+          plan_id: planId,
+          panel_id: panel.panelId,
+          is_primary: panel.isPrimary,
+          inbound_ids: panel.inboundIds
+        }));
+        
+        console.log('PLANS: Inserting new mappings:', mappings);
+        const { error: mappingError } = await supabase
+          .from('plan_panel_mappings')
+          .insert(mappings);
+          
+        if (mappingError) {
+          console.error('PLANS: Panel mapping error:', mappingError);
+          throw mappingError;
+        }
+        console.log('PLANS: Panel mappings created successfully');
       }
     },
     onSuccess: () => {
@@ -273,6 +266,21 @@ export const PlansManagement = () => {
 
     const [selectedPanels, setSelectedPanels] = useState<{ panelId: string; isPrimary: boolean; inboundIds: string[] }[]>([]);
 
+    // Load existing panel mappings when editing
+    useEffect(() => {
+      if (plan && planPanelMappings) {
+        const existingMappings = planPanelMappings
+          .filter(mapping => mapping.plan_id === plan.id)
+          .map(mapping => ({
+            panelId: mapping.panel_id,
+            isPrimary: mapping.is_primary,
+            inboundIds: Array.isArray(mapping.inbound_ids) ? mapping.inbound_ids : []
+          }));
+        console.log('PLANS: Loading existing mappings for plan:', plan.id, existingMappings);
+        setSelectedPanels(existingMappings);
+      }
+    }, [plan, planPanelMappings]);
+
     const togglePanelSelection = (panelId: string) => {
       setSelectedPanels(prev => {
         const exists = prev.find(p => p.panelId === panelId);
@@ -310,16 +318,18 @@ export const PlansManagement = () => {
         return;
       }
 
+      // Ensure at least one panel is marked as primary when multiple panels are selected
       const hasPrimary = selectedPanels.some(p => p.isPrimary);
-      if (!hasPrimary && selectedPanels.length > 1) {
+      let finalSelectedPanels = selectedPanels;
+
+      if (selectedPanels.length === 1) {
+        // If only one panel, make it primary automatically
+        finalSelectedPanels = [{ ...selectedPanels[0], isPrimary: true }];
+      } else if (!hasPrimary) {
+        // If multiple panels but no primary, show error
         toast.error('Please select a primary panel when multiple panels are chosen.');
         return;
       }
-
-      // If only one panel selected, make it primary automatically
-      const finalSelectedPanels = selectedPanels.length === 1 
-        ? selectedPanels.map(p => ({ ...p, isPrimary: true }))
-        : selectedPanels;
 
       onSave({ 
         ...formData, 
@@ -354,6 +364,7 @@ export const PlansManagement = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Basic Plan Info */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="plan_id">Plan ID</Label>
@@ -455,8 +466,13 @@ export const PlansManagement = () => {
 
             {/* Panel Selection */}
             <div className="space-y-4">
-              <Label className="text-lg font-semibold">Select Panels for this Plan</Label>
-              <p className="text-sm text-gray-600">Choose which panel servers will handle subscriptions for this plan. Health status can be online, offline, or unknown.</p>
+              <div>
+                <Label className="text-lg font-semibold">Select Panels for this Plan</Label>
+                <p className="text-sm text-gray-600 mt-1">
+                  Choose which panel servers will handle subscriptions for this plan. At least one panel is required.
+                  {selectedPanels.length > 1 && " Select one as the primary panel."}
+                </p>
+              </div>
               
               <div className="grid gap-4">
                 {panels.map((panel) => {
@@ -524,6 +540,17 @@ export const PlansManagement = () => {
                   );
                 })}
               </div>
+              
+              {selectedPanels.length > 0 && (
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <p className="text-sm text-green-800 dark:text-green-200">
+                    ✅ {selectedPanels.length} panel(s) selected
+                    {selectedPanels.length > 1 && selectedPanels.some(p => p.isPrimary) && 
+                      ` (Primary: ${panels.find(p => p.id === selectedPanels.find(sp => sp.isPrimary)?.panelId)?.name})`
+                    }
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center space-x-4">
@@ -547,7 +574,9 @@ export const PlansManagement = () => {
             </div>
 
             <div className="flex space-x-2">
-              <Button type="submit">Save Plan</Button>
+              <Button type="submit" disabled={selectedPanels.length === 0}>
+                Save Plan
+              </Button>
               <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
             </div>
           </form>

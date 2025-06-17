@@ -210,10 +210,10 @@ const MarzbanSubscriptionForm = () => {
     if (planPanels.length === 0) {
       console.error('SUBSCRIPTION FORM: No panels configured for this plan');
       toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
+        title: language === 'fa' ? 'خطا در پیکربندی پلن' : 'Plan Configuration Error',
         description: language === 'fa' ? 
-          'این پلن هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید.' : 
-          'This plan is not configured yet. Please contact support.',
+          'این پلن هنوز پیکربندی نشده است. لطفاً با مدیر سیستم تماس بگیرید.' : 
+          'This plan has not been configured yet. Please contact the system administrator.',
         variant: 'destructive',
       });
       return;
@@ -495,17 +495,33 @@ const MarzbanSubscriptionForm = () => {
             </div>
 
             {/* Show panel info for selected plan */}
-            {selectedPlan && planPanels.length > 0 && (
-              <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                  {language === 'fa' ? 'سرورهای پیکربندی شده برای این پلن:' : 'Configured servers for this plan:'}
-                </p>
-                {planPanels.map((panel, index) => (
-                  <div key={index} className="text-sm text-green-700 dark:text-green-300">
-                    • {panel.panel_name} ({panel.panel_type}) {panel.is_primary && '- Primary'}
+            {selectedPlan && (
+              <>
+                {planPanels.length > 0 ? (
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                      {language === 'fa' ? 'سرورهای پیکربندی شده برای این پلن:' : 'Configured servers for this plan:'}
+                    </p>
+                    {planPanels.map((panel, index) => (
+                      <div key={index} className="text-sm text-green-700 dark:text-green-300">
+                        • {panel.panel_name} ({panel.panel_type}) {panel.is_primary && '- Primary'}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                ) : (
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
+                      {language === 'fa' ? '⚠️ هیچ سروری برای این پلن پیکربندی نشده است' : '⚠️ No servers configured for this plan'}
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      {language === 'fa' ? 
+                        'لطفاً با مدیر سیستم تماس بگیرید تا سرورها را پیکربندی کند.' : 
+                        'Please contact the system administrator to configure servers for this plan.'
+                      }
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Data Limit */}
@@ -601,7 +617,7 @@ const MarzbanSubscriptionForm = () => {
               type="submit" 
               size="lg" 
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
-              disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0 || planPanels.length === 0}
+              disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0 || (selectedPlan && planPanels.length === 0)}
             >
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {language === 'fa' ? 'ایجاد اشتراک' : 'Create Subscription'}
