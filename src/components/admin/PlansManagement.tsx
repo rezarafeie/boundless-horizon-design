@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,7 +36,7 @@ export const PlansManagement = () => {
   const { data: plans, isLoading, error } = useQuery({
     queryKey: ['admin-plans'],
     queryFn: async () => {
-      console.log('=== PLANS: Starting fetch ===');
+      console.log('=== PLANS: Starting fetch (RLS disabled) ===');
       
       const { data, error } = await supabase
         .from('subscription_plans')
@@ -307,6 +308,12 @@ export const PlansManagement = () => {
             <div className="text-red-600">
               <p>Error loading plans: {error?.message || 'Unknown error'}</p>
               <p className="text-sm mt-2">Check the browser console for more details.</p>
+              <Button 
+                onClick={() => window.location.reload()} 
+                className="mt-4"
+              >
+                Retry
+              </Button>
             </div>
           </CardContent>
         </Card>

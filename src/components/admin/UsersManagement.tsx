@@ -29,21 +29,21 @@ export const UsersManagement = () => {
   const { data: subscriptions, isLoading, error } = useQuery({
     queryKey: ['admin-subscriptions'],
     queryFn: async () => {
-      console.log('Fetching subscriptions...');
+      console.log('=== USERS: Fetching subscriptions (RLS disabled) ===');
       
       const { data, error } = await supabase
         .from('subscriptions')
         .select('*')
         .order('created_at', { ascending: false });
       
-      console.log('Subscriptions query result:', { data, error });
+      console.log('USERS: Subscriptions query result:', { data, error, count: data?.length });
       
       if (error) {
-        console.error('Error fetching subscriptions:', error);
+        console.error('USERS: Error fetching subscriptions:', error);
         throw error;
       }
       
-      console.log(`Successfully fetched ${data?.length || 0} subscriptions`);
+      console.log(`USERS: Successfully fetched ${data?.length || 0} subscriptions`);
       return data as Subscription[];
     },
     retry: 1
@@ -79,9 +79,11 @@ export const UsersManagement = () => {
     totalRevenue: subscriptions.reduce((sum, s) => sum + s.price_toman, 0),
   } : { total: 0, active: 0, pending: 0, totalRevenue: 0 };
 
+  console.log('USERS: Component render - isLoading:', isLoading, 'subscriptions count:', subscriptions?.length, 'error:', error);
+
   // Show error state
   if (error) {
-    console.error('Users component error:', error);
+    console.error('USERS: Component error:', error);
     return (
       <div className="space-y-6">
         <div>
@@ -101,6 +103,7 @@ export const UsersManagement = () => {
   }
 
   if (isLoading) {
+    console.log('USERS: Component loading state');
     return (
       <div className="space-y-6">
         <div>
