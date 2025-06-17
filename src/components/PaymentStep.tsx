@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,7 +40,11 @@ const PaymentStep = ({
   const discountAmount = appliedDiscount ? (basePrice * appliedDiscount.percentage) / 100 : 0;
   const finalPrice = Math.max(0, basePrice - discountAmount);
 
-  const handleManualPayment = async (paymentData: { receiptFile?: File; confirmed: boolean }) => {
+  const handleManualPayment = async (paymentData: { 
+    receiptFile?: File; 
+    confirmed: boolean;
+    onSubscriptionCreated?: (subscriptionId: string) => Promise<void>;
+  }) => {
     if (!paymentData.confirmed) return;
 
     setIsSubmitting(true);
@@ -68,6 +71,7 @@ const PaymentStep = ({
           protocol: 'vmess',
           price_toman: finalPrice,
           status: 'pending_manual_verification',
+          admin_decision: 'pending',
           notes: `Manual payment - ${appliedDiscount ? `Discount: ${appliedDiscount.code}` : 'No discount'}`,
           user_id: null
         })
@@ -76,16 +80,16 @@ const PaymentStep = ({
 
       if (error) throw error;
 
-      // TODO: Upload receipt file if provided
-      // if (paymentData.receiptFile) {
-      //   // Upload to Supabase storage
-      // }
+      // Execute post-creation callback if provided
+      if (paymentData.onSubscriptionCreated) {
+        await paymentData.onSubscriptionCreated(subscription.id);
+      }
 
       toast({
-        title: language === 'fa' ? 'پرداخت ثبت شد' : 'Payment Recorded',
+        title: language === 'fa' ? 'درخواست ثبت شد' : 'Request Submitted',
         description: language === 'fa' ? 
-          'سفارش شما در حال بررسی توسط تیم پشتیبانی است' : 
-          'Your order is being reviewed by our support team',
+          'درخواست پرداخت شما به ادمین ارسال شد و پس از تأیید فعال خواهد شد' : 
+          'Your payment request has been sent to admin and will be activated after approval',
       });
 
       onSuccess({
@@ -100,7 +104,7 @@ const PaymentStep = ({
       console.error('Manual payment error:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'خطا در ثبت پرداخت' : 'Failed to record payment',
+        description: language === 'fa' ? 'خطا در ثبت درخواست' : 'Failed to submit request',
         variant: 'destructive'
       });
     } finally {
@@ -111,7 +115,6 @@ const PaymentStep = ({
   const handleCryptoPayment = async (paymentId: string) => {
     setIsSubmitting(true);
     try {
-      // Process subscription after successful crypto payment
       const subscriptionData = {
         username: formData.username,
         mobile: formData.mobile,
@@ -145,8 +148,6 @@ const PaymentStep = ({
   };
 
   const handleStripePayment = async (sessionId: string) => {
-    // Stripe payment will be handled by webhook
-    // For now, just show success message
     toast({
       title: language === 'fa' ? 'پرداخت انجام شد' : 'Payment Successful',
       description: language === 'fa' ? 
@@ -172,9 +173,7 @@ const PaymentStep = ({
       
       if (subscriptionId && finalPrice > 0) {
         // Redirect to Zarinpal (existing logic)
-        // This will be handled by existing Zarinpal integration
       } else if (subscriptionId && finalPrice === 0) {
-        // Free subscription - already handled in submitSubscription
         onSuccess({
           username: formData.username,
           subscription_url: `vmess://config-url-here`,
@@ -271,20 +270,17 @@ const PaymentStep = ({
         </p>
       </div>
 
-      {/* Discount Field */}
       <DiscountField
         onDiscountApply={onDiscountApply}
         appliedDiscount={appliedDiscount}
       />
 
-      {/* Payment Method Selection */}
       <PaymentMethodSelector
         selectedMethod={selectedPaymentMethod}
         onMethodChange={setSelectedPaymentMethod}
         amount={finalPrice}
       />
 
-      {/* Payment Form */}
       {renderPaymentForm()}
 
       {/* Order Summary */}

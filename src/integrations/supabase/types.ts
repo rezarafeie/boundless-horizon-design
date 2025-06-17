@@ -363,6 +363,9 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          admin_decided_at: string | null
+          admin_decision: string | null
+          admin_decision_token: string | null
           created_at: string
           data_limit_gb: number
           duration_days: number
@@ -373,6 +376,7 @@ export type Database = {
           notes: string | null
           price_toman: number
           protocol: string | null
+          receipt_image_url: string | null
           status: string
           subscription_url: string | null
           updated_at: string
@@ -382,6 +386,9 @@ export type Database = {
           zarinpal_ref_id: string | null
         }
         Insert: {
+          admin_decided_at?: string | null
+          admin_decision?: string | null
+          admin_decision_token?: string | null
           created_at?: string
           data_limit_gb: number
           duration_days: number
@@ -392,6 +399,7 @@ export type Database = {
           notes?: string | null
           price_toman: number
           protocol?: string | null
+          receipt_image_url?: string | null
           status?: string
           subscription_url?: string | null
           updated_at?: string
@@ -401,6 +409,9 @@ export type Database = {
           zarinpal_ref_id?: string | null
         }
         Update: {
+          admin_decided_at?: string | null
+          admin_decision?: string | null
+          admin_decision_token?: string | null
           created_at?: string
           data_limit_gb?: number
           duration_days?: number
@@ -411,6 +422,7 @@ export type Database = {
           notes?: string | null
           price_toman?: number
           protocol?: string | null
+          receipt_image_url?: string | null
           status?: string
           subscription_url?: string | null
           updated_at?: string

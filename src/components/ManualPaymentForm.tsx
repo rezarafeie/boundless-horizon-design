@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Copy, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ManualPaymentFormProps {
   amount: number;
@@ -21,6 +21,8 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const { toast } = useToast();
   const [confirmed, setConfirmed] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const bankInfo = {
     bankName: language === 'fa' ? 'بانک ملت' : 'Bank Mellat',
@@ -52,7 +54,85 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
     }
   };
 
-  const handleSubmit = () => {
+  const uploadReceiptToStorage = async (file: File, subscriptionId: string): Promise<string | null> => {
+    try {
+      setIsUploading(true);
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${subscriptionId}/receipt_${Date.now()}.${fileExt}`;
+      
+      const { data, error } = await supabase.storage
+        .from('manual-payment-receipts')
+        .upload(fileName, file);
+
+      if (error) {
+        console.error('Storage upload error:', error);
+        throw error;
+      }
+
+      // Get public URL (even though bucket is private, we can get signed URL later if needed)
+      const { data: { publicUrl } } = supabase.storage
+        .from('manual-payment-receipts')
+        .getPublicUrl(fileName);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Failed to upload receipt:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'خطا در آپلود تصویر' : 'Failed to upload image',
+        variant: 'destructive'
+      });
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const sendEmailNotification = async (subscriptionId: string, receiptUrl?: string) => {
+    try {
+      setIsSendingEmail(true);
+      
+      const { data, error } = await supabase.functions.invoke('send-manual-payment-email', {
+        body: {
+          subscriptionId,
+          receiptImageUrl: receiptUrl
+        }
+      });
+
+      if (error) {
+        console.error('Email sending error:', error);
+        throw error;
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to send email');
+      }
+
+      toast({
+        title: language === 'fa' ? 'ارسال شد' : 'Sent Successfully',
+        description: language === 'fa' ? 
+          'اطلاعات پرداخت به ادمین ارسال شد' : 
+          'Payment information sent to admin',
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Failed to send email notification:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'خطا در ارسال ایمیل به ادمین' : 
+          'Failed to send email to admin',
+        variant: 'destructive'
+      });
+      return false;
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!confirmed) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
@@ -62,9 +142,25 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       return;
     }
 
+    // First, let the parent component create the subscription
     onPaymentConfirm({
       receiptFile: receiptFile || undefined,
-      confirmed
+      confirmed,
+      // Add callback to handle post-creation tasks
+      onSubscriptionCreated: async (subscriptionId: string) => {
+        let receiptUrl = null;
+        
+        // Upload receipt if provided
+        if (receiptFile) {
+          receiptUrl = await uploadReceiptToStorage(receiptFile, subscriptionId);
+          if (!receiptUrl) {
+            return; // Upload failed, stop here
+          }
+        }
+        
+        // Send email notification to admin
+        await sendEmailNotification(subscriptionId, receiptUrl);
+      }
     });
   };
 
@@ -133,7 +229,11 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
             <div>
               <Label htmlFor="receipt" className="cursor-pointer">
                 <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center hover:border-muted-foreground/50 transition-colors">
-                  <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                  {isUploading ? (
+                    <Loader className="w-8 h-8 mx-auto mb-2 text-muted-foreground animate-spin" />
+                  ) : (
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                  )}
                   <p className="text-sm text-muted-foreground">
                     {receiptFile ? receiptFile.name : (
                       language === 'fa' ? 
@@ -152,6 +252,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
                 accept="image/*"
                 onChange={handleFileUpload}
                 className="hidden"
+                disabled={isUploading}
               />
             </div>
 
@@ -191,12 +292,21 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
           <Button 
             onClick={handleSubmit}
-            disabled={!confirmed || isSubmitting}
+            disabled={!confirmed || isSubmitting || isUploading || isSendingEmail}
             className="w-full mt-4"
             size="lg"
           >
-            {isSubmitting ? (
-              language === 'fa' ? 'در حال پردازش...' : 'Processing...'
+            {isSubmitting || isUploading || isSendingEmail ? (
+              <>
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                {isSendingEmail ? (
+                  language === 'fa' ? 'ارسال به ادمین...' : 'Sending to Admin...'
+                ) : isUploading ? (
+                  language === 'fa' ? 'آپلود رسید...' : 'Uploading Receipt...'
+                ) : (
+                  language === 'fa' ? 'در حال پردازش...' : 'Processing...'
+                )}
+              </>
             ) : (
               language === 'fa' ? 'تأیید پرداخت' : 'Confirm Payment'
             )}
@@ -204,8 +314,8 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
           <p className="text-xs text-muted-foreground text-center mt-2">
             {language === 'fa' ? 
-              'سفارش شما در حال بررسی توسط تیم پشتیبانی قرار خواهد گرفت' : 
-              'Your order will be reviewed by our support team'
+              'سفارش شما به ادمین ارسال خواهد شد و پس از تأیید فعال می‌شود' : 
+              'Your order will be sent to admin and activated after approval'
             }
           </p>
         </CardContent>
