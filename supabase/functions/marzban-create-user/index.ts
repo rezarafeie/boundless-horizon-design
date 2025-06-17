@@ -126,9 +126,9 @@ Deno.serve(async (req) => {
 
     const {
       username,
-      data_limit,
-      expire_duration,
-      note
+      dataLimitGB,
+      durationDays,
+      notes
     } = requestBody;
 
     // Validate required parameters
@@ -145,11 +145,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!data_limit || typeof data_limit !== 'number' || data_limit <= 0) {
+    if (!dataLimitGB || typeof dataLimitGB !== 'number' || dataLimitGB <= 0) {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Valid data limit (in bytes) is required and must be a positive number' 
+          error: 'Valid data limit (in GB) is required and must be a positive number' 
         }),
         { 
           status: 400, 
@@ -158,11 +158,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!expire_duration || typeof expire_duration !== 'number' || expire_duration <= 0) {
+    if (!durationDays || typeof durationDays !== 'number' || durationDays <= 0) {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Valid expire duration (in days) is required and must be a positive number' 
+          error: 'Valid duration (in days) is required and must be a positive number' 
         }),
         { 
           status: 400, 
@@ -195,9 +195,6 @@ Deno.serve(async (req) => {
     // Get authentication token
     const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
     
-    // Convert bytes back to GB for the API call
-    const dataLimitGB = data_limit / 1073741824;
-    
     // Create the user
     const result = await createMarzbanUser(
       baseUrl,
@@ -205,8 +202,8 @@ Deno.serve(async (req) => {
       { 
         username, 
         dataLimitGB, 
-        durationDays: expire_duration, 
-        notes: note || '' 
+        durationDays, 
+        notes: notes || '' 
       }
     );
 

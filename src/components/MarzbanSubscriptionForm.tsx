@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -204,6 +203,7 @@ const MarzbanSubscriptionForm = () => {
     console.log('=== SUBSCRIPTION FORM: Starting submission ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
     console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
+    console.log('SUBSCRIPTION FORM: Selected plan API type:', selectedPlan?.apiType);
     console.log('SUBSCRIPTION FORM: Plan panels:', planPanels);
     
     // Enhanced validation
@@ -220,6 +220,20 @@ const MarzbanSubscriptionForm = () => {
         description: language === 'fa' ? 
           'لطفاً تمام فیلدها را پر کنید و یک پلن انتخاب کنید' : 
           'Please fill in all fields and select a plan',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate API type
+    if (!selectedPlan.apiType) {
+      console.error('SUBSCRIPTION FORM: Plan missing API type');
+      setError('Selected plan is missing API type configuration');
+      toast({
+        title: language === 'fa' ? 'خطا در پیکربندی پلن' : 'Plan Configuration Error',
+        description: language === 'fa' ? 
+          'پلن انتخابی فاقد تنظیمات API است' : 
+          'Selected plan is missing API configuration',
         variant: 'destructive',
       });
       return;
@@ -248,6 +262,7 @@ const MarzbanSubscriptionForm = () => {
 
     try {
       console.log('=== SUBSCRIPTION: Starting subscription creation process ===');
+      console.log(`SUBSCRIPTION: Will use ${selectedPlan.apiType} API for plan: ${selectedPlan.name}`);
       
       // Calculate final price with discount
       let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
@@ -314,8 +329,14 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // STEP 2: Create VPN user via edge function with FIXED parameters
-      console.log('SUBSCRIPTION: Creating VPN user via edge function...');
+      // STEP 2: Create VPN user via edge function with CORRECT API selection
+      console.log(`SUBSCRIPTION: Creating VPN user via ${selectedPlan.apiType} edge function...`);
+      
+      // Choose the correct edge function based on plan's API type
+      const edgeFunctionName = selectedPlan.apiType === 'marzban' ? 
+        'marzban-create-user' : 'marzneshin-create-user';
+      
+      console.log(`SUBSCRIPTION: Using edge function: ${edgeFunctionName}`);
       
       // Fix parameter names to match what the edge function expects
       const vpnUserRequest = {
@@ -325,7 +346,7 @@ const MarzbanSubscriptionForm = () => {
         notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`  // Edge function expects this exact name
       };
 
-      console.log('SUBSCRIPTION: VPN user request data (FIXED parameters):', vpnUserRequest);
+      console.log(`SUBSCRIPTION: VPN user request data for ${edgeFunctionName}:`, vpnUserRequest);
 
       let vpnResponse;
       if (selectedPlan.apiType === 'marzneshin') {
@@ -435,10 +456,11 @@ const MarzbanSubscriptionForm = () => {
         expire: vpnResponse.data.expire,
         data_limit: vpnResponse.data.data_limit,
         planName: selectedPlan.name,
-        subscriptionId: savedSubscription.id
+        subscriptionId: savedSubscription.id,
+        apiType: selectedPlan.apiType
       };
 
-      console.log('SUBSCRIPTION: ✅ Process completed successfully, result:', successResult);
+      console.log(`SUBSCRIPTION: ✅ Process completed successfully using ${selectedPlan.apiType}, result:`, successResult);
       
       // Store data for delivery page
       localStorage.setItem('deliverySubscriptionData', JSON.stringify(successResult));

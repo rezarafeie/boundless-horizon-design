@@ -27,6 +27,12 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
     
     try {
       console.log('Submitting subscription data:', data);
+      console.log('Selected plan API type:', data.selectedPlan?.apiType);
+      
+      // Validate that we have the required plan data
+      if (!data.selectedPlan?.apiType) {
+        throw new Error('Plan API type is missing. Please select a valid plan.');
+      }
       
       // Calculate price
       const basePrice = data.dataLimit * (data.selectedPlan?.pricePerGB || 800);
@@ -49,7 +55,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         price_toman: finalPrice,
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
-        notes: data.appliedDiscount ? `Discount applied: ${data.appliedDiscount.code}` : null
+        notes: `Plan: ${data.selectedPlan.name}, API: ${data.selectedPlan.apiType}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
       console.log('Inserting subscription to database:', subscriptionData);
@@ -70,24 +76,32 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       // If price is 0, create VPN user immediately
       if (finalPrice === 0) {
         try {
-          console.log('Creating VPN user for free subscription...');
+          console.log(`Creating VPN user for free subscription using ${data.selectedPlan.apiType} API...`);
+          
+          // Choose the correct edge function based on plan's API type
+          const edgeFunctionName = data.selectedPlan.apiType === 'marzban' ? 
+            'marzban-create-user' : 'marzneshin-create-user';
+          
+          console.log(`Calling edge function: ${edgeFunctionName}`);
           
           const { data: vpnResult, error: vpnError } = await supabase.functions.invoke(
-            'marzneshin-create-user',
+            edgeFunctionName,
             {
               body: {
                 username: uniqueUsername,
                 dataLimitGB: data.dataLimit,
                 durationDays: data.duration,
-                notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'}`
+                notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
               }
             }
           );
           
           if (vpnError) {
-            console.error('VPN creation error:', vpnError);
+            console.error(`${edgeFunctionName} error:`, vpnError);
             throw new Error(`VPN user creation failed: ${vpnError.message}`);
           }
+          
+          console.log(`${edgeFunctionName} response:`, vpnResult);
           
           if (vpnResult.success && vpnResult.data?.subscription_url) {
             // Update subscription with VPN details
@@ -104,7 +118,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
             if (updateError) {
               console.error('Failed to update subscription with VPN details:', updateError);
             } else {
-              console.log('Free subscription completed successfully');
+              console.log(`Free subscription completed successfully using ${data.selectedPlan.apiType}`);
             }
           }
           
@@ -115,7 +129,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
           
           return subscription.id;
         } catch (vpnError) {
-          console.error('VPN creation failed for free subscription:', vpnError);
+          console.error(`VPN creation failed for free subscription using ${data.selectedPlan.apiType}:`, vpnError);
           toast({
             title: 'Partial Success',
             description: 'Subscription saved but VPN creation failed. Please contact support.',
