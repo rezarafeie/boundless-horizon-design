@@ -216,12 +216,6 @@ const MultiStepSubscriptionForm = () => {
                 {language === 'fa' ? 'قبلی' : 'Previous'}
               </Button>
 
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <span>{currentStep}</span>
-                <span>{language === 'fa' ? 'از' : 'of'}</span>
-                <span>{STEPS.length}</span>
-              </div>
-
               {currentStep === 2 && (
                 <Button
                   variant="hero-primary"

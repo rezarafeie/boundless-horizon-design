@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -38,7 +37,7 @@ const PaymentStep = ({ formData, appliedDiscount, onSuccess, isSubmitting, setIs
   const { language } = useLanguage();
   const { toast } = useToast();
   
-  const MERCHANT_ID = '79f8bbce-cc51-4816-8452-f722b23efdf9';
+  const MERCHANT_ID = '10f6ea92-fb53-468c-bcc9-36ef4d9f539c';
 
   const calculatePrice = () => {
     if (!formData.selectedPlan) return 0;
