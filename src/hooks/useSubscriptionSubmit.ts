@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { MarzbanApiService } from '@/services/marzbanApi';
 
 interface SubscriptionData {
   username: string;
@@ -77,19 +76,35 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       // If price is 0, create VPN user immediately
       if (finalPrice === 0) {
         try {
-          console.log(`Creating VPN user for free subscription using ${data.selectedPlan.apiType} API...`);
+          console.log(`Creating VPN user for free subscription using ${data.selectedPlan.apiType} edge function...`);
           
           let vpnResult;
           
-          // Use shared services instead of edge functions for direct API calls
+          // Use edge functions consistently for both APIs
           if (data.selectedPlan.apiType === 'marzban') {
-            console.log('Using shared Marzban API service');
-            vpnResult = await MarzbanApiService.createUser({
-              username: uniqueUsername,
-              dataLimitGB: data.dataLimit,
-              durationDays: data.duration,
-              notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
-            });
+            console.log('Using Marzban edge function');
+            const { data: edgeResult, error: vpnError } = await supabase.functions.invoke(
+              'marzban-create-user',
+              {
+                body: {
+                  username: uniqueUsername,
+                  dataLimitGB: data.dataLimit,
+                  durationDays: data.duration,
+                  notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
+                }
+              }
+            );
+            
+            if (vpnError) {
+              console.error('Marzban edge function error:', vpnError);
+              throw new Error(`VPN user creation failed: ${vpnError.message}`);
+            }
+            
+            if (!edgeResult.success) {
+              throw new Error(`VPN user creation failed: ${edgeResult.error}`);
+            }
+            
+            vpnResult = edgeResult.data;
           } else {
             console.log('Using Marzneshin edge function');
             const { data: edgeResult, error: vpnError } = await supabase.functions.invoke(

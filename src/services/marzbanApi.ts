@@ -1,9 +1,17 @@
 
-const MARZBAN_BASE_URL = 'https://file.shopifysb.xyz:8000';
-const MARZBAN_ADMIN_USERNAME = 'bnets';
-const MARZBAN_ADMIN_PASSWORD = 'reza1234';
-const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
-const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
+// This file is now deprecated and should not be used directly from frontend components.
+// All Marzban operations should go through the marzban-create-user edge function
+// to ensure proper security, environment variables, and avoid CORS issues.
+
+// The MarzbanApiService has been replaced by edge function calls:
+// - For free trials: Use supabase.functions.invoke('marzban-create-user')
+// - For purchases: Use supabase.functions.invoke('marzban-create-user')
+// 
+// This ensures:
+// 1. Proper security with environment variables stored in Supabase secrets
+// 2. No CORS issues
+// 3. Consistent authentication flow
+// 4. Better error handling and logging
 
 export interface MarzbanUserData {
   username: string;
@@ -19,100 +27,9 @@ export interface MarzbanUserResponse {
   data_limit: number;
 }
 
+// DEPRECATED: Use edge functions instead
 export class MarzbanApiService {
-  private static async getAuthToken(): Promise<string> {
-    const tokenResponse = await fetch(`${MARZBAN_BASE_URL}/api/admin/token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        username: MARZBAN_ADMIN_USERNAME,
-        password: MARZBAN_ADMIN_PASSWORD,
-        grant_type: 'password'
-      })
-    });
-
-    if (!tokenResponse.ok) {
-      throw new Error('Failed to authenticate with Marzban API');
-    }
-
-    const tokenData = await tokenResponse.json();
-    return tokenData.access_token;
-  }
-
   static async createUser(userData: MarzbanUserData): Promise<MarzbanUserResponse> {
-    console.log('=== MARZBAN API: Creating user ===', userData);
-    
-    try {
-      // Get authentication token
-      const accessToken = await this.getAuthToken();
-      console.log('MARZBAN API: Authentication successful');
-
-      // Calculate expiration and data limit
-      const expireTimestamp = Math.floor(Date.now() / 1000) + (userData.durationDays * 24 * 60 * 60);
-      const dataLimitBytes = userData.dataLimitGB * 1073741824; // Convert GB to bytes
-
-      const marzbanUserData = {
-        username: userData.username,
-        status: 'active',
-        expire: expireTimestamp,
-        data_limit: dataLimitBytes,
-        data_limit_reset_strategy: 'no_reset',
-        inbounds: {
-          vless: MARZBAN_INBOUND_TAGS
-        },
-        proxies: {
-          vless: {
-            id: FIXED_UUID
-          }
-        },
-        note: userData.notes,
-        next_plan: {
-          add_remaining_traffic: false,
-          data_limit: 0,
-          expire: 0,
-          fire_on_either: true
-        }
-      };
-
-      console.log('MARZBAN API: Sending user creation request:', marzbanUserData);
-
-      // Create user
-      const userResponse = await fetch(`${MARZBAN_BASE_URL}/api/user`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify(marzbanUserData)
-      });
-
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        console.error('MARZBAN API: User creation failed:', errorData);
-        throw new Error(errorData.detail || 'Failed to create user in Marzban');
-      }
-
-      const responseData = await userResponse.json();
-      console.log('MARZBAN API: User creation successful:', responseData);
-
-      // Construct subscription URL (Marzban doesn't provide this directly)
-      const subscriptionUrl = `${MARZBAN_BASE_URL}/sub/${userData.username}`;
-
-      const result: MarzbanUserResponse = {
-        username: responseData.username || userData.username,
-        subscription_url: subscriptionUrl,
-        expire: responseData.expire || expireTimestamp,
-        data_limit: responseData.data_limit || dataLimitBytes
-      };
-
-      console.log('MARZBAN API: Final response:', result);
-      return result;
-
-    } catch (error) {
-      console.error('MARZBAN API: Error creating user:', error);
-      throw error;
-    }
+    throw new Error('MarzbanApiService is deprecated. Use supabase.functions.invoke("marzban-create-user") instead.');
   }
 }

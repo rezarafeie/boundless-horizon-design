@@ -1,13 +1,13 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Gift, Zap, Shield, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Gift, Zap, Shield, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { MarzneshinApiService } from '@/services/marzneshinApi';
-import { MarzbanApiService } from '@/services/marzbanApi';
+import { supabase } from '@/integrations/supabase/client';
 import FreeTrialResult from './FreeTrialResult';
 
 interface TrialPlan {
@@ -85,52 +85,68 @@ const FreeTrialButton = () => {
     return `${prefix}${timestamp}_${random}`;
   };
 
-  // Create Marzban trial user using shared service
-  const createMarzbanTrial = async (): Promise<TrialResult> => {
+  // Create trial user using edge functions consistently
+  const createTrialUser = async (plan: TrialPlan): Promise<TrialResult> => {
     const username = generateTrialUsername();
 
     try {
-      const result = await MarzbanApiService.createUser({
-        username: username,
-        dataLimitGB: 1, // 1GB
-        durationDays: 1, // 1 day
-        notes: 'Free Trial - 1 Day / 1GB'
-      });
-
-      return {
-        username: result.username,
-        subscription_url: result.subscription_url,
-        expire: result.expire,
-        data_limit: result.data_limit,
-        plan: trialPlans[0] // Lite plan
-      };
-    } catch (error) {
-      console.error('Marzban trial creation error:', error);
-      throw error;
-    }
-  };
-
-  // Create Marzneshin trial user
-  const createMarzneshinTrial = async (): Promise<TrialResult> => {
-    const username = generateTrialUsername();
-
-    try {
-      const result = await MarzneshinApiService.createUser({
-        username: username,
-        dataLimitGB: 1, // 1GB
-        durationDays: 1, // 1 day
-        notes: 'Free Trial - 1 Day / 1GB'
-      });
+      console.log(`Creating trial user via ${plan.apiType} edge function...`);
+      
+      let result;
+      
+      if (plan.apiType === 'marzban') {
+        console.log('Using Marzban edge function');
+        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
+          body: {
+            username: username,
+            dataLimitGB: 1, // 1GB
+            durationDays: 1, // 1 day
+            notes: 'Free Trial - 1 Day / 1GB'
+          }
+        });
+        
+        if (error) {
+          console.error('Marzban edge function error:', error);
+          throw new Error(`Marzban service error: ${error.message}`);
+        }
+        
+        if (!data?.success) {
+          throw new Error(`Marzban user creation failed: ${data?.error}`);
+        }
+        
+        result = data.data;
+      } else {
+        console.log('Using Marzneshin edge function');
+        const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
+          body: {
+            username: username,
+            dataLimitGB: 1, // 1GB
+            durationDays: 1, // 1 day
+            notes: 'Free Trial - 1 Day / 1GB'
+          }
+        });
+        
+        if (error) {
+          console.error('Marzneshin edge function error:', error);
+          throw new Error(`Marzneshin service error: ${error.message}`);
+        }
+        
+        if (!data?.success) {
+          throw new Error(`Marzneshin user creation failed: ${data?.error}`);
+        }
+        
+        result = data.data;
+      }
 
       return {
         username: result.username,
         subscription_url: result.subscription_url,
         expire: result.expire || Math.floor(Date.now() / 1000) + (24 * 60 * 60),
-        data_limit: result.data_limit,
-        plan: trialPlans[1] // Pro plan
+        data_limit: result.data_limit || 1073741824, // 1GB
+        plan: plan
       };
     } catch (error) {
-      console.error('Marzneshin trial creation error:', error);
+      console.error(`${plan.apiType} trial creation error:`, error);
       throw error;
     }
   };
@@ -151,13 +167,7 @@ const FreeTrialButton = () => {
     setIsCreatingTrial(true);
 
     try {
-      let result: TrialResult;
-
-      if (plan.apiType === 'marzban') {
-        result = await createMarzbanTrial();
-      } else {
-        result = await createMarzneshinTrial();
-      }
+      const result = await createTrialUser(plan);
 
       // Mark trial as used today
       localStorage.setItem('lastTrialDate', new Date().toDateString());
