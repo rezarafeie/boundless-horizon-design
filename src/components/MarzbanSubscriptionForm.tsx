@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +27,15 @@ interface DiscountCode {
   description: string;
 }
 
+interface PlanPanel {
+  panel_id: string;
+  panel_name: string;
+  panel_url: string;
+  panel_type: 'marzban' | 'marzneshin';
+  is_primary: boolean;
+  inbound_ids: string[];
+}
+
 const MarzbanSubscriptionForm = () => {
   const { language } = useLanguage();
   const { toast } = useToast();
@@ -35,6 +43,7 @@ const MarzbanSubscriptionForm = () => {
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [planPanels, setPlanPanels] = useState<PlanPanel[]>([]);
   const [formData, setFormData] = useState({
     mobile: '',
     dataLimit: 0,
@@ -82,6 +91,52 @@ const MarzbanSubscriptionForm = () => {
 
     fetchPlans();
   }, [language, toast]);
+
+  // Fetch panels for selected plan
+  useEffect(() => {
+    const fetchPlanPanels = async () => {
+      if (!selectedPlan) {
+        setPlanPanels([]);
+        return;
+      }
+
+      console.log('=== SUBSCRIPTION FORM: Fetching panels for plan:', selectedPlan.id);
+      
+      const { data: mappings, error: mappingError } = await supabase
+        .from('plan_panel_mappings')
+        .select(`
+          panel_id,
+          is_primary,
+          inbound_ids,
+          panel_servers (
+            id,
+            name,
+            panel_url,
+            type
+          )
+        `)
+        .eq('plan_id', selectedPlan.id);
+
+      if (mappingError) {
+        console.error('SUBSCRIPTION FORM: Error fetching plan panels:', mappingError);
+        return;
+      }
+
+      const panels = mappings?.map(mapping => ({
+        panel_id: mapping.panel_id,
+        panel_name: mapping.panel_servers?.name || 'Unknown Panel',
+        panel_url: mapping.panel_servers?.panel_url || '',
+        panel_type: mapping.panel_servers?.type as 'marzban' | 'marzneshin',
+        is_primary: mapping.is_primary,
+        inbound_ids: mapping.inbound_ids || []
+      })) || [];
+
+      console.log('SUBSCRIPTION FORM: Plan panels:', panels);
+      setPlanPanels(panels);
+    };
+
+    fetchPlanPanels();
+  }, [selectedPlan]);
 
   const applyDiscount = async () => {
     if (!discountCode) return;
@@ -136,6 +191,7 @@ const MarzbanSubscriptionForm = () => {
     console.log('=== SUBSCRIPTION FORM: Starting submission ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
     console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
+    console.log('SUBSCRIPTION FORM: Plan panels:', planPanels);
     
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
       console.error('SUBSCRIPTION FORM: Missing required fields');
@@ -144,6 +200,18 @@ const MarzbanSubscriptionForm = () => {
         description: language === 'fa' ? 
           'لطفاً تمام فیلدها را پر کنید' : 
           'Please fill in all fields',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (planPanels.length === 0) {
+      console.error('SUBSCRIPTION FORM: No panels configured for this plan');
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'این پلن هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید.' : 
+          'This plan is not configured yet. Please contact support.',
         variant: 'destructive',
       });
       return;
@@ -200,8 +268,12 @@ const MarzbanSubscriptionForm = () => {
 
       console.log('SUBSCRIPTION: Successfully saved to database:', savedSubscription);
 
-      // Create VPN user via API
-      console.log('SUBSCRIPTION: Creating VPN user via API...');
+      // Get primary panel or first available panel
+      const targetPanel = planPanels.find(p => p.is_primary) || planPanels[0];
+      console.log('SUBSCRIPTION: Using panel:', targetPanel);
+
+      // Create VPN user via appropriate edge function
+      console.log('SUBSCRIPTION: Creating VPN user via edge function...');
       
       const vpnUserRequest = {
         username: savedSubscription.username,
@@ -214,38 +286,46 @@ const MarzbanSubscriptionForm = () => {
 
       let vpnResponse;
       if (selectedPlan.apiType === 'marzneshin') {
-        console.log('SUBSCRIPTION: Using Marzneshin API');
-        const marzneshinResponse = await fetch('/api/marzneshin/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(vpnUserRequest)
+        console.log('SUBSCRIPTION: Using Marzneshin edge function');
+        const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
+          body: vpnUserRequest
         });
-        vpnResponse = await marzneshinResponse.json();
+        
+        if (error) {
+          console.error('SUBSCRIPTION: Marzneshin edge function error:', error);
+          throw new Error(`Marzneshin service error: ${error.message}`);
+        }
+        
+        vpnResponse = data;
       } else {
-        console.log('SUBSCRIPTION: Using Marzban API');
-        const marzbanResponse = await fetch('/api/marzban/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(vpnUserRequest)
+        console.log('SUBSCRIPTION: Using Marzban edge function');
+        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
+          body: vpnUserRequest
         });
-        vpnResponse = await marzbanResponse.json();
+        
+        if (error) {
+          console.error('SUBSCRIPTION: Marzban edge function error:', error);
+          throw new Error(`Marzban service error: ${error.message}`);
+        }
+        
+        vpnResponse = data;
       }
 
       console.log('SUBSCRIPTION: VPN API response:', vpnResponse);
 
-      if (!vpnResponse.success) {
-        console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse.error);
+      if (!vpnResponse?.success) {
+        console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse?.error);
         
         // Update subscription status to failed
         await supabase
           .from('subscriptions')
           .update({ 
             status: 'failed',
-            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResponse.error}`
+            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResponse?.error}`
           })
           .eq('id', savedSubscription.id);
         
-        throw new Error(`Failed to create VPN user: ${vpnResponse.error}`);
+        throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
       }
 
       console.log('SUBSCRIPTION: VPN user created successfully:', vpnResponse.data);
@@ -412,6 +492,20 @@ const MarzbanSubscriptionForm = () => {
               )}
             </div>
 
+            {/* Show panel info for selected plan */}
+            {selectedPlan && planPanels.length > 0 && (
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                  {language === 'fa' ? 'سرورهای پیکربندی شده برای این پلن:' : 'Configured servers for this plan:'}
+                </p>
+                {planPanels.map((panel, index) => (
+                  <div key={index} className="text-sm text-green-700 dark:text-green-300">
+                    • {panel.panel_name} ({panel.panel_type}) {panel.is_primary && '- Primary'}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Data Limit */}
             <div>
               <Label htmlFor="dataLimit" className="text-sm font-medium">
@@ -505,7 +599,7 @@ const MarzbanSubscriptionForm = () => {
               type="submit" 
               size="lg" 
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
-              disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0}
+              disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0 || planPanels.length === 0}
             >
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {language === 'fa' ? 'ایجاد اشتراک' : 'Create Subscription'}

@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Pencil, Plus, Trash2, Settings, X } from 'lucide-react';
+import { Pencil, Plus, Trash2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan {
@@ -83,7 +82,7 @@ export const PlansManagement = () => {
       const { data, error } = await supabase
         .from('panel_servers')
         .select('*')
-        .eq('is_active', true); // Only check if panel is active, not health status
+        .eq('is_active', true); // Accept any health status as long as panel is active
       
       console.log('PLANS: Panels response:', { data, error, count: data?.length });
       
@@ -131,6 +130,32 @@ export const PlansManagement = () => {
           console.error('PLANS: Update error:', error);
           throw error;
         }
+        
+        // Update panel mappings for existing plan
+        if (selectedPanels && selectedPanels.length > 0) {
+          // Delete existing mappings
+          await supabase
+            .from('plan_panel_mappings')
+            .delete()
+            .eq('plan_id', id);
+          
+          // Insert new mappings
+          const mappings = selectedPanels.map(panel => ({
+            plan_id: id,
+            panel_id: panel.panelId,
+            is_primary: panel.isPrimary,
+            inbound_ids: panel.inboundIds
+          }));
+          
+          const { error: mappingError } = await supabase
+            .from('plan_panel_mappings')
+            .insert(mappings);
+            
+          if (mappingError) {
+            console.error('PLANS: Panel mapping update error:', mappingError);
+            throw mappingError;
+          }
+        }
       } else {
         console.log('PLANS: Creating new plan');
         const insertData = {
@@ -158,7 +183,7 @@ export const PlansManagement = () => {
         }
         console.log('PLANS: Insert successful:', data);
         
-        // Now handle panel mappings
+        // Now handle panel mappings for new plan
         if (selectedPanels && selectedPanels.length > 0) {
           console.log('PLANS: Creating panel mappings for new plan');
           const mappings = selectedPanels.map(panel => ({
@@ -168,6 +193,7 @@ export const PlansManagement = () => {
             inbound_ids: panel.inboundIds
           }));
           
+          console.log('PLANS: Inserting mappings:', mappings);
           const { error: mappingError } = await supabase
             .from('plan_panel_mappings')
             .insert(mappings);
@@ -290,10 +316,15 @@ export const PlansManagement = () => {
         return;
       }
 
+      // If only one panel selected, make it primary automatically
+      const finalSelectedPanels = selectedPanels.length === 1 
+        ? selectedPanels.map(p => ({ ...p, isPrimary: true }))
+        : selectedPanels;
+
       onSave({ 
         ...formData, 
         id: plan?.id,
-        selectedPanels
+        selectedPanels: finalSelectedPanels
       });
     };
 
@@ -661,7 +692,7 @@ export const PlansManagement = () => {
                 </div>
                 
                 {/* Show Associated Panels */}
-                {planPanels.length > 0 && (
+                {planPanels.length > 0 ? (
                   <div>
                     <span className="font-medium text-sm">Associated Panels:</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
@@ -686,6 +717,12 @@ export const PlansManagement = () => {
                         );
                       })}
                     </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      ⚠️ No panels configured for this plan. Edit the plan to add panels.
+                    </p>
                   </div>
                 )}
               </CardContent>
