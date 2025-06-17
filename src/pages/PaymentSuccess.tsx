@@ -1,151 +1,171 @@
+
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader, CheckCircle, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const PaymentSuccess = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { language } = useLanguage();
   const { toast } = useToast();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [isProcessing, setIsProcessing] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [subscriptionData, setSubscriptionData] = useState(null);
+
+  const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
+    console.log(`[PAYMENT-SUCCESS] ${type.toUpperCase()}: ${message}`, data || '');
+    if (window.debugPayment) {
+      window.debugPayment('stripe', type, message, data);
+    }
+  };
 
   useEffect(() => {
-    const processStripePayment = async () => {
+    const verifyPayment = async () => {
       try {
-        if (window.debugPayment) {
-          window.debugPayment('stripe', 'info', 'Processing Stripe payment success', { 
-            searchParams: Object.fromEntries(searchParams.entries()) 
-          });
-        }
-
+        debugLog('info', 'PaymentSuccess page loaded');
+        
+        // Get session_id from URL parameters
         const sessionId = searchParams.get('session_id');
+        debugLog('info', 'URL parameters check', { 
+          sessionId, 
+          allParams: Object.fromEntries(searchParams.entries()),
+          fullUrl: window.location.href 
+        });
+
         if (!sessionId) {
-          throw new Error('No session ID found');
+          debugLog('error', 'No session_id found in URL parameters');
+          setError('No session ID found. Please try again.');
+          setLoading(false);
+          return;
         }
 
-        if (window.debugPayment) {
-          window.debugPayment('stripe', 'info', 'Verifying Stripe session', { sessionId });
-        }
+        debugLog('info', 'Verifying Stripe session', { sessionId });
 
-        // Verify the Stripe session and create subscription
-        const { data: stripeData, error: stripeError } = await supabase.functions.invoke('stripe-verify-session', {
+        // Call the Stripe verification function
+        const { data, error } = await supabase.functions.invoke('stripe-verify-session', {
           body: { sessionId }
         });
 
-        if (stripeError) {
-          throw stripeError;
+        if (error) {
+          debugLog('error', 'Stripe verification failed', error);
+          throw error;
         }
 
-        if (!stripeData.success) {
-          throw new Error(stripeData.error || 'Payment verification failed');
+        if (!data?.success) {
+          debugLog('error', 'Stripe verification returned error', data);
+          throw new Error(data?.error || 'Payment verification failed');
         }
 
-        const subscriptionData = stripeData.subscription;
+        debugLog('success', 'Payment verified successfully', data.subscription);
+        setSubscriptionData(data.subscription);
 
-        if (window.debugPayment) {
-          window.debugPayment('stripe', 'success', 'Stripe payment verified and subscription created', subscriptionData);
-        }
-
+        // Show success message
         toast({
           title: language === 'fa' ? 'پرداخت موفق' : 'Payment Successful',
           description: language === 'fa' ? 
-            'پرداخت شما تأیید شد. در حال انتقال...' : 
-            'Your payment has been confirmed. Redirecting...',
+            'پرداخت شما با موفقیت انجام شد.' : 
+            'Your payment was processed successfully.',
         });
 
-        // Redirect to delivery page with real subscription data
+        // Redirect to delivery page after 2 seconds
         setTimeout(() => {
-          navigate('/delivery', { 
-            state: { subscriptionData },
-            replace: true 
-          });
+          const deliveryUrl = `/delivery?subscriptionData=${encodeURIComponent(JSON.stringify(data.subscription))}`;
+          debugLog('info', 'Redirecting to delivery page', { url: deliveryUrl });
+          navigate(deliveryUrl);
         }, 2000);
 
       } catch (error) {
-        console.error('Stripe payment processing error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        setError(errorMessage);
-        
-        if (window.debugPayment) {
-          window.debugPayment('stripe', 'error', 'Stripe payment processing failed', { error: errorMessage });
-        }
-
-        toast({
-          title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
-          description: language === 'fa' ? 
-            'خطا در پردازش پرداخت. لطفا دوباره تلاش کنید.' : 
-            'Error processing payment. Please try again.',
-          variant: 'destructive'
-        });
-      } finally {
-        setIsProcessing(false);
+        console.error('Payment verification error:', error);
+        debugLog('error', 'Payment verification failed', error);
+        setError(error.message || 'Payment verification failed');
+        setLoading(false);
       }
     };
 
-    processStripePayment();
-  }, [searchParams, navigate, toast, language]);
+    verifyPayment();
+  }, [searchParams, navigate, language, toast]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <Loader2 className="w-12 h-12 animate-spin mx-auto text-blue-600" />
+              <h2 className="text-xl font-semibold">
+                {language === 'fa' ? 'در حال تأیید پرداخت...' : 'Verifying Payment...'}
+              </h2>
+              <p className="text-gray-600">
+                {language === 'fa' ? 
+                  'لطفاً صبر کنید تا پرداخت شما تأیید شود' : 
+                  'Please wait while we verify your payment'
+                }
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="w-6 h-6" />
+              {language === 'fa' ? 'خطا در پرداخت' : 'Payment Error'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-gray-600">{error}</p>
+            <div className="space-y-2">
+              <Button 
+                onClick={() => navigate('/subscription')} 
+                className="w-full"
+              >
+                {language === 'fa' ? 'بازگشت به صفحه اشتراک' : 'Back to Subscription'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => window.location.reload()} 
+                className="w-full"
+              >
+                {language === 'fa' ? 'تلاش مجدد' : 'Try Again'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900 flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="flex items-center justify-center gap-2">
-            {isProcessing ? (
-              <>
-                <Loader className="w-6 h-6 animate-spin text-blue-600" />
-                {language === 'fa' ? 'پردازش پرداخت...' : 'Processing Payment...'}
-              </>
-            ) : error ? (
-              <>
-                <AlertCircle className="w-6 h-6 text-red-600" />
-                {language === 'fa' ? 'خطا در پرداخت' : 'Payment Error'}
-              </>
-            ) : (
-              <>
-                <CheckCircle className="w-6 h-6 text-green-600" />
-                {language === 'fa' ? 'پرداخت موفق' : 'Payment Successful'}
-              </>
-            )}
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-green-600">
+            <CheckCircle className="w-6 h-6" />
+            {language === 'fa' ? 'پرداخت موفق' : 'Payment Successful'}
           </CardTitle>
         </CardHeader>
-        
-        <CardContent className="text-center space-y-4">
-          {isProcessing && (
-            <p className="text-muted-foreground">
-              {language === 'fa' ? 
-                'لطفا صبر کنید. در حال تأیید پرداخت...' : 
-                'Please wait. Verifying your payment...'
-              }
-            </p>
-          )}
-          
-          {error && (
-            <div className="space-y-2">
-              <p className="text-red-600">
-                {language === 'fa' ? 'خطا در پردازش پرداخت:' : 'Payment processing error:'}
-              </p>
-              <p className="text-sm text-muted-foreground">{error}</p>
-              <button
-                onClick={() => navigate('/subscription')}
-                className="text-blue-600 hover:underline"
-              >
-                {language === 'fa' ? 'بازگشت به صفحه پرداخت' : 'Return to Payment Page'}
-              </button>
+        <CardContent className="space-y-4">
+          <p className="text-gray-600">
+            {language === 'fa' ? 
+              'پرداخت شما با موفقیت انجام شد. در حال انتقال به صفحه جزئیات...' : 
+              'Your payment was successful. Redirecting to details page...'
+            }
+          </p>
+          {subscriptionData && (
+            <div className="text-sm text-gray-500">
+              <p>{language === 'fa' ? 'نام کاربری:' : 'Username:'} {subscriptionData.username}</p>
             </div>
-          )}
-          
-          {!isProcessing && !error && (
-            <p className="text-green-600">
-              {language === 'fa' ? 
-                'در حال انتقال به صفحه جزئیات...' : 
-                'Redirecting to details page...'
-              }
-            </p>
           )}
         </CardContent>
       </Card>

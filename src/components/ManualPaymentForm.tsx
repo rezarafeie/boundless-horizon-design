@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,8 +24,10 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
 
   const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
+    console.log(`[MANUAL-PAYMENT] ${type.toUpperCase()}: ${message}`, data || '');
     if (window.debugPayment) {
       window.debugPayment('manual', type, message, data);
     }
@@ -38,6 +39,8 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
     const pollInterval = setInterval(async () => {
       try {
+        debugLog('info', 'Polling for admin decision', { subscriptionId });
+        
         const { data: subscription, error } = await supabase
           .from('subscriptions')
           .select('id, username, admin_decision, status, subscription_url, data_limit_gb, duration_days')
@@ -45,13 +48,20 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
           .single();
 
         if (error) {
+          debugLog('error', 'Polling error', error);
           console.error('Polling error:', error);
           return;
         }
 
+        debugLog('info', 'Polling result', { 
+          admin_decision: subscription.admin_decision, 
+          status: subscription.status 
+        });
+
         if (subscription.admin_decision === 'approved' && subscription.status === 'active') {
           debugLog('success', 'Manual payment approved by admin', subscription);
           setIsPolling(false);
+          setIsWaitingForApproval(false);
           
           toast({
             title: language === 'fa' ? 'پرداخت تأیید شد' : 'Payment Approved',
@@ -62,17 +72,20 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
           // Redirect to delivery page with subscription data
           setTimeout(() => {
-            window.location.href = `/delivery?subscriptionData=${encodeURIComponent(JSON.stringify({
+            const deliveryUrl = `/delivery?subscriptionData=${encodeURIComponent(JSON.stringify({
               username: subscription.username,
               subscription_url: subscription.subscription_url,
               expire: Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
               data_limit: subscription.data_limit_gb * 1073741824, // Convert GB to bytes
               status: 'active'
             }))}`;
+            debugLog('info', 'Redirecting to delivery page', { url: deliveryUrl });
+            window.location.href = deliveryUrl;
           }, 2000);
         } else if (subscription.admin_decision === 'rejected') {
           debugLog('error', 'Manual payment rejected by admin', subscription);
           setIsPolling(false);
+          setIsWaitingForApproval(false);
           
           toast({
             title: language === 'fa' ? 'پرداخت رد شد' : 'Payment Rejected',
@@ -83,6 +96,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
           });
         }
       } catch (error) {
+        debugLog('error', 'Polling exception', error);
         console.error('Polling error:', error);
       }
     }, 5000); // Poll every 5 seconds
@@ -239,9 +253,9 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
         }
         
         // Send email notification to admin
-        await sendEmailNotification(subId, receiptUrl);
+        const emailSent = await sendEmailNotification(subId, receiptUrl);
         
-        // Show success message with specific Persian text
+        // Show the specific Persian waiting message
         toast({
           title: language === 'fa' ? 'سفارش دریافت شد' : 'Order Received',
           description: language === 'fa' ? 
@@ -249,11 +263,42 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
             'Your order has been received. After payment receipt approval, the connection link will be created for you. Please wait.',
         });
         
-        // Start polling for admin approval
+        // Start polling for admin approval and show waiting state
+        setIsWaitingForApproval(true);
         setIsPolling(true);
       }
     } as any);
   };
+
+  // Show waiting state when polling for approval
+  if (isWaitingForApproval) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <Loader className="w-12 h-12 animate-spin mx-auto text-blue-600" />
+              <h2 className="text-xl font-semibold text-blue-800 dark:text-blue-200">
+                {language === 'fa' ? 'در انتظار تأیید ادمین' : 'Waiting for Admin Approval'}
+              </h2>
+              <p className="text-blue-700 dark:text-blue-300">
+                {language === 'fa' ? 
+                  'سفارش شما دریافت شد. پس از تایید رسید پرداخت لینک اتصال برای شما ساخته خواهد شد. لطفا منتظر بمانید.' : 
+                  'Your order has been received. After payment receipt approval, the connection link will be created for you. Please wait.'
+                }
+              </p>
+              <p className="text-sm text-blue-600">
+                {language === 'fa' ? 
+                  'وضعیت پرداخت هر ۵ ثانیه بررسی می‌شود...' : 
+                  'Checking payment status every 5 seconds...'
+                }
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -402,15 +447,6 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
               language === 'fa' ? 'تأیید پرداخت' : 'Confirm Payment'
             )}
           </Button>
-
-          {isPolling && (
-            <p className="text-xs text-blue-600 text-center mt-2">
-              {language === 'fa' ? 
-                'در انتظار تأیید ادمین... (هر ۵ ثانیه بررسی می‌شود)' : 
-                'Waiting for admin approval... (checking every 5 seconds)'
-              }
-            </p>
-          )}
 
           <p className="text-xs text-muted-foreground text-center mt-2">
             {language === 'fa' ? 

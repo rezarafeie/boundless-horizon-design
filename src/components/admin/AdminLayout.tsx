@@ -1,37 +1,15 @@
 
 import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAdminAuth } from '@/hooks/useAdminAuth';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
-import { Loader2 } from 'lucide-react';
 
 interface AdminLayoutProps {
   children: ReactNode;
 }
 
 export const AdminLayout = ({ children }: AdminLayoutProps) => {
-  const { loading, isAdmin, signOut } = useAdminAuth();
-
-  // TEMPORARY: Bypass authentication for development
-  // Comment out the authentication checks to allow access without login
+  // Authentication completely removed - admin panel is now open access
   
-  /*
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return <Navigate to="/admin/login" replace />;
-  }
-  */
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex">

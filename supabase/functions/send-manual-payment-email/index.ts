@@ -8,24 +8,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    console.log('=== MANUAL PAYMENT EMAIL FUNCTION STARTED ===');
+    
     const { subscriptionId, receiptImageUrl } = await req.json();
+    console.log('Request body:', { subscriptionId, receiptImageUrl });
 
     if (!subscriptionId) {
       throw new Error('Subscription ID is required');
     }
 
+    // Check if RESEND_API_KEY is configured
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    console.log('RESEND_API_KEY configured:', !!resendApiKey);
+    
+    if (!resendApiKey) {
+      console.error('RESEND_API_KEY is not configured in edge function secrets');
+      throw new Error('Email service not configured');
+    }
+
+    const resend = new Resend(resendApiKey);
+
     // Create Supabase client with service role
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    console.log('Fetching subscription details for ID:', subscriptionId);
 
     // Get subscription details
     const { data: subscription, error: fetchError } = await supabase
@@ -35,11 +49,19 @@ serve(async (req) => {
       .single();
 
     if (fetchError || !subscription) {
+      console.error('Subscription fetch error:', fetchError);
       throw new Error('Subscription not found');
     }
 
+    console.log('Subscription found:', {
+      username: subscription.username,
+      mobile: subscription.mobile,
+      amount: subscription.price_toman
+    });
+
     // Generate unique decision token
     const decisionToken = crypto.randomUUID();
+    console.log('Generated decision token:', decisionToken);
 
     // Update subscription with decision token and receipt URL
     const { error: updateError } = await supabase
@@ -52,13 +74,18 @@ serve(async (req) => {
       .eq('id', subscriptionId);
 
     if (updateError) {
+      console.error('Subscription update error:', updateError);
       throw new Error('Failed to update subscription');
     }
+
+    console.log('Subscription updated with decision token');
 
     // Create accept and reject URLs
     const baseUrl = 'https://feamvyruipxtafzhptkh.supabase.co/functions/v1/handle-manual-payment-response';
     const acceptUrl = `${baseUrl}?token=${decisionToken}&action=approve`;
     const rejectUrl = `${baseUrl}?token=${decisionToken}&action=reject`;
+
+    console.log('Decision URLs created:', { acceptUrl, rejectUrl });
 
     // Prepare email content
     const emailHtml = `
@@ -86,6 +113,7 @@ serve(async (req) => {
           <div style="margin: 20px 0;">
             <h3>Receipt Image</h3>
             <p>Receipt uploaded by user - please verify the payment.</p>
+            <p><a href="${receiptImageUrl}" target="_blank">View Receipt</a></p>
           </div>
         ` : ''}
 
@@ -107,6 +135,8 @@ serve(async (req) => {
       </div>
     `;
 
+    console.log('Sending email to admin...');
+
     // Send email
     const emailResult = await resend.emails.send({
       from: 'VPN Admin <admin@resend.dev>',
@@ -115,7 +145,14 @@ serve(async (req) => {
       html: emailHtml,
     });
 
-    console.log('Email sent successfully:', emailResult);
+    console.log('Email send result:', emailResult);
+
+    if (emailResult.error) {
+      console.error('Email sending failed:', emailResult.error);
+      throw new Error(`Email sending failed: ${emailResult.error.message}`);
+    }
+
+    console.log('Email sent successfully with ID:', emailResult.data?.id);
 
     return new Response(JSON.stringify({ 
       success: true, 
