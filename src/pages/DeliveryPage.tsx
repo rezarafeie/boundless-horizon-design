@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -9,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { PanelApiService, PanelSubscriptionData } from '@/services/panelApi';
 import QRCodeCanvas from 'qrcode';
 import Navigation from '@/components/Navigation';
 
@@ -18,6 +18,7 @@ interface SubscriptionData {
   expire: number;
   data_limit: number;
   status: string;
+  used_traffic?: number;
 }
 
 const DeliveryPage = () => {
@@ -31,12 +32,14 @@ const DeliveryPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [panelStatus, setPanelStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   useEffect(() => {
     const loadSubscriptionData = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        setPanelStatus('checking');
 
         // Check different sources for subscription data
         let data: SubscriptionData | null = null;
@@ -92,7 +95,8 @@ const DeliveryPage = () => {
                   subscription_url: subscription.subscription_url,
                   expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
                   data_limit: subscription.data_limit_gb * 1073741824,
-                  status: subscription.status || 'active'
+                  status: subscription.status || 'active',
+                  used_traffic: 0
                 };
                 console.log('Fetched subscription from database:', data);
               }
@@ -102,10 +106,56 @@ const DeliveryPage = () => {
           }
         }
 
-        if (data) {
-          setSubscriptionData(data);
-          if (data.subscription_url) {
-            await generateQRCode(data.subscription_url);
+        if (data?.username) {
+          // Now fetch fresh data from the panel
+          console.log('Fetching fresh subscription data from panel for:', data.username);
+          
+          try {
+            // Determine which panel this user belongs to
+            const panelType = await PanelApiService.determineSubscriptionPanelType(data.username);
+            
+            if (panelType) {
+              console.log(`Found user in ${panelType} panel`);
+              
+              // Fetch fresh data from the panel
+              const panelData = await PanelApiService.getSubscriptionFromPanel(data.username, panelType);
+              
+              // Merge panel data with existing data, preferring panel data for critical fields
+              const mergedData = {
+                ...data,
+                subscription_url: panelData.subscription_url || data.subscription_url,
+                expire: panelData.expire || data.expire,
+                data_limit: panelData.data_limit || data.data_limit,
+                status: panelData.status || data.status,
+                used_traffic: panelData.used_traffic || data.used_traffic || 0
+              };
+              
+              setSubscriptionData(mergedData);
+              setPanelStatus('online');
+              
+              // Store updated data in localStorage
+              localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
+              
+              if (mergedData.subscription_url) {
+                await generateQRCode(mergedData.subscription_url);
+              }
+            } else {
+              console.log('User not found in any panel, using database data');
+              setSubscriptionData(data);
+              setPanelStatus('offline');
+              
+              if (data.subscription_url) {
+                await generateQRCode(data.subscription_url);
+              }
+            }
+          } catch (panelError) {
+            console.error('Failed to fetch from panel, using fallback data:', panelError);
+            setSubscriptionData(data);
+            setPanelStatus('offline');
+            
+            if (data.subscription_url) {
+              await generateQRCode(data.subscription_url);
+            }
           }
         } else {
           setError(language === 'fa' ? 'اطلاعات اشتراک یافت نشد' : 'No subscription data found');
@@ -113,6 +163,7 @@ const DeliveryPage = () => {
       } catch (error) {
         console.error('Error loading subscription data:', error);
         setError(language === 'fa' ? 'خطا در بارگذاری اطلاعات' : 'Error loading subscription data');
+        setPanelStatus('offline');
       } finally {
         setIsLoading(false);
       }
@@ -166,25 +217,25 @@ const DeliveryPage = () => {
 
     setIsRefreshing(true);
     try {
-      // Try to refresh subscription data from database
-      const { data: subscription, error } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('username', subscriptionData.username)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (subscription && !error) {
+      console.log('Refreshing subscription data from panel...');
+      
+      // Determine panel type and fetch fresh data
+      const panelType = await PanelApiService.determineSubscriptionPanelType(subscriptionData.username);
+      
+      if (panelType) {
+        const panelData = await PanelApiService.getSubscriptionFromPanel(subscriptionData.username, panelType);
+        
         const updatedData = {
-          username: subscription.username,
-          subscription_url: subscription.subscription_url,
-          expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
-          data_limit: subscription.data_limit_gb * 1073741824,
-          status: subscription.status || 'active'
+          ...subscriptionData,
+          subscription_url: panelData.subscription_url || subscriptionData.subscription_url,
+          expire: panelData.expire || subscriptionData.expire,
+          data_limit: panelData.data_limit || subscriptionData.data_limit,
+          status: panelData.status || subscriptionData.status,
+          used_traffic: panelData.used_traffic || subscriptionData.used_traffic || 0
         };
         
         setSubscriptionData(updatedData);
+        setPanelStatus('online');
         localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
         
         if (updatedData.subscription_url) {
@@ -194,12 +245,20 @@ const DeliveryPage = () => {
         toast({
           title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
           description: language === 'fa' ? 
-            'اطلاعات اشتراک بروزرسانی شد' : 
-            'Subscription data updated',
+            'اطلاعات اشتراک از پنل بروزرسانی شد' : 
+            'Subscription data updated from panel',
+        });
+      } else {
+        setPanelStatus('offline');
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 'پنل در دسترس نیست' : 'Panel not accessible',
+          variant: 'destructive'
         });
       }
     } catch (error) {
       console.error('Error refreshing subscription:', error);
+      setPanelStatus('offline');
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در بروزرسانی' : 'Failed to refresh',
@@ -271,6 +330,17 @@ const DeliveryPage = () => {
     return <Badge className={`${config.color} text-white`}>{config.text}</Badge>;
   };
 
+  const getPanelStatusBadge = () => {
+    const statusConfig = {
+      checking: { color: 'bg-gray-500', text: language === 'fa' ? 'در حال بررسی' : 'Checking' },
+      online: { color: 'bg-green-500', text: language === 'fa' ? 'آنلاین' : 'Online' },
+      offline: { color: 'bg-red-500', text: language === 'fa' ? 'آفلاین' : 'Offline' }
+    };
+    
+    const config = statusConfig[panelStatus];
+    return <Badge className={`${config.color} text-white text-xs`}>{config.text}</Badge>;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
       <Navigation />
@@ -303,6 +373,7 @@ const DeliveryPage = () => {
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     {getStatusBadge(subscriptionData.status)}
+                    {getPanelStatusBadge()}
                     <Button
                       variant="outline"
                       size="sm"
@@ -343,6 +414,16 @@ const DeliveryPage = () => {
                         )}
                       </p>
                     </div>
+                    {subscriptionData.used_traffic !== undefined && (
+                      <div className="col-span-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {language === 'fa' ? 'ترافیک مصرف شده' : 'Used Traffic'}
+                        </Label>
+                        <p className="font-bold">
+                          {(subscriptionData.used_traffic / 1073741824).toFixed(2)} GB
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
