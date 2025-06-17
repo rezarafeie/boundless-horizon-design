@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -70,7 +69,7 @@ const PaymentStep = ({
           duration_days: formData.duration,
           protocol: 'vmess',
           price_toman: finalPrice,
-          status: 'pending_manual_verification',
+          status: 'pending',
           admin_decision: 'pending',
           notes: `Manual payment - ${appliedDiscount ? `Discount: ${appliedDiscount.code}` : 'No discount'}`,
           user_id: null
@@ -102,7 +101,7 @@ const PaymentStep = ({
         subscription_url: null,
         expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
         data_limit: formData.dataLimit,
-        status: 'pending_manual_verification'
+        status: 'pending'
       });
 
     } catch (error) {
