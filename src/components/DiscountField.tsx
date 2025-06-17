@@ -1,10 +1,12 @@
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DiscountCode } from '@/types/subscription';
 
@@ -13,39 +15,122 @@ interface DiscountFieldProps {
   appliedDiscount: DiscountCode | null;
 }
 
+interface DatabaseDiscountCode {
+  id: string;
+  code: string;
+  discount_type: string;
+  discount_value: number;
+  description: string;
+  is_active: boolean;
+  expires_at: string | null;
+  current_usage_count: number;
+  total_usage_limit: number | null;
+  usage_limit_per_user: number | null;
+  applicable_plans: any;
+}
+
 const DiscountField = ({ onDiscountApply, appliedDiscount }: DiscountFieldProps) => {
   const { language } = useLanguage();
   const [discountCode, setDiscountCode] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState('');
 
-  // Available discount codes
-  const availableDiscounts: DiscountCode[] = [
-    {
-      code: 'bnetsrez',
-      percentage: 100,
-      description: language === 'fa' ? 'تخفیف ۱۰۰ درصدی' : '100% Discount'
-    }
-  ];
+  const { data: availableDiscounts, isLoading: discountsLoading } = useQuery({
+    queryKey: ['discount-codes'],
+    queryFn: async () => {
+      console.log('=== DISCOUNTS: Fetching discount codes from database ===');
+      
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('discount_codes')
+        .select('*')
+        .eq('is_active', true)
+        .or(`expires_at.is.null,expires_at.gt.${now}`)
+        .order('created_at', { ascending: false });
+      
+      console.log('DISCOUNTS: Database query result:', { data, error });
+      
+      if (error) {
+        console.error('DISCOUNTS: Error fetching discount codes:', error);
+        throw error;
+      }
+      
+      // Convert to DiscountCode format
+      return (data as DatabaseDiscountCode[]).map(dbDiscount => ({
+        code: dbDiscount.code,
+        percentage: dbDiscount.discount_type === 'percentage' ? dbDiscount.discount_value : 0,
+        description: dbDiscount.description || (
+          language === 'fa' ? 
+            `تخفیف ${dbDiscount.discount_value}${dbDiscount.discount_type === 'percentage' ? ' درصدی' : ' تومانی'}` :
+            `${dbDiscount.discount_value}${dbDiscount.discount_type === 'percentage' ? '% Discount' : ' Toman Discount'}`
+        )
+      })) as DiscountCode[];
+    },
+    retry: 1
+  });
 
-  const validateDiscount = () => {
+  const validateDiscount = async () => {
     setIsValidating(true);
     setError('');
+
+    if (!availableDiscounts) {
+      setError(language === 'fa' ? 'خطا در بارگذاری کدهای تخفیف' : 'Error loading discount codes');
+      setIsValidating(false);
+      return;
+    }
 
     const foundDiscount = availableDiscounts.find(
       d => d.code.toLowerCase() === discountCode.toLowerCase()
     );
 
-    setTimeout(() => {
-      if (foundDiscount) {
+    // Check if discount is valid and not expired
+    if (foundDiscount) {
+      try {
+        // Check usage limits and expiry in database
+        const { data: dbDiscount, error } = await supabase
+          .from('discount_codes')
+          .select('*')
+          .eq('code', foundDiscount.code)
+          .eq('is_active', true)
+          .single();
+
+        if (error || !dbDiscount) {
+          setError(language === 'fa' ? 'کد تخفیف نامعتبر است' : 'Invalid discount code');
+          onDiscountApply(null);
+          setIsValidating(false);
+          return;
+        }
+
+        // Check expiry
+        if (dbDiscount.expires_at && new Date(dbDiscount.expires_at) < new Date()) {
+          setError(language === 'fa' ? 'کد تخفیف منقضی شده است' : 'Discount code has expired');
+          onDiscountApply(null);
+          setIsValidating(false);
+          return;
+        }
+
+        // Check total usage limit
+        if (dbDiscount.total_usage_limit && dbDiscount.current_usage_count >= dbDiscount.total_usage_limit) {
+          setError(language === 'fa' ? 'کد تخفیف استفاده شده است' : 'Discount code has been used up');
+          onDiscountApply(null);
+          setIsValidating(false);
+          return;
+        }
+
+        // Valid discount
         onDiscountApply(foundDiscount);
         setError('');
-      } else {
-        setError(language === 'fa' ? 'کد تخفیف نامعتبر است' : 'Invalid discount code');
+      } catch (err) {
+        console.error('Error validating discount:', err);
+        setError(language === 'fa' ? 'خطا در اعتبارسنجی کد تخفیف' : 'Error validating discount code');
         onDiscountApply(null);
       }
-      setIsValidating(false);
-    }, 500);
+    } else {
+      setError(language === 'fa' ? 'کد تخفیف نامعتبر است' : 'Invalid discount code');
+      onDiscountApply(null);
+    }
+
+    setIsValidating(false);
   };
 
   const removeDiscount = () => {
@@ -53,6 +138,22 @@ const DiscountField = ({ onDiscountApply, appliedDiscount }: DiscountFieldProps)
     setError('');
     onDiscountApply(null);
   };
+
+  if (discountsLoading) {
+    return (
+      <div className="space-y-3">
+        <Label htmlFor="discount">
+          {language === 'fa' ? 'کد تخفیف (اختیاری)' : 'Discount Code (Optional)'}
+        </Label>
+        <div className="flex items-center gap-2 p-3 rounded-lg border">
+          <Loader className="w-4 h-4 animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">
+            {language === 'fa' ? 'در حال بارگذاری کدهای تخفیف...' : 'Loading discount codes...'}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -100,7 +201,7 @@ const DiscountField = ({ onDiscountApply, appliedDiscount }: DiscountFieldProps)
             type="button"
             variant="outline"
             onClick={validateDiscount}
-            disabled={!discountCode.trim() || isValidating}
+            disabled={!discountCode.trim() || isValidating || discountsLoading}
           >
             {isValidating ? (
               language === 'fa' ? 'بررسی...' : 'Checking...'

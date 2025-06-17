@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, User, Calendar, DollarSign } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Search, User, Calendar, DollarSign, RefreshCw } from 'lucide-react';
 
 interface Subscription {
   id: string;
@@ -26,15 +27,27 @@ export const UsersManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const { data: subscriptions, isLoading, error } = useQuery({
-    queryKey: ['admin-subscriptions'],
+  const { data: subscriptions, isLoading, error, refetch } = useQuery({
+    queryKey: ['admin-subscriptions', searchTerm, statusFilter],
     queryFn: async () => {
       console.log('=== USERS: Fetching subscriptions (RLS disabled) ===');
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('subscriptions')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // Add status filter if not 'all'
+      if (statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
+      }
+
+      // Add search filter
+      if (searchTerm.trim()) {
+        query = query.or(`username.ilike.%${searchTerm}%,mobile.ilike.%${searchTerm}%`);
+      }
+      
+      const { data, error } = await query;
       
       console.log('USERS: Subscriptions query result:', { data, error, count: data?.length });
       
@@ -46,17 +59,8 @@ export const UsersManagement = () => {
       console.log(`USERS: Successfully fetched ${data?.length || 0} subscriptions`);
       return data as Subscription[];
     },
-    retry: 1
-  });
-
-  const filteredSubscriptions = subscriptions?.filter(sub => {
-    const matchesSearch = 
-      sub.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sub.mobile.includes(searchTerm);
-    
-    const matchesStatus = statusFilter === 'all' || sub.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
+    retry: 1,
+    refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
   });
 
   const getStatusBadge = (status: string) => {
@@ -79,6 +83,10 @@ export const UsersManagement = () => {
     totalRevenue: subscriptions.reduce((sum, s) => sum + s.price_toman, 0),
   } : { total: 0, active: 0, pending: 0, totalRevenue: 0 };
 
+  const handleRefresh = () => {
+    refetch();
+  };
+
   console.log('USERS: Component render - isLoading:', isLoading, 'subscriptions count:', subscriptions?.length, 'error:', error);
 
   // Show error state
@@ -86,9 +94,15 @@ export const UsersManagement = () => {
     console.error('USERS: Component error:', error);
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
-          <p className="text-gray-600">Error loading users and orders</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
+            <p className="text-gray-600">Error loading users and orders</p>
+          </div>
+          <Button onClick={handleRefresh} variant="outline">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry
+          </Button>
         </div>
         <Card>
           <CardContent className="p-6">
@@ -116,11 +130,17 @@ export const UsersManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
-        <p className="text-gray-600">
-          Manage user subscriptions and orders ({subscriptions?.length || 0} subscriptions found)
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
+          <p className="text-gray-600">
+            Manage user subscriptions and orders ({subscriptions?.length || 0} subscriptions found)
+          </p>
+        </div>
+        <Button onClick={handleRefresh} variant="outline" size="sm">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
       {/* Stats Cards */}
@@ -202,7 +222,7 @@ export const UsersManagement = () => {
 
       {/* Subscriptions List */}
       <div className="grid gap-6">
-        {filteredSubscriptions?.map((subscription) => (
+        {subscriptions?.map((subscription) => (
           <Card key={subscription.id}>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -252,13 +272,13 @@ export const UsersManagement = () => {
         ))}
       </div>
 
-      {(!filteredSubscriptions || filteredSubscriptions.length === 0) && !isLoading && (
+      {(!subscriptions || subscriptions.length === 0) && !isLoading && (
         <Card>
           <CardContent className="text-center py-12">
             <p className="text-gray-500">
-              {subscriptions?.length === 0 
-                ? 'No subscriptions found. Users will appear here once they make orders.'
-                : 'No subscriptions found matching your criteria.'
+              {searchTerm || statusFilter !== 'all'
+                ? 'No subscriptions found matching your criteria.'
+                : 'No subscriptions found. Users will appear here once they make orders.'
               }
             </p>
           </CardContent>

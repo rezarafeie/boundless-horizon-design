@@ -437,10 +437,27 @@ const MarzbanSubscriptionForm = () => {
             setLoadingMessage(language === 'fa' ? 'در حال ایجاد اشتراک...' : 'Creating subscription...');
             
             const userData = JSON.parse(localStorage.getItem('pendingUserData') || '{}');
-            const result = await createMarzbanUser(userData);
+            const pendingDiscount = JSON.parse(localStorage.getItem('pendingDiscount') || 'null');
+            const pendingPrice = parseInt(localStorage.getItem('pendingPrice') || '0');
+            
+            let result: SubscriptionResponse;
+            
+            if (userData.selectedPlan?.apiType === 'marzneshin') {
+              result = await createMarzneshinUser(userData);
+            } else {
+              result = await createMarzbanUser(userData);
+            }
+            
+            // Save to database
+            await saveSubscriptionToDatabase(userData, result, pendingPrice, pendingDiscount);
+            
             setResult(result);
             setStep(3);
+            
+            // Clean up localStorage
             localStorage.removeItem('pendingUserData');
+            localStorage.removeItem('pendingDiscount');
+            localStorage.removeItem('pendingPrice');
             
             toast({
               title: language === 'fa' ? 'موفق' : 'Success',
@@ -531,6 +548,87 @@ const MarzbanSubscriptionForm = () => {
     }
   };
 
+  const saveSubscriptionToDatabase = async (
+    formData: MarzbanFormData, 
+    subscriptionResult: SubscriptionResponse,
+    finalPrice: number,
+    discountUsed?: DiscountCode
+  ) => {
+    try {
+      console.log('=== SUBSCRIPTION: Saving to database ===');
+      
+      const subscriptionData = {
+        username: formData.username,
+        mobile: formData.mobile,
+        data_limit_gb: formData.dataLimit,
+        duration_days: formData.duration,
+        price_toman: finalPrice,
+        status: finalPrice === 0 ? 'active' : 'paid',
+        subscription_url: subscriptionResult.subscription_url,
+        expire_at: new Date(subscriptionResult.expire * 1000).toISOString(),
+        notes: `${formData.notes} - Plan: ${formData.selectedPlan?.name || 'Unknown'} - Created via form`,
+        marzban_user_created: true
+      };
+
+      const { data: subscription, error: subscriptionError } = await supabase
+        .from('subscriptions')
+        .insert(subscriptionData)
+        .select()
+        .single();
+
+      if (subscriptionError) {
+        console.error('SUBSCRIPTION: Error saving subscription:', subscriptionError);
+        throw subscriptionError;
+      }
+
+      console.log('SUBSCRIPTION: Saved successfully:', subscription);
+
+      // Log discount usage if discount was applied
+      if (discountUsed && finalPrice < (formData.dataLimit * (formData.selectedPlan?.pricePerGB || 0))) {
+        try {
+          // Get discount ID from database
+          const { data: discountRecord } = await supabase
+            .from('discount_codes')
+            .select('id')
+            .eq('code', discountUsed.code)
+            .single();
+
+          if (discountRecord) {
+            const discountAmount = (formData.dataLimit * (formData.selectedPlan?.pricePerGB || 0)) - finalPrice;
+            
+            // Log usage
+            await supabase
+              .from('discount_usage_logs')
+              .insert({
+                discount_code_id: discountRecord.id,
+                subscription_id: subscription.id,
+                discount_amount: discountAmount,
+                user_mobile: formData.mobile
+              });
+
+            // Update usage count
+            await supabase
+              .from('discount_codes')
+              .update({ 
+                current_usage_count: supabase.sql`current_usage_count + 1` 
+              })
+              .eq('id', discountRecord.id);
+
+            console.log('SUBSCRIPTION: Discount usage logged');
+          }
+        } catch (discountError) {
+          console.error('SUBSCRIPTION: Error logging discount usage:', discountError);
+          // Don't fail the main operation for discount logging errors
+        }
+      }
+
+      return subscription;
+    } catch (error) {
+      console.error('SUBSCRIPTION: Database save error:', error);
+      throw error;
+    }
+  };
+
   const handleInputChange = (field: keyof MarzbanFormData, value: string | number | SubscriptionPlan) => {
     setFormData(prev => ({
       ...prev,
@@ -563,6 +661,9 @@ const MarzbanSubscriptionForm = () => {
           result = await createMarzbanUser(formData);
         }
         
+        // Save to database
+        await saveSubscriptionToDatabase(formData, result, finalPrice, appliedDiscount);
+        
         setResult(result);
         setStep(3);
         
@@ -578,6 +679,8 @@ const MarzbanSubscriptionForm = () => {
       
       // Store form data for after payment
       localStorage.setItem('pendingUserData', JSON.stringify(formData));
+      localStorage.setItem('pendingDiscount', JSON.stringify(appliedDiscount));
+      localStorage.setItem('pendingPrice', finalPrice.toString());
       
       // Create Payman contract for paid subscriptions
       const paymanAuthority = await createPaymanContract();
