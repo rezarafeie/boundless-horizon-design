@@ -22,7 +22,7 @@ const ZarinpalVerificationHandler = () => {
 
   const createVPNUser = async (subscriptionId: string, subscription: any) => {
     try {
-      console.log('Creating VPN user via panel API', { subscriptionId, username: subscription.username });
+      console.log('Creating VPN user via Marzneshin API', { subscriptionId, username: subscription.username });
       
       const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
         body: {
@@ -33,8 +33,13 @@ const ZarinpalVerificationHandler = () => {
         }
       });
 
-      if (error || !data?.success) {
-        console.error('VPN user creation failed:', error || data?.error);
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw new Error(error.message || 'Failed to call Marzneshin service');
+      }
+
+      if (!data?.success) {
+        console.error('Marzneshin service error:', data?.error);
         throw new Error(data?.error || 'Failed to create VPN user');
       }
 
@@ -42,7 +47,7 @@ const ZarinpalVerificationHandler = () => {
       
       // Update subscription with real URL from panel
       if (data.data?.subscription_url) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('subscriptions')
           .update({ 
             subscription_url: data.data.subscription_url,
@@ -50,6 +55,10 @@ const ZarinpalVerificationHandler = () => {
             status: 'active'
           })
           .eq('id', subscriptionId);
+
+        if (updateError) {
+          console.error('Failed to update subscription:', updateError);
+        }
       }
 
       return data.data;
@@ -84,8 +93,11 @@ const ZarinpalVerificationHandler = () => {
           .single();
 
         if (subError || !subscription) {
+          console.error('Subscription query error:', subError);
           throw new Error('Subscription not found');
         }
+
+        console.log('Subscription found:', subscription);
 
         // Verify payment with Zarinpal
         console.log('Verifying payment with Zarinpal...');
@@ -98,7 +110,13 @@ const ZarinpalVerificationHandler = () => {
 
         console.log('Zarinpal verification response:', verifyData);
 
-        if (verifyError || !verifyData?.success) {
+        if (verifyError) {
+          console.error('Verification function error:', verifyError);
+          throw new Error(verifyError.message || 'Payment verification failed');
+        }
+
+        if (!verifyData?.success) {
+          console.error('Verification failed:', verifyData?.error);
           throw new Error(verifyData?.error || 'Payment verification failed');
         }
 
@@ -106,19 +124,29 @@ const ZarinpalVerificationHandler = () => {
         if (verifyData.data?.data?.code === 100) {
           console.log('Payment verified successfully. Creating VPN user...');
           
-          // Create VPN user and get real subscription URL
-          const vpnUserData = await createVPNUser(subscriptionId, subscription);
-
-          // Update subscription with Zarinpal details
-          await supabase
+          // Update subscription with Zarinpal details first
+          const { error: updateError } = await supabase
             .from('subscriptions')
             .update({
               zarinpal_authority: authority,
               zarinpal_ref_id: verifyData.data?.data?.ref_id,
-              status: 'active',
+              status: 'paid', // Mark as paid before creating VPN user
               expire_at: new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString()
             })
             .eq('id', subscriptionId);
+
+          if (updateError) {
+            console.error('Failed to update subscription:', updateError);
+          }
+
+          // Create VPN user and get real subscription URL
+          let vpnUserData = null;
+          try {
+            vpnUserData = await createVPNUser(subscriptionId, subscription);
+          } catch (vpnError) {
+            console.error('VPN user creation failed, but payment was successful:', vpnError);
+            // Don't throw error here - payment was successful, VPN creation can be retried
+          }
 
           setVerificationResult({
             success: true,
@@ -128,8 +156,9 @@ const ZarinpalVerificationHandler = () => {
               subscription_url: vpnUserData?.subscription_url || null,
               expire: Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
               data_limit: subscription.data_limit_gb * 1073741824,
-              status: 'active',
-              subscriptionId: subscriptionId
+              status: vpnUserData ? 'active' : 'paid',
+              subscriptionId: subscriptionId,
+              vpnCreated: !!vpnUserData
             }
           });
 
@@ -139,8 +168,8 @@ const ZarinpalVerificationHandler = () => {
           toast({
             title: language === 'fa' ? 'پرداخت موفق' : 'Payment Successful',
             description: language === 'fa' ? 
-              'پرداخت با موفقیت انجام شد و اشتراک فعال گردید' : 
-              'Payment completed successfully and subscription activated',
+              'پرداخت با موفقیت انجام شد' + (vpnUserData ? ' و اشتراک فعال گردید' : '') : 
+              'Payment completed successfully' + (vpnUserData ? ' and subscription activated' : ''),
           });
         } else {
           throw new Error(`Payment verification failed with code: ${verifyData.data?.data?.code}`);
@@ -231,7 +260,19 @@ const ZarinpalVerificationHandler = () => {
           {verificationResult?.success && verificationResult.subscriptionData && (
             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg text-sm">
               <p><strong>{language === 'fa' ? 'نام کاربری:' : 'Username:'}</strong> {verificationResult.subscriptionData.username}</p>
-              <p><strong>{language === 'fa' ? 'وضعیت:' : 'Status:'}</strong> {language === 'fa' ? 'فعال' : 'Active'}</p>
+              <p><strong>{language === 'fa' ? 'وضعیت:' : 'Status:'}</strong> {
+                verificationResult.subscriptionData.vpnCreated ? 
+                  (language === 'fa' ? 'فعال' : 'Active') : 
+                  (language === 'fa' ? 'پرداخت شده' : 'Paid')
+              }</p>
+              {!verificationResult.subscriptionData.vpnCreated && (
+                <p className="text-orange-600 mt-2">
+                  {language === 'fa' ? 
+                    'VPN در حال راه‌اندازی است. لطفا چند دقیقه صبر کنید.' : 
+                    'VPN is being set up. Please wait a few minutes.'
+                  }
+                </p>
+              )}
             </div>
           )}
           

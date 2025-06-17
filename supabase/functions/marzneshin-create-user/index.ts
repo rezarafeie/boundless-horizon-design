@@ -35,63 +35,91 @@ serve(async (req) => {
       throw new Error('Marzneshin panel configuration not complete');
     }
 
-    console.log('Authenticating with Marzneshin panel...');
+    console.log('Authenticating with Marzneshin panel...', { baseUrl });
 
-    // Get authentication token
-    const authResponse = await fetch(`${baseUrl}/api/admin/token`, {
+    // Clean base URL (remove trailing slash)
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    
+    // Get authentication token using the correct endpoint
+    const authResponse = await fetch(`${cleanBaseUrl}/api/admin/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
       },
       body: new URLSearchParams({
         'username': adminUsername,
-        'password': adminPassword
+        'password': adminPassword,
+        'grant_type': 'password'
       })
     });
+
+    console.log('Auth response status:', authResponse.status);
 
     if (!authResponse.ok) {
       const authError = await authResponse.text();
       console.error('Marzneshin authentication failed:', authResponse.status, authError);
-      throw new Error(`Failed to authenticate with Marzneshin panel: ${authResponse.status}`);
+      throw new Error(`Failed to authenticate with Marzneshin panel: ${authResponse.status} - ${authError}`);
     }
 
     const authData = await authResponse.json();
-    console.log('Authentication successful, creating user...');
+    console.log('Authentication successful, token received');
+
+    if (!authData.access_token) {
+      console.error('No access token in response:', authData);
+      throw new Error('No access token received from Marzneshin');
+    }
 
     // Calculate expiry timestamp (current time + duration in days)
     const expireTimestamp = Math.floor((Date.now() + (durationDays * 24 * 60 * 60 * 1000)) / 1000);
     
+    // Create user payload
+    const userPayload = {
+      username: username,
+      proxies: {
+        vmess: {},
+        vless: {}
+      },
+      data_limit: dataLimitGB * 1073741824, // Convert GB to bytes
+      expire: expireTimestamp,
+      status: 'active',
+      note: notes || `Created via BoundlessNets - ${new Date().toISOString()}`
+    };
+
+    console.log('Creating user with payload:', userPayload);
+
     // Create user
-    const createUserResponse = await fetch(`${baseUrl}/api/user`, {
+    const createUserResponse = await fetch(`${cleanBaseUrl}/api/user`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authData.access_token}`
+        'Authorization': `Bearer ${authData.access_token}`,
+        'Accept': 'application/json'
       },
-      body: JSON.stringify({
-        username: username,
-        proxies: {
-          vmess: {},
-          vless: {}
-        },
-        data_limit: dataLimitGB * 1073741824, // Convert GB to bytes
-        expire: expireTimestamp,
-        status: 'active',
-        note: notes || `Created via BoundlessNets - ${new Date().toISOString()}`
-      })
+      body: JSON.stringify(userPayload)
     });
+
+    console.log('Create user response status:', createUserResponse.status);
 
     if (!createUserResponse.ok) {
       const createError = await createUserResponse.text();
       console.error('User creation failed:', createUserResponse.status, createError);
-      throw new Error(`Failed to create user in Marzneshin panel: ${createUserResponse.status}`);
+      
+      // Handle specific error cases
+      if (createUserResponse.status === 409) {
+        throw new Error(`Username '${username}' is already taken. Please choose a different username.`);
+      } else if (createUserResponse.status === 401) {
+        throw new Error('Authentication failed. Please check Marzneshin credentials.');
+      } else {
+        throw new Error(`Failed to create user in Marzneshin panel: ${createUserResponse.status} - ${createError}`);
+      }
     }
 
     const userData = await createUserResponse.json();
     console.log('User created successfully:', userData);
 
     // Generate subscription URL
-    const subscriptionUrl = `${baseUrl}/sub/${userData.subscription_token}`;
+    const subscriptionUrl = `${cleanBaseUrl}/sub/${userData.subscription_token}`;
     
     return new Response(JSON.stringify({ 
       success: true, 

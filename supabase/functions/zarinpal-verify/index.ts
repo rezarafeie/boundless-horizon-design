@@ -14,16 +14,16 @@ serve(async (req) => {
   try {
     console.log('=== ZARINPAL VERIFY FUNCTION STARTED ===');
     
-    const { merchant_id, authority, amount } = await req.json();
-    console.log('Verify request received:', { merchant_id, authority, amount });
+    const { authority, amount } = await req.json();
+    console.log('Verify request received:', { authority, amount });
 
-    if (!merchant_id || !authority || !amount) {
-      throw new Error('Merchant ID, authority, and amount are required');
+    if (!authority || !amount) {
+      throw new Error('Authority and amount are required');
     }
 
-    // Get Zarinpal merchant ID from environment if not provided
-    const merchantIdToUse = merchant_id || Deno.env.get('ZARINPAL_MERCHANT_ID');
-    if (!merchantIdToUse) {
+    // Get Zarinpal merchant ID from environment
+    const merchantId = Deno.env.get('ZARINPAL_MERCHANT_ID');
+    if (!merchantId) {
       console.error('ZARINPAL_MERCHANT_ID not configured');
       throw new Error('Zarinpal merchant ID not configured');
     }
@@ -32,7 +32,7 @@ serve(async (req) => {
 
     // Create verification request to Zarinpal
     const zarinpalRequest = {
-      merchant_id: merchantIdToUse,
+      merchant_id: merchantId,
       authority: authority,
       amount: amount // Amount should already be in Rial
     };
