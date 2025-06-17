@@ -22,9 +22,11 @@ export const AdminHeader = () => {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <User className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium">{user?.email}</span>
+            <span className="text-sm font-medium">
+              {user?.email || 'Admin User (Development Mode)'}
+            </span>
             <Badge variant={adminUser?.role === 'superadmin' ? 'default' : 'secondary'}>
-              {adminUser?.role}
+              {adminUser?.role || 'superadmin'}
             </Badge>
           </div>
           

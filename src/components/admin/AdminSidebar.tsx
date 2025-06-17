@@ -29,6 +29,9 @@ export const AdminSidebar = () => {
   const location = useLocation();
   const { isSuperAdmin } = useAdminAuth();
 
+  // TEMPORARY: Show all menu items during development
+  const showSettings = isSuperAdmin ?? true;
+
   return (
     <div className={cn(
       "bg-white border-r border-gray-200 transition-all duration-300",
@@ -51,8 +54,8 @@ export const AdminSidebar = () => {
       
       <nav className="p-4 space-y-2">
         {menuItems.map((item) => {
-          // Hide settings for non-superadmins
-          if (item.href === '/admin/settings' && !isSuperAdmin) {
+          // Hide settings for non-superadmins (but show during development)
+          if (item.href === '/admin/settings' && !showSettings) {
             return null;
           }
           

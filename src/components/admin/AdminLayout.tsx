@@ -15,6 +15,10 @@ interface AdminLayoutProps {
 export const AdminLayout = ({ children }: AdminLayoutProps) => {
   const { loading, isAdmin, signOut } = useAdminAuth();
 
+  // TEMPORARY: Bypass authentication for development
+  // Comment out the authentication checks to allow access without login
+  
+  /*
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -26,6 +30,7 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
   if (!isAdmin) {
     return <Navigate to="/admin/login" replace />;
   }
+  */
 
   return (
     <div className="min-h-screen bg-gray-50">
