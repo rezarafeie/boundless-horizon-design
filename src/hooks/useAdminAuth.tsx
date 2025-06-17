@@ -16,38 +16,37 @@ export const useAdminAuth = () => {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const checkAdminStatus = async (userId: string) => {
+    try {
+      // Use a direct query to avoid RLS issues
+      const { data: adminData, error } = await supabase
+        .rpc('check_admin_user', { check_user_id: userId });
+      
+      if (error) {
+        console.log('Error checking admin status:', error);
+        return null;
+      }
+      
+      return adminData;
+    } catch (error) {
+      console.log('User is not an admin:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Check if user is an admin
+          // Check admin status without triggering RLS recursion
           setTimeout(async () => {
-            try {
-              const { data: adminData } = await supabase
-                .from('admin_users')
-                .select('*')
-                .eq('user_id', session.user.id)
-                .eq('is_active', true)
-                .single();
-              
-              if (adminData && (adminData.role === 'superadmin' || adminData.role === 'editor')) {
-                setAdminUser({
-                  id: adminData.id,
-                  user_id: adminData.user_id,
-                  role: adminData.role as 'superadmin' | 'editor',
-                  is_active: adminData.is_active
-                });
-              } else {
-                setAdminUser(null);
-              }
-            } catch (error) {
-              console.log('User is not an admin');
-              setAdminUser(null);
-            }
+            const adminData = await checkAdminStatus(session.user.id);
+            setAdminUser(adminData);
             setLoading(false);
           }, 0);
         } else {
@@ -65,28 +64,8 @@ export const useAdminAuth = () => {
       if (session?.user) {
         // Check admin status for existing session
         setTimeout(async () => {
-          try {
-            const { data: adminData } = await supabase
-              .from('admin_users')
-              .select('*')
-              .eq('user_id', session.user.id)
-              .eq('is_active', true)
-              .single();
-            
-            if (adminData && (adminData.role === 'superadmin' || adminData.role === 'editor')) {
-              setAdminUser({
-                id: adminData.id,
-                user_id: adminData.user_id,
-                role: adminData.role as 'superadmin' | 'editor',
-                is_active: adminData.is_active
-              });
-            } else {
-              setAdminUser(null);
-            }
-          } catch (error) {
-            console.log('User is not an admin');
-            setAdminUser(null);
-          }
+          const adminData = await checkAdminStatus(session.user.id);
+          setAdminUser(adminData);
           setLoading(false);
         }, 0);
       } else {
