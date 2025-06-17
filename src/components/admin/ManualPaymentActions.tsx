@@ -156,7 +156,7 @@ export const ManualPaymentActions = ({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction 
               onClick={() => handleDecision('rejected')}
-              variant="destructive"
+              className="bg-destructive hover:bg-destructive/90"
             >
               Reject Payment
             </AlertDialogAction>
