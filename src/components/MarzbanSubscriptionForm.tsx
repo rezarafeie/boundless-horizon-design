@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -303,17 +304,17 @@ const MarzbanSubscriptionForm = () => {
       const targetPanel = planPanels.find(p => p.is_primary) || planPanels[0];
       console.log('SUBSCRIPTION: Using panel:', targetPanel);
 
-      // Create VPN user via appropriate edge function
+      // Create VPN user via appropriate edge function with CORRECT parameter names
       console.log('SUBSCRIPTION: Creating VPN user via edge function...');
       
       const vpnUserRequest = {
         username: savedSubscription.username,
-        data_limit: formData.dataLimit * 1073741824, // Convert GB to bytes
-        expire_duration: formData.duration,
-        note: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
+        dataLimitGB: formData.dataLimit, // Fixed parameter name
+        durationDays: formData.duration,  // Fixed parameter name
+        notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}` // Fixed parameter name
       };
 
-      console.log('SUBSCRIPTION: VPN user request data:', vpnUserRequest);
+      console.log('SUBSCRIPTION: VPN user request data with corrected parameters:', vpnUserRequest);
 
       let vpnResponse;
       if (selectedPlan.apiType === 'marzneshin') {

@@ -23,6 +23,9 @@ const REQUIRED_SERVICE_NAMES = [
   'PolandTunnel'
 ];
 
+// Supported protocols including WebSocket
+const SUPPORTED_PROTOCOLS = ['vmess', 'vless', 'trojan', 'shadowsocks', 'ws', 'websocket'];
+
 interface MarzneshinService {
   id: number;
   name: string;
@@ -39,6 +42,15 @@ interface MarzneshinServicesResponse {
   size: number;
   pages: number;
   links: any;
+}
+
+interface MarzneshinInbound {
+  id: number;
+  tag: string;
+  protocol: string;
+  network: string;
+  tls: string;
+  port: number;
 }
 
 interface MarzneshinUserRequest {
@@ -108,6 +120,36 @@ async function getServices(baseUrl: string, token: string): Promise<MarzneshinSe
   console.log('Services response:', data);
   
   return data.items || [];
+}
+
+async function getInbounds(baseUrl: string, token: string): Promise<MarzneshinInbound[]> {
+  console.log('Fetching inbounds from Marzneshin API to check for WS protocol support');
+  
+  const response = await fetch(`${baseUrl}/api/inbounds`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Failed to fetch inbounds:', errorText);
+    return []; // Don't fail the whole process if inbounds can't be fetched
+  }
+
+  const data = await response.json();
+  console.log('Inbounds response for WS protocol check:', data);
+  
+  // Filter for WebSocket compatible inbounds
+  const wsInbounds = (data.items || []).filter((inbound: MarzneshinInbound) => 
+    inbound.protocol === 'vmess' || inbound.protocol === 'vless' || 
+    inbound.network === 'ws' || inbound.network === 'websocket'
+  );
+  
+  console.log(`Found ${wsInbounds.length} WebSocket compatible inbounds`);
+  return wsInbounds;
 }
 
 function getRequiredServiceIds(services: MarzneshinService[]): number[] {
@@ -363,28 +405,22 @@ Deno.serve(async (req) => {
     const requestBody = await req.json();
     console.log('Raw request body:', JSON.stringify(requestBody, null, 2));
 
-    // Extract parameters with support for both old and new parameter names
+    // Extract parameters - now supporting CORRECTED parameter names
     const {
       username,
       dataLimitGB,
-      dataLimit,
       durationDays,
-      duration,
       notes
     } = requestBody;
 
-    // Use the new parameter names if available, otherwise fall back to old ones
-    const finalDataLimitGB = dataLimitGB || dataLimit;
-    const finalDurationDays = durationDays || duration;
-
-    console.log('Extracted parameters:', {
+    console.log('Extracted parameters (with corrected names):', {
       username,
-      finalDataLimitGB,
-      finalDurationDays,
+      dataLimitGB,
+      durationDays,
       notes: notes ? 'provided' : 'empty'
     });
 
-    // Validate required parameters
+    // Validate required parameters with corrected parameter names
     if (!username) {
       return new Response(
         JSON.stringify({ 
@@ -398,11 +434,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!finalDataLimitGB || typeof finalDataLimitGB !== 'number' || finalDataLimitGB <= 0) {
+    if (!dataLimitGB || typeof dataLimitGB !== 'number' || dataLimitGB <= 0) {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Valid data limit (in GB) is required and must be a positive number' 
+          error: 'Valid dataLimitGB is required and must be a positive number' 
         }),
         { 
           status: 400, 
@@ -411,11 +447,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!finalDurationDays || typeof finalDurationDays !== 'number' || finalDurationDays <= 0) {
+    if (!durationDays || typeof durationDays !== 'number' || durationDays <= 0) {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Valid duration (in days) is required and must be a positive number' 
+          error: 'Valid durationDays is required and must be a positive number' 
         }),
         { 
           status: 400, 
@@ -443,7 +479,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Starting Marzneshin user creation process');
+    console.log('Starting Marzneshin user creation process with WS protocol support');
 
     // Get authentication token
     const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
@@ -452,6 +488,10 @@ Deno.serve(async (req) => {
     const services = await getServices(baseUrl, token);
     console.log(`Fetched ${services.length} services from API`);
     
+    // Check for WebSocket support in inbounds
+    const wsInbounds = await getInbounds(baseUrl, token);
+    console.log(`Found ${wsInbounds.length} WebSocket compatible inbounds`);
+    
     // Get required service IDs for Pro plan
     const requiredServiceIds = getRequiredServiceIds(services);
     
@@ -459,20 +499,20 @@ Deno.serve(async (req) => {
       throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
     }
 
-    // Create the user with normalized parameters
+    // Create the user with corrected parameter names
     const result = await createMarzneshinUser(
       baseUrl,
       token,
       { 
         username, 
-        dataLimitGB: finalDataLimitGB, 
-        durationDays: finalDurationDays, 
+        dataLimitGB, 
+        durationDays, 
         notes: notes || '' 
       },
       requiredServiceIds
     );
 
-    console.log('Marzneshin user creation completed successfully');
+    console.log('Marzneshin user creation completed successfully with WS protocol support');
 
     return new Response(
       JSON.stringify({
