@@ -166,7 +166,21 @@ async function createMarzbanUser(
 
   const result = await response.json();
   logStep('User creation successful', result);
-  return result;
+  
+  // Marzban doesn't return subscription_url, so we need to construct it manually
+  const subscriptionUrl = `${baseUrl}/sub/${userData.username}`;
+  logStep('Constructed subscription URL', { subscriptionUrl });
+  
+  // Return response in the same format as Marzneshin for consistency
+  const marzbanResponse: MarzbanUserResponse = {
+    username: result.username || userData.username,
+    subscription_url: subscriptionUrl,
+    expire: result.expire || expirationTimestamp,
+    data_limit: result.data_limit || userData.dataLimitGB * 1073741824
+  };
+  
+  logStep('Final Marzban response', marzbanResponse);
+  return marzbanResponse;
 }
 
 Deno.serve(async (req) => {
@@ -236,7 +250,7 @@ Deno.serve(async (req) => {
       baseUrlExists: !!baseUrl,
       usernameExists: !!adminUsername,
       passwordExists: !!adminPassword,
-      baseUrlPreview: baseUrl ? `${baseUrl.substring(0, 30)}...` : 'NOT_SET'
+      baseUrlValue: baseUrl || 'NOT_SET'
     });
 
     if (!baseUrl || !adminUsername || !adminPassword) {
@@ -260,6 +274,7 @@ Deno.serve(async (req) => {
 
     // Clean base URL (remove trailing slash)
     const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    logStep('Using clean base URL', { cleanBaseUrl });
     
     // Test panel health first
     const isPanelHealthy = await testPanelHealth(cleanBaseUrl);
