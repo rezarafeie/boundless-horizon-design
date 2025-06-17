@@ -22,8 +22,19 @@ const StripePaymentForm = ({ amount, subscriptionData, onPaymentSuccess, isSubmi
 
   const usdAmount = Math.ceil(amount / 60000); // Convert Toman to USD
 
+  const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
+    if (window.debugPayment) {
+      window.debugPayment('stripe', type, message, data);
+    }
+  };
+
   const createCheckoutSession = async () => {
     setLoading(true);
+    debugLog('info', 'Starting Stripe checkout creation', { 
+      amount: usdAmount, 
+      subscriptionData 
+    });
+
     try {
       const { data, error } = await supabase.functions.invoke('stripe-checkout', {
         body: {
@@ -42,9 +53,14 @@ const StripePaymentForm = ({ amount, subscriptionData, onPaymentSuccess, isSubmi
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        debugLog('error', 'Supabase function error', error);
+        throw error;
+      }
 
       if (data?.url) {
+        debugLog('success', 'Checkout session created successfully', { url: data.url });
+        
         // Open Stripe checkout in a new tab
         window.open(data.url, '_blank');
         
@@ -54,9 +70,13 @@ const StripePaymentForm = ({ amount, subscriptionData, onPaymentSuccess, isSubmi
             'صفحه پرداخت در تب جدید باز شد' : 
             'Payment page opened in new tab',
         });
+      } else {
+        debugLog('error', 'No checkout URL received', data);
+        throw new Error('No checkout URL received');
       }
     } catch (error) {
       console.error('Stripe payment error:', error);
+      debugLog('error', 'Stripe checkout creation failed', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در ایجاد پرداخت' : 'Failed to create payment',

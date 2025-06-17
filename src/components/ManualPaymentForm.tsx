@@ -24,6 +24,12 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const [isUploading, setIsUploading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
+  const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
+    if (window.debugPayment) {
+      window.debugPayment('manual', type, message, data);
+    }
+  };
+
   const bankInfo = {
     bankName: language === 'fa' ? 'بانک ملت' : 'Bank Mellat',
     cardNumber: '6104-3378-8765-4321',
@@ -43,6 +49,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
     const file = event.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        debugLog('error', 'File size too large', { size: file.size });
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
           description: language === 'fa' ? 'حجم فایل نباید بیشتر از ۵ مگابایت باشد' : 'File size should not exceed 5MB',
@@ -50,6 +57,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
         });
         return;
       }
+      debugLog('success', 'Receipt file selected', { name: file.name, size: file.size });
       setReceiptFile(file);
     }
   };
@@ -57,6 +65,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const uploadReceiptToStorage = async (file: File, subscriptionId: string): Promise<string | null> => {
     try {
       setIsUploading(true);
+      debugLog('info', 'Starting receipt upload', { fileName: file.name, subscriptionId });
       
       const fileExt = file.name.split('.').pop();
       const fileName = `${subscriptionId}/receipt_${Date.now()}.${fileExt}`;
@@ -66,9 +75,12 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
         .upload(fileName, file);
 
       if (error) {
+        debugLog('error', 'Storage upload failed', error);
         console.error('Storage upload error:', error);
         throw error;
       }
+
+      debugLog('success', 'Receipt uploaded successfully', { fileName, path: data.path });
 
       // Get public URL (even though bucket is private, we can get signed URL later if needed)
       const { data: { publicUrl } } = supabase.storage
@@ -78,6 +90,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       return publicUrl;
     } catch (error) {
       console.error('Failed to upload receipt:', error);
+      debugLog('error', 'Receipt upload failed', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در آپلود تصویر' : 'Failed to upload image',
@@ -92,6 +105,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const sendEmailNotification = async (subscriptionId: string, receiptUrl?: string) => {
     try {
       setIsSendingEmail(true);
+      debugLog('info', 'Sending email notification', { subscriptionId, receiptUrl });
       
       const { data, error } = await supabase.functions.invoke('send-manual-payment-email', {
         body: {
@@ -101,14 +115,17 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       });
 
       if (error) {
+        debugLog('error', 'Email sending failed', error);
         console.error('Email sending error:', error);
         throw error;
       }
 
       if (!data.success) {
+        debugLog('error', 'Email function returned error', data);
         throw new Error(data.error || 'Failed to send email');
       }
 
+      debugLog('success', 'Email sent successfully', data);
       toast({
         title: language === 'fa' ? 'ارسال شد' : 'Sent Successfully',
         description: language === 'fa' ? 
@@ -119,6 +136,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       return true;
     } catch (error) {
       console.error('Failed to send email notification:', error);
+      debugLog('error', 'Email notification failed', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
@@ -134,6 +152,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
   const handleSubmit = async () => {
     if (!confirmed) {
+      debugLog('warning', 'Payment not confirmed by user');
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'لطفاً تأیید پرداخت را انتخاب کنید' : 'Please confirm payment',
@@ -141,6 +160,11 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       });
       return;
     }
+
+    debugLog('info', 'Manual payment submission started', { 
+      hasReceipt: !!receiptFile,
+      confirmed 
+    });
 
     // Pass the post-creation callback with the payment data
     onPaymentConfirm({

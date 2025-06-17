@@ -12,13 +12,14 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const paymentId = url.pathname.split('/').pop();
+    const { paymentId } = await req.json();
 
     const nowpaymentsApiKey = Deno.env.get('NOWPAYMENTS_API_KEY');
     if (!nowpaymentsApiKey) {
       throw new Error('NowPayments API key not configured');
     }
+
+    console.log('Checking payment status for:', paymentId);
 
     const response = await fetch(`https://api.nowpayments.io/v1/payment/${paymentId}`, {
       headers: {
@@ -27,12 +28,14 @@ serve(async (req) => {
     });
 
     const data = await response.json();
+    console.log('Payment status response:', data);
 
     if (response.ok) {
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } else {
+      console.error('Status check error:', data);
       throw new Error(data.message || 'Status check failed');
     }
   } catch (error) {

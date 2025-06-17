@@ -10,13 +10,14 @@ import Index from "./pages/Index";
 import Subscription from "./pages/Subscription";
 import Renewal from "./pages/Renewal";
 import DeliveryPage from "./pages/DeliveryPage";
+import PaymentSuccess from "./pages/PaymentSuccess";
 import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/AdminLogin";
-import { AdminDashboard } from "./pages/AdminDashboard";
-import { AdminUsers } from "./pages/AdminUsers";
-import { AdminPlans } from "./pages/AdminPlans";
-import { AdminPanels } from "./pages/AdminPanels";
-import { AdminDiscounts } from "./pages/AdminDiscounts";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminUsers from "./pages/AdminUsers";
+import AdminPlans from "./pages/AdminPlans";
+import AdminDiscounts from "./pages/AdminDiscounts";
+import AdminPanels from "./pages/AdminPanels";
 
 const queryClient = new QueryClient();
 
@@ -33,12 +34,13 @@ const App = () => (
               <Route path="/subscription" element={<Subscription />} />
               <Route path="/renewal" element={<Renewal />} />
               <Route path="/delivery" element={<DeliveryPage />} />
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/payment-success" element={<PaymentSuccess />} />
+              <Route path="/admin" element={<AdminLogin />} />
+              <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/plans" element={<AdminPlans />} />
-              <Route path="/admin/panels" element={<AdminPanels />} />
               <Route path="/admin/discounts" element={<AdminDiscounts />} />
+              <Route path="/admin/panels" element={<AdminPanels />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

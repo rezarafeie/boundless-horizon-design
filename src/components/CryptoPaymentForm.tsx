@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Loader, ExternalLink, Copy, QrCode } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CryptoPaymentFormProps {
   amount: number;
@@ -35,35 +36,44 @@ const CryptoPaymentForm = ({ amount, onPaymentSuccess, isSubmitting }: CryptoPay
 
   const usdAmount = Math.ceil(amount / 60000); // Convert Toman to USD
 
+  const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
+    if (window.debugPayment) {
+      window.debugPayment('nowpayments', type, message, data);
+    }
+  };
+
   const createPayment = async () => {
     setLoading(true);
+    debugLog('info', 'Starting NowPayments payment creation', { amount: usdAmount });
+    
     try {
-      // This would call your NowPayments edge function
-      const response = await fetch('/api/nowpayments/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('nowpayments-create', {
+        body: {
           price_amount: usdAmount,
           price_currency: 'usd',
           pay_currency: 'usdttrc20', // USDT TRC20
           order_id: `sub_${Date.now()}`,
           order_description: `VPN Subscription - $${usdAmount}`
-        })
+        }
       });
 
-      const data = await response.json();
+      if (error) {
+        debugLog('error', 'Supabase function error', error);
+        throw error;
+      }
       
-      if (data.success) {
+      if (data?.success && data?.invoice) {
+        debugLog('success', 'Payment created successfully', data.invoice);
         setInvoice(data.invoice);
         // Start polling for payment status
         pollPaymentStatus(data.invoice.payment_id);
       } else {
-        throw new Error(data.error || 'Failed to create payment');
+        debugLog('error', 'Payment creation failed', data);
+        throw new Error(data?.error || 'Failed to create payment');
       }
     } catch (error) {
       console.error('Crypto payment error:', error);
+      debugLog('error', 'Payment creation failed', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در ایجاد پرداخت کریپتو' : 'Failed to create crypto payment',
@@ -77,22 +87,33 @@ const CryptoPaymentForm = ({ amount, onPaymentSuccess, isSubmitting }: CryptoPay
   const pollPaymentStatus = async (paymentId: string) => {
     const maxAttempts = 60; // 5 minutes of polling
     let attempts = 0;
+    debugLog('info', 'Starting payment status polling', { paymentId });
 
     const poll = setInterval(async () => {
       attempts++;
       try {
-        const response = await fetch(`/api/nowpayments/status/${paymentId}`);
-        const data = await response.json();
+        const { data, error } = await supabase.functions.invoke('nowpayments-status', {
+          body: { paymentId }
+        });
         
-        setPaymentStatus(data.payment_status);
+        if (error) {
+          debugLog('error', 'Status check error', error);
+          throw error;
+        }
+
+        debugLog('info', `Status check ${attempts}/${maxAttempts}`, { status: data?.payment_status });
+        setPaymentStatus(data?.payment_status || 'waiting');
         
-        if (data.payment_status === 'finished') {
+        if (data?.payment_status === 'finished') {
+          debugLog('success', 'Payment completed successfully', data);
           clearInterval(poll);
           onPaymentSuccess(paymentId);
-        } else if (data.payment_status === 'failed' || attempts >= maxAttempts) {
+        } else if (data?.payment_status === 'failed' || attempts >= maxAttempts) {
+          debugLog('error', 'Payment failed or timeout', { status: data?.payment_status, attempts });
           clearInterval(poll);
         }
       } catch (error) {
+        debugLog('error', 'Status polling error', error);
         console.error('Status check error:', error);
       }
     }, 5000); // Check every 5 seconds

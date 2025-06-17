@@ -19,6 +19,14 @@ serve(async (req) => {
       throw new Error('NowPayments API key not configured');
     }
 
+    console.log('Creating NowPayments invoice:', {
+      price_amount,
+      price_currency,
+      pay_currency,
+      order_id,
+      order_description
+    });
+
     const response = await fetch('https://api.nowpayments.io/v1/payment', {
       method: 'POST',
       headers: {
@@ -36,12 +44,14 @@ serve(async (req) => {
     });
 
     const data = await response.json();
+    console.log('NowPayments API response:', data);
 
     if (response.ok) {
       return new Response(JSON.stringify({ success: true, invoice: data }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } else {
+      console.error('NowPayments API error:', data);
       throw new Error(data.message || 'Payment creation failed');
     }
   } catch (error) {

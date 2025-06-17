@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +9,7 @@ import ManualPaymentForm from '@/components/ManualPaymentForm';
 import CryptoPaymentForm from '@/components/CryptoPaymentForm';
 import StripePaymentForm from '@/components/StripePaymentForm';
 import DiscountField from '@/components/DiscountField';
+import PaymentDebugPanel from '@/components/PaymentDebugPanel';
 import { DiscountCode } from '@/types/subscription';
 import { useSubscriptionSubmit } from '@/hooks/useSubscriptionSubmit';
 import { useToast } from '@/hooks/use-toast';
@@ -34,11 +36,18 @@ const PaymentStep = ({
   const { toast } = useToast();
   const { submitSubscription } = useSubscriptionSubmit();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('zarinpal');
+  const [showDebug, setShowDebug] = useState(false);
 
   // Calculate pricing
   const basePrice = formData.dataLimit * (formData.selectedPlan?.pricePerGB || 800);
   const discountAmount = appliedDiscount ? (basePrice * appliedDiscount.percentage) / 100 : 0;
   const finalPrice = Math.max(0, basePrice - discountAmount);
+
+  const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
+    if (window.debugPayment) {
+      window.debugPayment('zarinpal', type, message, data);
+    }
+  };
 
   const handleManualPayment = async (paymentData: { 
     receiptFile?: File; 
@@ -48,6 +57,8 @@ const PaymentStep = ({
     if (!paymentData.confirmed) return;
 
     setIsSubmitting(true);
+    debugLog('info', 'Manual payment started', paymentData);
+    
     try {
       // Insert subscription with manual payment status
       const { data: subscription, error } = await supabase
@@ -67,7 +78,12 @@ const PaymentStep = ({
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        debugLog('error', 'Subscription creation failed', error);
+        throw error;
+      }
+
+      debugLog('success', 'Subscription created', subscription);
 
       // Execute post-creation callback if provided
       if (paymentData.postCreationCallback) {
@@ -91,6 +107,7 @@ const PaymentStep = ({
 
     } catch (error) {
       console.error('Manual payment error:', error);
+      debugLog('error', 'Manual payment failed', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در ثبت درخواست' : 'Failed to submit request',
@@ -103,6 +120,8 @@ const PaymentStep = ({
 
   const handleCryptoPayment = async (paymentId: string) => {
     setIsSubmitting(true);
+    debugLog('info', 'Crypto payment success callback', { paymentId });
+    
     try {
       const subscriptionData = {
         username: formData.username,
@@ -117,6 +136,7 @@ const PaymentStep = ({
       const subscriptionId = await submitSubscription(subscriptionData);
       
       if (subscriptionId) {
+        debugLog('success', 'Crypto payment completed', { subscriptionId });
         onSuccess({
           username: formData.username,
           subscription_url: `vmess://config-url-here`,
@@ -126,6 +146,7 @@ const PaymentStep = ({
       }
     } catch (error) {
       console.error('Crypto payment processing error:', error);
+      debugLog('error', 'Crypto payment processing failed', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در پردازش پرداخت' : 'Failed to process payment',
@@ -137,6 +158,7 @@ const PaymentStep = ({
   };
 
   const handleStripePayment = async (sessionId: string) => {
+    debugLog('success', 'Stripe payment initiated', { sessionId });
     toast({
       title: language === 'fa' ? 'پرداخت انجام شد' : 'Payment Successful',
       description: language === 'fa' ? 
@@ -147,6 +169,8 @@ const PaymentStep = ({
 
   const handleZarinpalPayment = async () => {
     setIsSubmitting(true);
+    debugLog('info', 'Zarinpal payment started', { amount: finalPrice });
+    
     try {
       const subscriptionData = {
         username: formData.username,
@@ -161,8 +185,10 @@ const PaymentStep = ({
       const subscriptionId = await submitSubscription(subscriptionData);
       
       if (subscriptionId && finalPrice > 0) {
+        debugLog('info', 'Redirecting to Zarinpal', { subscriptionId });
         // Redirect to Zarinpal (existing logic)
       } else if (subscriptionId && finalPrice === 0) {
+        debugLog('success', 'Free subscription activated', { subscriptionId });
         onSuccess({
           username: formData.username,
           subscription_url: `vmess://config-url-here`,
@@ -172,6 +198,7 @@ const PaymentStep = ({
       }
     } catch (error) {
       console.error('Zarinpal payment error:', error);
+      debugLog('error', 'Zarinpal payment failed', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در پردازش پرداخت' : 'Failed to process payment',
@@ -310,6 +337,12 @@ const PaymentStep = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* Debug Panel */}
+      <PaymentDebugPanel 
+        isVisible={showDebug}
+        onToggleVisibility={() => setShowDebug(!showDebug)}
+      />
     </div>
   );
 };
