@@ -43,23 +43,12 @@ const PaymentStep = ({
   const handleManualPayment = async (paymentData: { 
     receiptFile?: File; 
     confirmed: boolean;
-    onSubscriptionCreated?: (subscriptionId: string) => Promise<void>;
+    postCreationCallback?: (subscriptionId: string) => Promise<void>;
   }) => {
     if (!paymentData.confirmed) return;
 
     setIsSubmitting(true);
     try {
-      // Create subscription with manual payment status
-      const subscriptionData = {
-        username: formData.username,
-        mobile: formData.mobile,
-        dataLimit: formData.dataLimit,
-        duration: formData.duration,
-        protocol: 'vmess',
-        selectedPlan: formData.selectedPlan,
-        appliedDiscount
-      };
-
       // Insert subscription with manual payment status
       const { data: subscription, error } = await supabase
         .from('subscriptions')
@@ -81,8 +70,8 @@ const PaymentStep = ({
       if (error) throw error;
 
       // Execute post-creation callback if provided
-      if (paymentData.onSubscriptionCreated) {
-        await paymentData.onSubscriptionCreated(subscription.id);
+      if (paymentData.postCreationCallback) {
+        await paymentData.postCreationCallback(subscription.id);
       }
 
       toast({

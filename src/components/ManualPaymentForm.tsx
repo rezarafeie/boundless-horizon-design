@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -5,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import { Upload, Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -142,12 +142,12 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       return;
     }
 
-    // First, let the parent component create the subscription
+    // Pass the post-creation callback with the payment data
     onPaymentConfirm({
       receiptFile: receiptFile || undefined,
       confirmed,
-      // Add callback to handle post-creation tasks
-      onSubscriptionCreated: async (subscriptionId: string) => {
+      // Store callback functions for later use
+      postCreationCallback: async (subscriptionId: string) => {
         let receiptUrl = null;
         
         // Upload receipt if provided
@@ -161,7 +161,7 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
         // Send email notification to admin
         await sendEmailNotification(subscriptionId, receiptUrl);
       }
-    });
+    } as any);
   };
 
   return (
