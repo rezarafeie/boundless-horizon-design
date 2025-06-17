@@ -18,7 +18,7 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminPlans from "./pages/AdminPlans";
 import AdminDiscounts from "./pages/AdminDiscounts";
 import AdminPanels from "./pages/AdminPanels";
-import ZarinpalVerificationHandler from "./components/ZarinpalVerificationHandler";
+import ZarinpalVerify from "./pages/ZarinpalVerify";
 
 const queryClient = new QueryClient();
 
@@ -35,7 +35,7 @@ const App = () => (
               <Route path="/subscription" element={<Subscription />} />
               <Route path="/renewal" element={<Renewal />} />
               <Route path="/delivery" element={<DeliveryPage />} />
-              <Route path="/zarinpal/verify" element={<ZarinpalVerificationHandler />} />
+              <Route path="/zarinpal-verify" element={<ZarinpalVerify />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/admin" element={<AdminLogin />} />
               <Route path="/admin/dashboard" element={<AdminDashboard />} />

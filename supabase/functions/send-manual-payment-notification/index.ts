@@ -50,7 +50,7 @@ serve(async (req) => {
         console.log('Creating VPN user for approved subscription...');
         
         // Call Marzneshin API to create user - using correct endpoint
-        const createUserResponse = await fetch(`${Deno.env.get('MARZNESHIN_BASE_URL')}/api/user`, {
+        const createUserResponse = await fetch(`${Deno.env.get('MARZNESHIN_BASE_URL')}/api/users`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -209,7 +209,8 @@ async function getMarzneshinToken() {
       },
       body: new URLSearchParams({
         'username': Deno.env.get('MARZNESHIN_ADMIN_USERNAME') ?? '',
-        'password': Deno.env.get('MARZNESHIN_ADMIN_PASSWORD') ?? ''
+        'password': Deno.env.get('MARZNESHIN_ADMIN_PASSWORD') ?? '',
+        'grant_type': 'password'
       })
     });
 

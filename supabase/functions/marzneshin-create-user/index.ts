@@ -88,8 +88,8 @@ serve(async (req) => {
 
     console.log('Creating user with payload:', userPayload);
 
-    // Create user
-    const createUserResponse = await fetch(`${cleanBaseUrl}/api/user`, {
+    // Create user using the correct endpoint
+    const createUserResponse = await fetch(`${cleanBaseUrl}/api/users`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

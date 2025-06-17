@@ -34,9 +34,9 @@ serve(async (req) => {
     const amountInRial = amount * 10;
     console.log(`Converting ${amount} Toman to ${amountInRial} Rial for Zarinpal`);
 
-    // Use the correct frontend domain for callback URL
-    const frontendDomain = 'https://bnets.co'; // Update this to match your actual domain
-    const callbackUrl = `${frontendDomain}/zarinpal-verify?subscriptionId=${subscriptionId}`;
+    // Use correct callback URL pointing to frontend domain
+    const callbackUrl = `https://bnets.co/zarinpal-verify?subscriptionId=${subscriptionId}`;
+    console.log('Callback URL:', callbackUrl);
 
     // Create payment request to Zarinpal
     const zarinpalRequest = {
