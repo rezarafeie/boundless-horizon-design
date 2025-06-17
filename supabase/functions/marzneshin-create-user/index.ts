@@ -40,8 +40,8 @@ serve(async (req) => {
     // Clean base URL (remove trailing slash)
     const cleanBaseUrl = baseUrl.replace(/\/$/, '');
     
-    // Get authentication token using the correct endpoint
-    const authResponse = await fetch(`${cleanBaseUrl}/api/admin/token`, {
+    // Get authentication token using the correct Marzneshin endpoint (plural)
+    const authResponse = await fetch(`${cleanBaseUrl}/api/admins/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
