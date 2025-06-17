@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -76,7 +75,7 @@ const MarzbanSubscriptionForm = () => {
 
   // Marzban configuration (for Lite plan)
   const FIXED_UUID = '70f64bea-a84c-4feb-ac0e-fb796657790f';
-  const MERCHANT_ID = '10f6ea92-fb53-468c-bcc9-36ef4d9f539c';
+  const MERCHANT_ID = '10f6ea92-fb53-468c-bcc9-36ef4d9f539c'; // Updated merchant ID
   const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
 
   useEffect(() => {
@@ -480,12 +479,12 @@ const MarzbanSubscriptionForm = () => {
   };
 
   const createPaymanContract = async (): Promise<string> => {
-    setLoadingMessage(language === 'fa' ? 'در حال ایجاد قرارداد پرداخت...' : 'Creating payment contract...');
+    setLoadingMessage(language === 'fa' ? 'در حال ایجاد قرارداد پرداخت مستقیم...' : 'Creating Direct Debit contract...');
     
     const expireAt = new Date();
     expireAt.setDate(expireAt.getDate() + 30);
     
-    const paymanRequest = {
+    const directDebitRequest = {
       merchant_id: MERCHANT_ID,
       mobile: formData.mobile,
       expire_at: Math.floor(expireAt.getTime() / 1000),
@@ -502,7 +501,7 @@ const MarzbanSubscriptionForm = () => {
           'Content-Type': 'application/json',
           'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
         },
-        body: JSON.stringify(paymanRequest)
+        body: JSON.stringify(directDebitRequest)
       });
 
       const data = await response.json();
@@ -510,24 +509,24 @@ const MarzbanSubscriptionForm = () => {
       addDebugInfo({
         endpoint: 'zarinpal-contract',
         status: response.status,
-        request: paymanRequest,
+        request: directDebitRequest,
         response: data,
         type: response.ok ? 'success' : 'error'
       });
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to create contract');
+        throw new Error(data.error || 'Failed to create Direct Debit contract');
       }
 
       if (!data.data?.data?.payman_authority) {
         throw new Error(language === 'fa' ? 
-          'پاسخ نامعتبر از درگاه پرداخت' : 
-          'Invalid response from payment gateway');
+          'پاسخ نامعتبر از درگاه پرداخت مستقیم' : 
+          'Invalid response from Direct Debit gateway');
       }
 
       return data.data.data.payman_authority;
     } catch (error) {
-      console.error('Contract creation error:', error);
+      console.error('Direct Debit contract creation error:', error);
       throw error;
     }
   };

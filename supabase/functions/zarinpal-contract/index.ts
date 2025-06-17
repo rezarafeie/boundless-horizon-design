@@ -24,15 +24,16 @@ serve(async (req) => {
 
   try {
     const requestBody = await req.json()
-    console.log('Contract request received:', requestBody)
+    console.log('Direct Debit contract request received:', requestBody)
 
     const { merchant_id, mobile, expire_at, max_daily_count, max_monthly_count, max_amount, callback_url } = requestBody
 
-    // Convert timestamp to proper date format for Zarinpal
+    // Convert timestamp to proper date format for Zarinpal Direct Debit
     const expireDate = new Date(expire_at * 1000)
     const formattedExpireAt = expireDate.toISOString().slice(0, 19).replace('T', ' ')
 
-    const contractRequest = {
+    // Direct Debit contract request structure according to Zarinpal docs
+    const directDebitRequest = {
       merchant_id,
       mobile,
       expire_at: formattedExpireAt,
@@ -42,19 +43,20 @@ serve(async (req) => {
       callback_url
     }
 
-    console.log('Sending to Zarinpal:', contractRequest)
+    console.log('Sending to Zarinpal Direct Debit API:', directDebitRequest)
 
+    // Use the correct Direct Debit API endpoint
     const zarinpalResponse = await fetch('https://api.zarinpal.com/pg/v4/payman/request.json', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify(contractRequest)
+      body: JSON.stringify(directDebitRequest)
     })
 
     const responseText = await zarinpalResponse.text()
-    console.log('Zarinpal raw response:', responseText)
+    console.log('Zarinpal Direct Debit raw response:', responseText)
 
     let responseData
     try {
@@ -78,11 +80,24 @@ serve(async (req) => {
       )
     }
 
-    if (!zarinpalResponse.ok) {
+    // Handle Direct Debit specific error codes
+    if (!zarinpalResponse.ok || responseData.errors) {
+      console.error('Zarinpal Direct Debit API error:', responseData)
+      
+      // Handle specific Direct Debit error codes
+      let errorMessage = 'Direct Debit contract creation failed'
+      if (responseData.errors?.code === -80) {
+        errorMessage = 'Merchant does not have access to Direct Debit service'
+      } else if (responseData.errors?.code === -9) {
+        errorMessage = 'Invalid validation parameters'
+      } else if (responseData.errors?.code === -11) {
+        errorMessage = 'Request not found'
+      }
+
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Zarinpal API error',
+          error: errorMessage,
           details: responseData,
           status: zarinpalResponse.status
         }),
@@ -92,6 +107,24 @@ serve(async (req) => {
         }
       )
     }
+
+    // Check for successful response structure
+    if (!responseData.data?.payman_authority) {
+      console.error('Missing payman_authority in response:', responseData)
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid Direct Debit response structure',
+          details: responseData
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    console.log('Direct Debit contract created successfully:', responseData.data.payman_authority)
 
     return new Response(
       JSON.stringify({
@@ -106,7 +139,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Contract creation error:', error)
+    console.error('Direct Debit contract creation error:', error)
     return new Response(
       JSON.stringify({
         success: false,
