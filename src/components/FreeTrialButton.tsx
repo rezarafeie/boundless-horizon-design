@@ -250,7 +250,27 @@ const FreeTrialButton = () => {
   });
 
   if (trialResult) {
-    return <FreeTrialResult result={trialResult} onClose={() => setTrialResult(null)} />;
+    // Transform TrialResult to match FreeTrialResult component props
+    const freeTrialResultData = {
+      username: trialResult.username,
+      subscription_url: trialResult.subscription_url,
+      planName: language === 'fa' ? trialResult.plan.nameFa : trialResult.plan.nameEn,
+      apiType: trialResult.plan.apiType,
+      dataLimit: 1, // 1GB for free trial
+      duration: 1 // 1 day for free trial
+    };
+
+    return (
+      <div className="space-y-4">
+        <FreeTrialResult result={freeTrialResultData} />
+        <Button 
+          onClick={() => setTrialResult(null)}
+          className="w-full"
+        >
+          {language === 'fa' ? 'بستن' : 'Close'}
+        </Button>
+      </div>
+    );
   }
 
   return (
