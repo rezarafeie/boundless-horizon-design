@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,7 +60,16 @@ const MarzbanSubscriptionForm = () => {
           variant: 'destructive',
         });
       } else {
-        setPlans(data as SubscriptionPlan[]);
+        // Map database schema to component interface
+        const mappedPlans = data.map(plan => ({
+          id: plan.id,
+          name: language === 'fa' ? plan.name_fa : plan.name_en,
+          description: language === 'fa' ? plan.description_fa || '' : plan.description_en || '',
+          pricePerGB: plan.price_per_gb,
+          apiType: plan.api_type as 'marzban' | 'marzneshin',
+          durationDays: plan.default_duration_days
+        }));
+        setPlans(mappedPlans);
       }
     };
 
@@ -85,15 +95,22 @@ const MarzbanSubscriptionForm = () => {
       });
       setDiscountUsed(null);
     } else {
-      setDiscountUsed(data as DiscountCode);
+      // Map database schema to component interface
+      const mappedDiscount = {
+        code: data.code,
+        percentage: data.discount_value, // Use discount_value as percentage
+        description: data.description || ''
+      };
+      setDiscountUsed(mappedDiscount);
       toast({
         title: language === 'fa' ? 'تخفیف اعمال شد' : 'Discount Applied',
-        description: language === 'fa' ? `تخفیف ${data.percentage}% اعمال شد!` : `Discount of ${data.percentage}% applied!`,
+        description: language === 'fa' ? `تخفیف ${data.discount_value}% اعمال شد!` : `Discount of ${data.discount_value}% applied!`,
       });
     }
   };
 
   const getFinalPrice = () => {
+    if (!selectedPlan) return 0;
     let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
     if (discountUsed && discountUsed.percentage > 0) {
       finalPrice = finalPrice - Math.round((finalPrice * discountUsed.percentage) / 100);
@@ -375,6 +392,25 @@ const MarzbanSubscriptionForm = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Discount Code */}
+            <div>
+              <Label htmlFor="discountCode" className="text-sm font-medium">
+                {language === 'fa' ? 'کد تخفیف (اختیاری)' : 'Discount Code (Optional)'}
+              </Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  id="discountCode"
+                  type="text"
+                  placeholder={language === 'fa' ? 'کد تخفیف را وارد کنید' : 'Enter discount code'}
+                  value={discountCode}
+                  onChange={(e) => setDiscountCode(e.target.value)}
+                />
+                <Button type="button" onClick={applyDiscount} variant="outline">
+                  {language === 'fa' ? 'اعمال' : 'Apply'}
+                </Button>
+              </div>
             </div>
 
             {/* Price Summary */}

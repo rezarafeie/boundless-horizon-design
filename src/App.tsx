@@ -12,11 +12,11 @@ import Renewal from "./pages/Renewal";
 import DeliveryPage from "./pages/DeliveryPage";
 import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminUsers from "./pages/AdminUsers";
-import AdminPlans from "./pages/AdminPlans";
-import AdminPanels from "./pages/AdminPanels";
-import AdminDiscounts from "./pages/AdminDiscounts";
+import { AdminDashboard } from "./pages/AdminDashboard";
+import { AdminUsers } from "./pages/AdminUsers";
+import { AdminPlans } from "./pages/AdminPlans";
+import { AdminPanels } from "./pages/AdminPanels";
+import { AdminDiscounts } from "./pages/AdminDiscounts";
 
 const queryClient = new QueryClient();
 
