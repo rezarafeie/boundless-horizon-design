@@ -43,6 +43,7 @@ const PaymentStep = ({
   const finalPrice = Math.max(0, basePrice - discountAmount);
 
   const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
+    console.log(`[PAYMENT-STEP] ${type.toUpperCase()}: ${message}`, data || '');
     if (window.debugPayment) {
       window.debugPayment(selectedPaymentMethod, type, message, data);
     }
@@ -149,12 +150,7 @@ const PaymentStep = ({
 
   const handleStripePayment = async (sessionId: string) => {
     debugLog('success', 'Stripe payment initiated', { sessionId });
-    toast({
-      title: language === 'fa' ? 'پرداخت انجام شد' : 'Payment Successful',
-      description: language === 'fa' ? 
-        'اشتراک شما پس از تأیید پرداخت فعال خواهد شد' : 
-        'Your subscription will be activated after payment confirmation',
-    });
+    // Don't show toast here as user is being redirected
   };
 
   const handleZarinpalPayment = async () => {
@@ -162,6 +158,33 @@ const PaymentStep = ({
     debugLog('info', 'Zarinpal payment started', { amount: finalPrice });
     
     try {
+      if (finalPrice === 0) {
+        // Handle free subscription
+        const subscriptionData = {
+          username: formData.username,
+          mobile: formData.mobile,
+          dataLimit: formData.dataLimit,
+          duration: formData.duration,
+          protocol: 'vmess',
+          selectedPlan: formData.selectedPlan,
+          appliedDiscount
+        };
+
+        const subscriptionId = await submitSubscription(subscriptionData);
+        
+        if (subscriptionId) {
+          debugLog('success', 'Free subscription activated', { subscriptionId });
+          onSuccess({
+            username: formData.username,
+            subscription_url: `vmess://config-url-here`,
+            expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
+            data_limit: formData.dataLimit
+          });
+        }
+        return;
+      }
+
+      // Create subscription first
       const subscriptionData = {
         username: formData.username,
         mobile: formData.mobile,
@@ -174,43 +197,46 @@ const PaymentStep = ({
 
       const subscriptionId = await submitSubscription(subscriptionData);
       
-      if (subscriptionId && finalPrice > 0) {
-        debugLog('info', 'Calling Zarinpal checkout function', { subscriptionId });
-        
-        const { data, error } = await supabase.functions.invoke('zarinpal-checkout', {
-          body: {
-            amount: finalPrice,
-            subscriptionId,
-            description: `VPN Subscription - ${formData.username}`
-          }
-        });
-
-        if (error) {
-          debugLog('error', 'Zarinpal checkout failed', error);
-          throw error;
-        }
-
-        if (data?.success && data?.redirectUrl) {
-          debugLog('info', 'Redirecting to Zarinpal', { url: data.redirectUrl });
-          window.location.href = data.redirectUrl;
-        } else {
-          throw new Error('Failed to get Zarinpal redirect URL');
-        }
-      } else if (subscriptionId && finalPrice === 0) {
-        debugLog('success', 'Free subscription activated', { subscriptionId });
-        onSuccess({
-          username: formData.username,
-          subscription_url: `vmess://config-url-here`,
-          expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-          data_limit: formData.dataLimit
-        });
+      if (!subscriptionId) {
+        throw new Error('Failed to create subscription');
       }
+
+      debugLog('info', 'Calling Zarinpal checkout function', { subscriptionId, amount: finalPrice });
+      
+      const { data, error } = await supabase.functions.invoke('zarinpal-checkout', {
+        body: {
+          amount: finalPrice,
+          subscriptionId,
+          description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`
+        }
+      });
+
+      debugLog('info', 'Zarinpal function response', { data, error });
+
+      if (error) {
+        debugLog('error', 'Zarinpal checkout failed', error);
+        throw error;
+      }
+
+      if (data?.success && data?.redirectUrl) {
+        debugLog('info', 'Redirecting to Zarinpal', { url: data.redirectUrl });
+        window.location.href = data.redirectUrl;
+      } else {
+        debugLog('error', 'Invalid Zarinpal response', data);
+        throw new Error(data?.error || 'Failed to get Zarinpal redirect URL');
+      }
+
     } catch (error) {
       console.error('Zarinpal payment error:', error);
       debugLog('error', 'Zarinpal payment failed', error);
+      
+      const errorMessage = error?.message || 'Payment processing failed';
+      
       toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'خطا در پردازش پرداخت' : 'Failed to process payment',
+        title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
+        description: language === 'fa' ? 
+          `خطا در پردازش پرداخت: ${errorMessage}` : 
+          `Payment processing failed: ${errorMessage}`,
         variant: 'destructive'
       });
     } finally {
@@ -262,6 +288,19 @@ const PaymentStep = ({
                   ) : (
                     `${finalPrice.toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`
                   )}
+                </div>
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <div className="flex items-center justify-center gap-4 text-2xl">
+                    <span>💳</span>
+                    <span>🇮🇷</span>
+                    <span>⚡</span>
+                  </div>
+                  <p className="text-center text-sm text-muted-foreground mt-2">
+                    {language === 'fa' ? 
+                      'پرداخت آسان با کارت‌های ایرانی' : 
+                      'Easy payment with Iranian cards'
+                    }
+                  </p>
                 </div>
                 <Button
                   onClick={handleZarinpalPayment}

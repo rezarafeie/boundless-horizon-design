@@ -31,13 +31,16 @@ const PaymentSuccess = () => {
         debugLog('info', 'Current URL', window.location.href);
         debugLog('info', 'All URL parameters', Object.fromEntries(searchParams.entries()));
         
-        // Get session_id from URL parameters
+        // Get session_id from URL parameters (Stripe format)
         const sessionId = searchParams.get('session_id');
         debugLog('info', 'Session ID from URL', { sessionId });
 
         if (!sessionId) {
           debugLog('error', 'No session_id found in URL parameters');
-          setError('No session ID found. Please try again.');
+          setError(language === 'fa' ? 
+            'شناسه پرداخت یافت نشد. لطفاً دوباره تلاش کنید.' : 
+            'Payment session ID not found. Please try again.'
+          );
           setLoading(false);
           return;
         }
@@ -53,7 +56,7 @@ const PaymentSuccess = () => {
 
         if (error) {
           debugLog('error', 'Stripe verification failed', error);
-          throw error;
+          throw new Error(error.message || 'Payment verification failed');
         }
 
         if (!data?.success) {
@@ -68,21 +71,26 @@ const PaymentSuccess = () => {
         toast({
           title: language === 'fa' ? 'پرداخت موفق' : 'Payment Successful',
           description: language === 'fa' ? 
-            'پرداخت شما با موفقیت انجام شد.' : 
-            'Your payment was processed successfully.',
+            'پرداخت شما با موفقیت انجام شد و اشتراک فعال شد.' : 
+            'Your payment was successful and subscription is now active.',
         });
 
-        // Redirect to delivery page after 2 seconds
+        // Redirect to delivery page after 3 seconds
         setTimeout(() => {
           const deliveryUrl = `/delivery?subscriptionData=${encodeURIComponent(JSON.stringify(data.subscription))}`;
           debugLog('info', 'Redirecting to delivery page', { url: deliveryUrl });
           navigate(deliveryUrl);
-        }, 2000);
+        }, 3000);
 
       } catch (error) {
         console.error('Payment verification error:', error);
         debugLog('error', 'Payment verification failed', error);
-        setError(error.message || 'Payment verification failed');
+        
+        const errorMessage = error?.message || 'Payment verification failed';
+        setError(language === 'fa' ? 
+          `خطا در تأیید پرداخت: ${errorMessage}` : 
+          `Payment verification error: ${errorMessage}`
+        );
         setLoading(false);
       }
     };
@@ -158,15 +166,26 @@ const PaymentSuccess = () => {
         <CardContent className="space-y-4">
           <p className="text-gray-600">
             {language === 'fa' ? 
-              'پرداخت شما با موفقیت انجام شد. در حال انتقال به صفحه جزئیات...' : 
-              'Your payment was successful. Redirecting to details page...'
+              'پرداخت شما با موفقیت انجام شد و اشتراک فعال شد. در حال انتقال به صفحه جزئیات...' : 
+              'Your payment was successful and subscription is now active. Redirecting to details page...'
             }
           </p>
           {subscriptionData && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 space-y-1">
               <p>{language === 'fa' ? 'نام کاربری:' : 'Username:'} {subscriptionData.username}</p>
+              <p>{language === 'fa' ? 'وضعیت:' : 'Status:'} {
+                subscriptionData.status === 'active' ? 
+                  (language === 'fa' ? 'فعال' : 'Active') : 
+                  subscriptionData.status
+              }</p>
             </div>
           )}
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="bg-green-600 h-2 rounded-full animate-pulse" style={{width: '100%'}}></div>
+          </div>
+          <p className="text-xs text-gray-500 text-center">
+            {language === 'fa' ? 'انتقال خودکار در 3 ثانیه...' : 'Auto redirect in 3 seconds...'}
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,5 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,24 +15,65 @@ serve(async (req) => {
     console.log('=== ZARINPAL CHECKOUT FUNCTION STARTED ===');
     
     const { amount, subscriptionId, description } = await req.json();
-    console.log('Request body:', { amount, subscriptionId, description });
+    console.log('Checkout request received:', { amount, subscriptionId, description });
 
     if (!amount || !subscriptionId) {
       throw new Error('Amount and subscription ID are required');
     }
 
-    // For now, simulate a successful redirect URL
-    // In production, you would implement actual Zarinpal integration here
-    const redirectUrl = `https://www.zarinpal.com/pg/StartPay/SIMULATED_AUTHORITY_CODE`;
-    
-    console.log('Zarinpal checkout created:', { redirectUrl, amount, subscriptionId });
+    // Get Zarinpal merchant ID from environment
+    const merchantId = Deno.env.get('ZARINPAL_MERCHANT_ID');
+    if (!merchantId) {
+      console.error('ZARINPAL_MERCHANT_ID not configured');
+      throw new Error('Zarinpal merchant ID not configured');
+    }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      redirectUrl 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    console.log('Sending payment request to Zarinpal...');
+
+    // Create payment request to Zarinpal
+    const zarinpalRequest = {
+      merchant_id: merchantId,
+      amount: amount, // Amount in Tomans
+      description: description || `VPN Subscription Payment`,
+      callback_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/zarinpal-verify`,
+      metadata: {
+        subscription_id: subscriptionId
+      }
+    };
+
+    console.log('Sending request to Zarinpal:', zarinpalRequest);
+
+    const response = await fetch('https://api.zarinpal.com/pg/v4/payment/request.json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(zarinpalRequest)
     });
+
+    console.log('Zarinpal response status:', response.status);
+
+    const responseData = await response.json();
+    console.log('Zarinpal response data:', responseData);
+
+    if (response.ok && responseData.data && responseData.data.code === 100) {
+      const authority = responseData.data.authority;
+      const redirectUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
+      
+      console.log('Payment request successful:', { authority, redirectUrl });
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        redirectUrl,
+        authority 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } else {
+      console.error('Zarinpal API error:', responseData);
+      throw new Error(responseData.errors?.join(', ') || 'Payment request failed');
+    }
 
   } catch (error) {
     console.error('Zarinpal checkout error:', error);
