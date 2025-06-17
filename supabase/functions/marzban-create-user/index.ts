@@ -20,30 +20,81 @@ interface MarzbanUserResponse {
   data_limit: number;
 }
 
-async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
-  console.log('Attempting to authenticate with Marzban API');
-  
-  const tokenResponse = await fetch(`${baseUrl}/api/admin/token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      username: username,
-      password: password,
-      grant_type: 'password'
-    })
-  });
+const logStep = (step: string, details?: any) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[MARZBAN-CREATE] ${step}${detailsStr}`);
+};
 
-  if (!tokenResponse.ok) {
-    const errorText = await tokenResponse.text();
-    console.error('Authentication failed:', errorText);
-    throw new Error(`Failed to authenticate with Marzban API: ${errorText}`);
+async function testPanelHealth(baseUrl: string): Promise<boolean> {
+  try {
+    logStep('Testing panel health', { url: baseUrl });
+    const response = await fetch(`${baseUrl}/docs`, {
+      method: 'GET',
+      headers: { 'Accept': 'text/html' }
+    });
+    
+    logStep('Panel health check result', { 
+      status: response.status, 
+      accessible: response.ok || response.status === 404 
+    });
+    
+    // 404 is OK for /docs, means panel is accessible but docs might not be enabled
+    return response.ok || response.status === 404;
+  } catch (error) {
+    logStep('Panel health check failed', { error: error.message });
+    return false;
   }
+}
 
-  const tokenData = await tokenResponse.json();
-  console.log('Authentication successful');
-  return tokenData.access_token;
+async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
+  // Try multiple possible authentication endpoints
+  const authEndpoints = [
+    '/api/admin/token',
+    '/api/admin/auth',
+    '/admin/token',
+    '/token'
+  ];
+  
+  for (const endpoint of authEndpoints) {
+    try {
+      const authUrl = `${baseUrl}${endpoint}`;
+      logStep('Attempting authentication', { url: authUrl, endpoint });
+      
+      const tokenResponse = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: new URLSearchParams({
+          username: username,
+          password: password,
+          grant_type: 'password'
+        })
+      });
+
+      logStep('Auth response', { 
+        endpoint,
+        status: tokenResponse.status, 
+        statusText: tokenResponse.statusText 
+      });
+
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        if (tokenData.access_token) {
+          logStep('Authentication successful', { endpoint, tokenLength: tokenData.access_token.length });
+          return tokenData.access_token;
+        }
+      } else {
+        const errorText = await tokenResponse.text();
+        logStep('Auth endpoint failed', { endpoint, status: tokenResponse.status, error: errorText });
+      }
+    } catch (error) {
+      logStep('Auth endpoint error', { endpoint, error: error.message });
+    }
+  }
+  
+  throw new Error('Failed to authenticate with any known Marzban authentication endpoint');
 }
 
 async function createMarzbanUser(
@@ -57,7 +108,7 @@ async function createMarzbanUser(
   }
 ): Promise<MarzbanUserResponse> {
   
-  console.log('Starting user creation with data:', userData);
+  logStep('Starting user creation', userData);
   
   // Calculate expiration timestamp (current time + duration in days)
   const expirationTimestamp = Math.floor(Date.now() / 1000) + (userData.durationDays * 24 * 60 * 60);
@@ -72,22 +123,27 @@ async function createMarzbanUser(
     note: `Purchased via bnets.co - ${userData.notes}`
   };
   
-  console.log('Request payload:', JSON.stringify(userRequest, null, 2));
+  logStep('User creation request', userRequest);
 
   const response = await fetch(`${baseUrl}/api/user`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
     },
     body: JSON.stringify(userRequest)
   });
 
-  console.log(`Marzban API response status: ${response.status}`);
+  logStep('User creation response', { 
+    status: response.status, 
+    statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries())
+  });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    console.error(`Marzban API failed with status ${response.status}:`, errorData);
+    logStep('User creation failed', { status: response.status, error: errorData });
     
     if (response.status === 409) {
       throw new Error('This username is already taken. Please choose a different one');
@@ -109,7 +165,7 @@ async function createMarzbanUser(
   }
 
   const result = await response.json();
-  console.log('Marzban user creation succeeded:', result);
+  logStep('User creation successful', result);
   return result;
 }
 
@@ -120,9 +176,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('Received request, parsing body...');
+    logStep('Function started - parsing request');
     const requestBody = await req.json();
-    console.log('Raw request body:', JSON.stringify(requestBody, null, 2));
+    logStep('Request body received', requestBody);
 
     const {
       username,
@@ -176,12 +232,24 @@ Deno.serve(async (req) => {
     const adminUsername = Deno.env.get('MARZBAN_ADMIN_USERNAME');
     const adminPassword = Deno.env.get('MARZBAN_ADMIN_PASSWORD');
 
+    logStep('Environment check', {
+      baseUrlExists: !!baseUrl,
+      usernameExists: !!adminUsername,
+      passwordExists: !!adminPassword,
+      baseUrlPreview: baseUrl ? `${baseUrl.substring(0, 30)}...` : 'NOT_SET'
+    });
+
     if (!baseUrl || !adminUsername || !adminPassword) {
-      console.error('Missing required environment variables');
+      const missingVars = [];
+      if (!baseUrl) missingVars.push('MARZBAN_BASE_URL');
+      if (!adminUsername) missingVars.push('MARZBAN_ADMIN_USERNAME');
+      if (!adminPassword) missingVars.push('MARZBAN_ADMIN_PASSWORD');
+      
+      logStep('Missing environment variables', { missing: missingVars });
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Server configuration error. Please contact support.' 
+          error: `Server configuration error. Missing: ${missingVars.join(', ')}. Please contact support.` 
         }),
         { 
           status: 500, 
@@ -190,14 +258,48 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Starting Marzban user creation process');
+    // Clean base URL (remove trailing slash)
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    
+    // Test panel health first
+    const isPanelHealthy = await testPanelHealth(cleanBaseUrl);
+    if (!isPanelHealthy) {
+      logStep('Panel health check failed - panel unreachable');
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Marzban panel is currently unreachable. Please try again later or contact support.' 
+        }),
+        { 
+          status: 503, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
-    // Get authentication token
-    const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
+    logStep('Starting Marzban user creation process');
+
+    // Get authentication token with retry logic
+    let token: string;
+    try {
+      token = await getAuthToken(cleanBaseUrl, adminUsername, adminPassword);
+    } catch (authError) {
+      logStep('Authentication completely failed', { error: authError.message });
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Failed to authenticate with Marzban panel. Please contact support.' 
+        }),
+        { 
+          status: 502, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
     
     // Create the user
     const result = await createMarzbanUser(
-      baseUrl,
+      cleanBaseUrl,
       token,
       { 
         username, 
@@ -207,7 +309,7 @@ Deno.serve(async (req) => {
       }
     );
 
-    console.log('Marzban user creation completed successfully');
+    logStep('Marzban user creation completed successfully');
 
     return new Response(
       JSON.stringify({
@@ -221,9 +323,10 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Marzban API Error Details:');
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
+    logStep('ERROR - User creation failed', {
+      message: error.message,
+      stack: error.stack
+    });
     
     return new Response(
       JSON.stringify({ 
