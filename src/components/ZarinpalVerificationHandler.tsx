@@ -91,7 +91,6 @@ const ZarinpalVerificationHandler = () => {
         console.log('Verifying payment with Zarinpal...');
         const { data: verifyData, error: verifyError } = await supabase.functions.invoke('zarinpal-verify', {
           body: {
-            merchant_id: Deno.env.get('ZARINPAL_MERCHANT_ID'),
             authority,
             amount: subscription.price_toman * 10 // Convert to Rial
           }
