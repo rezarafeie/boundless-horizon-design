@@ -26,15 +26,11 @@ const queryClient = new QueryClient({
   },
 });
 
-const QueryClient = ({ children }: { children: React.ReactNode }) => (
-  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-);
-
 function App() {
   return (
-    <QueryClient>
+    <QueryClientProvider client={queryClient}>
       <LanguageProvider>
-        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+        <ThemeProvider>
           <Toaster />
           <BrowserRouter>
             <Routes>
@@ -56,7 +52,7 @@ function App() {
           </BrowserRouter>
         </ThemeProvider>
       </LanguageProvider>
-    </QueryClient>
+    </QueryClientProvider>
   );
 }
 

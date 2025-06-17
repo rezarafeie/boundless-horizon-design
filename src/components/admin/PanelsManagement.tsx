@@ -46,17 +46,31 @@ export const PanelsManagement = () => {
   });
 
   const savePanelMutation = useMutation({
-    mutationFn: async (panel: Partial<Panel>) => {
-      if (panel.id) {
+    mutationFn: async (panelData: Partial<Panel> & { id?: string }) => {
+      if (panelData.id) {
+        // For updates, remove the id from the data
+        const { id, ...updateData } = panelData;
         const { error } = await supabase
           .from('panel_servers')
-          .update(panel)
-          .eq('id', panel.id);
+          .update(updateData)
+          .eq('id', id);
         if (error) throw error;
       } else {
+        // For inserts, ensure all required fields are present
+        const insertData = {
+          name: panelData.name!,
+          type: panelData.type!,
+          panel_url: panelData.panel_url!,
+          username: panelData.username!,
+          password: panelData.password!,
+          country_en: panelData.country_en!,
+          country_fa: panelData.country_fa!,
+          default_inbounds: panelData.default_inbounds || [],
+          is_active: panelData.is_active ?? true,
+        };
         const { error } = await supabase
           .from('panel_servers')
-          .insert(panel);
+          .insert(insertData);
         if (error) throw error;
       }
     },

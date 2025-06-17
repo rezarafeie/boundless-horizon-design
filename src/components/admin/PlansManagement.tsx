@@ -47,17 +47,33 @@ export const PlansManagement = () => {
   });
 
   const savePlanMutation = useMutation({
-    mutationFn: async (plan: Partial<Plan>) => {
-      if (plan.id) {
+    mutationFn: async (planData: Partial<Plan> & { id?: string }) => {
+      if (planData.id) {
+        // For updates, remove the id from the data
+        const { id, ...updateData } = planData;
         const { error } = await supabase
           .from('subscription_plans')
-          .update(plan)
-          .eq('id', plan.id);
+          .update(updateData)
+          .eq('id', id);
         if (error) throw error;
       } else {
+        // For inserts, ensure all required fields are present
+        const insertData = {
+          plan_id: planData.plan_id!,
+          name_en: planData.name_en!,
+          name_fa: planData.name_fa!,
+          description_en: planData.description_en,
+          description_fa: planData.description_fa,
+          price_per_gb: planData.price_per_gb!,
+          api_type: planData.api_type!,
+          default_data_limit_gb: planData.default_data_limit_gb!,
+          default_duration_days: planData.default_duration_days!,
+          is_visible: planData.is_visible ?? true,
+          is_active: planData.is_active ?? true,
+        };
         const { error } = await supabase
           .from('subscription_plans')
-          .insert(plan);
+          .insert(insertData);
         if (error) throw error;
       }
     },

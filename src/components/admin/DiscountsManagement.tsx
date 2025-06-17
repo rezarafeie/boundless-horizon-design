@@ -47,17 +47,31 @@ export const DiscountsManagement = () => {
   });
 
   const saveDiscountMutation = useMutation({
-    mutationFn: async (discount: Partial<DiscountCode>) => {
-      if (discount.id) {
+    mutationFn: async (discountData: Partial<DiscountCode> & { id?: string }) => {
+      if (discountData.id) {
+        // For updates, remove the id from the data
+        const { id, ...updateData } = discountData;
         const { error } = await supabase
           .from('discount_codes')
-          .update(discount)
-          .eq('id', discount.id);
+          .update(updateData)
+          .eq('id', id);
         if (error) throw error;
       } else {
+        // For inserts, ensure all required fields are present
+        const insertData = {
+          code: discountData.code!,
+          discount_type: discountData.discount_type!,
+          discount_value: discountData.discount_value!,
+          description: discountData.description,
+          applicable_plans: discountData.applicable_plans || ['all'],
+          usage_limit_per_user: discountData.usage_limit_per_user,
+          total_usage_limit: discountData.total_usage_limit,
+          expires_at: discountData.expires_at,
+          is_active: discountData.is_active ?? true,
+        };
         const { error } = await supabase
           .from('discount_codes')
-          .insert(discount);
+          .insert(insertData);
         if (error) throw error;
       }
     },
