@@ -36,32 +36,24 @@ serve(async (req) => {
       throw new Error('Order ID and description are required');
     }
 
-    // Ensure minimum amount for crypto payments ($5 minimum)
-    const minAmount = 5;
+    // Ensure minimum amount for crypto payments ($10 minimum to avoid frequent failures)
+    const minAmount = 10;
     const adjustedAmount = Math.max(price_amount, minAmount);
     
     if (adjustedAmount !== price_amount) {
       console.log(`Adjusted amount from $${price_amount} to $${adjustedAmount} to meet minimum requirement`);
     }
 
-    console.log('Creating NowPayments invoice:', {
-      price_amount: adjustedAmount,
-      price_currency: price_currency || 'usd',
-      pay_currency: pay_currency || 'btc',
-      order_id,
-      order_description: `${order_description} (Adjusted to $${adjustedAmount} minimum)`
-    });
-
     const requestBody = {
       price_amount: adjustedAmount,
       price_currency: price_currency || 'usd',
-      pay_currency: pay_currency || 'btc',
+      pay_currency: pay_currency || 'usdttrc20',
       order_id,
       order_description: `${order_description} (Min $${adjustedAmount})`,
-      ipn_callback_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/nowpayments-webhook`,
+      ipn_callback_url: `https://bnets.co/delivery?payment=crypto&orderId=${order_id}`,
     };
 
-    console.log('Sending request to NowPayments API...');
+    console.log('Creating NowPayments invoice with payload:', requestBody);
 
     const response = await fetch('https://api.nowpayments.io/v1/payment', {
       method: 'POST',
@@ -73,16 +65,18 @@ serve(async (req) => {
     });
 
     console.log('NowPayments API response status:', response.status);
+    console.log('NowPayments API response headers:', Object.fromEntries(response.headers.entries()));
     
-    const data = await response.text();
-    console.log('NowPayments API raw response:', data);
+    const responseText = await response.text();
+    console.log('NowPayments API raw response:', responseText);
 
     let responseData;
     try {
-      responseData = JSON.parse(data);
+      responseData = JSON.parse(responseText);
     } catch (parseError) {
       console.error('Failed to parse NowPayments response:', parseError);
-      throw new Error('Invalid response from NowPayments API');
+      console.error('Raw response that failed to parse:', responseText);
+      throw new Error(`Invalid response from NowPayments API: ${responseText.substring(0, 200)}`);
     }
 
     console.log('NowPayments API parsed response:', responseData);
@@ -91,7 +85,8 @@ serve(async (req) => {
       console.log('Payment created successfully:', {
         payment_id: responseData.payment_id,
         pay_address: responseData.pay_address,
-        pay_amount: responseData.pay_amount
+        pay_amount: responseData.pay_amount,
+        pay_currency: responseData.pay_currency
       });
 
       return new Response(JSON.stringify({ 
@@ -101,7 +96,11 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } else {
-      console.error('NowPayments API error:', responseData);
+      console.error('NowPayments API error response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData
+      });
       
       // Handle specific error cases
       if (responseData.code === 'AMOUNT_MINIMAL_ERROR') {
@@ -115,10 +114,16 @@ serve(async (req) => {
         });
       }
       
-      throw new Error(responseData.message || 'Payment creation failed');
+      const errorMessage = responseData.message || responseData.error || `HTTP ${response.status}: ${response.statusText}`;
+      throw new Error(errorMessage);
     }
   } catch (error) {
-    console.error('NowPayments error:', error);
+    console.error('NowPayments error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
     return new Response(JSON.stringify({ 
       success: false, 
       error: error.message,

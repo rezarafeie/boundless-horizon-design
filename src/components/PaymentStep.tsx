@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,6 +45,46 @@ const PaymentStep = ({
     console.log(`[PAYMENT-STEP] ${type.toUpperCase()}: ${message}`, data || '');
     if (window.debugPayment) {
       window.debugPayment(selectedPaymentMethod, type, message, data);
+    }
+  };
+
+  const handleFreeSubscription = async () => {
+    setIsSubmitting(true);
+    debugLog('info', 'Processing free subscription');
+    
+    try {
+      const subscriptionData = {
+        username: formData.username,
+        mobile: formData.mobile,
+        dataLimit: formData.dataLimit,
+        duration: formData.duration,
+        protocol: 'vmess',
+        selectedPlan: formData.selectedPlan,
+        appliedDiscount
+      };
+
+      const subscriptionId = await submitSubscription(subscriptionData);
+      
+      if (subscriptionId) {
+        debugLog('success', 'Free subscription activated', { subscriptionId });
+        onSuccess({
+          username: formData.username,
+          subscription_url: `vmess://config-url-here`,
+          expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
+          data_limit: formData.dataLimit * 1073741824,
+          status: 'active'
+        });
+      }
+    } catch (error) {
+      console.error('Free subscription error:', error);
+      debugLog('error', 'Free subscription failed', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'خطا در فعال‌سازی اشتراک رایگان' : 'Failed to activate free subscription',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -150,7 +189,6 @@ const PaymentStep = ({
 
   const handleStripePayment = async (sessionId: string) => {
     debugLog('success', 'Stripe payment initiated', { sessionId });
-    // Don't show toast here as user is being redirected
   };
 
   const handleZarinpalPayment = async () => {
@@ -158,32 +196,6 @@ const PaymentStep = ({
     debugLog('info', 'Zarinpal payment started', { amount: finalPrice });
     
     try {
-      if (finalPrice === 0) {
-        // Handle free subscription
-        const subscriptionData = {
-          username: formData.username,
-          mobile: formData.mobile,
-          dataLimit: formData.dataLimit,
-          duration: formData.duration,
-          protocol: 'vmess',
-          selectedPlan: formData.selectedPlan,
-          appliedDiscount
-        };
-
-        const subscriptionId = await submitSubscription(subscriptionData);
-        
-        if (subscriptionId) {
-          debugLog('success', 'Free subscription activated', { subscriptionId });
-          onSuccess({
-            username: formData.username,
-            subscription_url: `vmess://config-url-here`,
-            expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-            data_limit: formData.dataLimit
-          });
-        }
-        return;
-      }
-
       // Create subscription first
       const subscriptionData = {
         username: formData.username,
@@ -244,6 +256,106 @@ const PaymentStep = ({
     }
   };
 
+  // If the final price is 0, show free subscription option
+  if (finalPrice === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            {language === 'fa' ? 'اشتراک رایگان' : 'Free Subscription'}
+          </h2>
+          <p className="text-gray-600 dark:text-gray-300">
+            {language === 'fa' ? 'اشتراک شما رایگان است!' : 'Your subscription is free!'}
+          </p>
+        </div>
+
+        <DiscountField
+          onDiscountApply={onDiscountApply}
+          appliedDiscount={appliedDiscount}
+        />
+
+        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800">
+          <CardHeader>
+            <CardTitle className="text-green-800 dark:text-green-200 text-center">
+              🎉 {language === 'fa' ? 'اشتراک رایگان' : 'Free Subscription'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center space-y-4">
+              <div className="text-3xl font-bold text-green-600">
+                {language === 'fa' ? 'رایگان' : 'FREE'}
+              </div>
+              <div className="bg-white/50 dark:bg-gray-800/50 p-4 rounded-lg">
+                <div className="flex items-center justify-center gap-4 text-2xl">
+                  <span>🎁</span>
+                  <span>✨</span>
+                  <span>🚀</span>
+                </div>
+                <p className="text-center text-sm text-muted-foreground mt-2">
+                  {language === 'fa' ? 
+                    'تخفیف شما این اشتراک را رایگان کرده است!' : 
+                    'Your discount has made this subscription free!'
+                  }
+                </p>
+              </div>
+              <Button
+                onClick={handleFreeSubscription}
+                disabled={isSubmitting}
+                className="w-full bg-green-600 hover:bg-green-700"
+                size="lg"
+              >
+                {isSubmitting ? (
+                  language === 'fa' ? 'در حال فعال‌سازی...' : 'Activating...'
+                ) : (
+                  language === 'fa' ? 'فعال‌سازی اشتراک رایگان' : 'Activate Free Subscription'
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Order Summary */}
+        <Card className="bg-gray-50 dark:bg-gray-800">
+          <CardContent className="pt-6">
+            <h3 className="font-semibold mb-3">
+              {language === 'fa' ? 'خلاصه سفارش' : 'Order Summary'}
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>{language === 'fa' ? 'نام کاربری:' : 'Username:'}</span>
+                <span className="font-medium">{formData.username}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{language === 'fa' ? 'حجم داده:' : 'Data:'}</span>
+                <span className="font-medium">{formData.dataLimit} GB</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{language === 'fa' ? 'مدت زمان:' : 'Duration:'}</span>
+                <span className="font-medium">{formData.duration} {language === 'fa' ? 'روز' : 'days'}</span>
+              </div>
+              {appliedDiscount && (
+                <div className="flex justify-between text-green-600">
+                  <span>{language === 'fa' ? 'تخفیف:' : 'Discount:'}</span>
+                  <span className="font-medium">-{appliedDiscount.percentage}%</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-2 font-bold text-green-600">
+                <span>{language === 'fa' ? 'مجموع:' : 'Total:'}</span>
+                <span>{language === 'fa' ? 'رایگان' : 'FREE'}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Debug Panel */}
+        <PaymentDebugPanel 
+          isVisible={showDebug}
+          onToggleVisibility={() => setShowDebug(!showDebug)}
+        />
+      </div>
+    );
+  }
+
   const renderPaymentForm = () => {
     switch (selectedPaymentMethod) {
       case 'manual':
@@ -283,11 +395,7 @@ const PaymentStep = ({
             <CardContent>
               <div className="text-center space-y-4">
                 <div className="text-2xl font-bold text-primary">
-                  {finalPrice === 0 ? (
-                    language === 'fa' ? 'رایگان' : 'FREE'
-                  ) : (
-                    `${finalPrice.toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`
-                  )}
+                  {finalPrice.toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}
                 </div>
                 <div className="bg-muted/50 p-4 rounded-lg">
                   <div className="flex items-center justify-center gap-4 text-2xl">
@@ -310,8 +418,6 @@ const PaymentStep = ({
                 >
                   {isSubmitting ? (
                     language === 'fa' ? 'در حال پردازش...' : 'Processing...'
-                  ) : finalPrice === 0 ? (
-                    language === 'fa' ? 'فعال‌سازی رایگان' : 'Activate Free'
                   ) : (
                     language === 'fa' ? 'پرداخت با زرین‌پال' : 'Pay with Zarinpal'
                   )}
@@ -375,11 +481,7 @@ const PaymentStep = ({
             <div className="flex justify-between border-t pt-2 font-bold">
               <span>{language === 'fa' ? 'مجموع:' : 'Total:'}</span>
               <span>
-                {finalPrice === 0 ? (
-                  language === 'fa' ? 'رایگان' : 'FREE'
-                ) : (
-                  `${finalPrice.toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`
-                )}
+                {finalPrice.toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}
               </span>
             </div>
           </div>

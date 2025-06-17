@@ -30,12 +30,16 @@ serve(async (req) => {
 
     console.log('Sending payment request to Zarinpal...');
 
+    // Convert Toman to Rial (Zarinpal expects Rial)
+    const amountInRial = amount * 10;
+    console.log(`Converting amount: ${amount} Toman = ${amountInRial} Rial`);
+
     // Create payment request to Zarinpal
     const zarinpalRequest = {
       merchant_id: merchantId,
-      amount: amount, // Amount in Tomans
+      amount: amountInRial, // Amount in Rial (Toman * 10)
       description: description || `VPN Subscription Payment`,
-      callback_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/zarinpal-verify`,
+      callback_url: `https://bnets.co/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`,
       metadata: {
         subscription_id: subscriptionId
       }

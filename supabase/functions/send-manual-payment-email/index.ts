@@ -90,10 +90,10 @@ serve(async (req) => {
     // Prepare email content
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>New Manual Payment Request</h2>
+        <h2>🔔 New Manual Payment Request</h2>
         
         <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3>Payment Details</h3>
+          <h3>💰 Payment Details</h3>
           <p><strong>Username:</strong> ${subscription.username}</p>
           <p><strong>Mobile:</strong> ${subscription.mobile}</p>
           <p><strong>Data Limit:</strong> ${subscription.data_limit_gb} GB</p>
@@ -103,7 +103,7 @@ serve(async (req) => {
         </div>
 
         <div style="background: #e8f4f8; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3>Bank Transfer Information</h3>
+          <h3>🏦 Bank Transfer Information</h3>
           <p><strong>Bank:</strong> Bank Mellat</p>
           <p><strong>Card Number:</strong> 6104-3378-8765-4321</p>
           <p><strong>Account Holder:</strong> Boundless Network Company</p>
@@ -111,11 +111,15 @@ serve(async (req) => {
 
         ${receiptImageUrl ? `
           <div style="margin: 20px 0;">
-            <h3>Receipt Image</h3>
+            <h3>📸 Receipt Image</h3>
             <p>Receipt uploaded by user - please verify the payment.</p>
-            <p><a href="${receiptImageUrl}" target="_blank">View Receipt</a></p>
+            <p><a href="${receiptImageUrl}" target="_blank" style="color: #0066cc;">📂 View Receipt</a></p>
           </div>
-        ` : ''}
+        ` : `
+          <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0;">
+            <p><strong>⚠️ Note:</strong> No receipt image was uploaded by the user.</p>
+          </div>
+        `}
 
         <div style="text-align: center; margin: 30px 0;">
           <a href="${acceptUrl}" 
@@ -130,37 +134,71 @@ serve(async (req) => {
         </div>
 
         <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0; font-size: 14px;">
-          <p><strong>Note:</strong> Clicking approve will automatically generate the VPN subscription for the user. Clicking reject will notify the user that their payment was not verified.</p>
+          <p><strong>📋 Instructions:</strong></p>
+          <ul>
+            <li>Clicking <strong>APPROVE</strong> will automatically generate the VPN subscription for the user</li>
+            <li>Clicking <strong>REJECT</strong> will notify the user that their payment was not verified</li>
+            <li>Please verify the payment details before making a decision</li>
+          </ul>
+        </div>
+        
+        <div style="border-top: 1px solid #ddd; padding-top: 20px; margin-top: 30px; color: #666; font-size: 12px;">
+          <p>This is an automated notification from the VPN subscription system.</p>
+          <p>Subscription ID: ${subscriptionId}</p>
         </div>
       </div>
     `;
 
     console.log('Sending email to admin...');
 
-    // Send email
-    const emailResult = await resend.emails.send({
-      from: 'VPN Admin <admin@resend.dev>',
-      to: ['rezarafeie13@gmail.com'],
-      subject: `Manual Payment Request - ${subscription.username}`,
-      html: emailHtml,
-    });
+    try {
+      // Send email
+      const emailResult = await resend.emails.send({
+        from: 'VPN Admin <noreply@bnets.co>',
+        to: ['rezarafeie13@gmail.com'],
+        subject: `🔔 Manual Payment Request - ${subscription.username} (${subscription.price_toman.toLocaleString()} Toman)`,
+        html: emailHtml,
+      });
 
-    console.log('Email send result:', emailResult);
+      console.log('Email send result:', emailResult);
 
-    if (emailResult.error) {
-      console.error('Email sending failed:', emailResult.error);
-      throw new Error(`Email sending failed: ${emailResult.error.message}`);
+      if (emailResult.error) {
+        console.error('Email sending failed:', emailResult.error);
+        throw new Error(`Email sending failed: ${emailResult.error.message}`);
+      }
+
+      console.log('Email sent successfully with ID:', emailResult.data?.id);
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'Payment notification sent to admin',
+        emailId: emailResult.data?.id 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } catch (emailError) {
+      console.error('Resend email error:', emailError);
+      
+      // Fallback: Try to use a simpler email format
+      const simpleEmailResult = await resend.emails.send({
+        from: 'onboarding@resend.dev',
+        to: ['rezarafeie13@gmail.com'],
+        subject: `Manual Payment - ${subscription.username}`,
+        text: `New manual payment request:\n\nUsername: ${subscription.username}\nMobile: ${subscription.mobile}\nAmount: ${subscription.price_toman} Toman\nData: ${subscription.data_limit_gb} GB\nDuration: ${subscription.duration_days} days\n\nApprove: ${acceptUrl}\nReject: ${rejectUrl}`,
+      });
+
+      if (simpleEmailResult.error) {
+        throw new Error(`Email sending failed: ${simpleEmailResult.error.message}`);
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'Payment notification sent to admin (fallback)',
+        emailId: simpleEmailResult.data?.id 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
-
-    console.log('Email sent successfully with ID:', emailResult.data?.id);
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: 'Payment notification sent to admin',
-      emailId: emailResult.data?.id 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
 
   } catch (error) {
     console.error('Email sending error:', error);
