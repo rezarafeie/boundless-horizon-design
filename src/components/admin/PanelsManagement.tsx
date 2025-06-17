@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,21 +34,21 @@ export const PanelsManagement = () => {
   const { data: panels, isLoading, error } = useQuery({
     queryKey: ['admin-panels'],
     queryFn: async () => {
-      console.log('Fetching panel servers...');
+      console.log('=== PANELS: Starting fetch ===');
       
       const { data, error } = await supabase
         .from('panel_servers')
         .select('*')
         .order('created_at', { ascending: false });
       
-      console.log('Panels query result:', { data, error });
+      console.log('PANELS: Raw response:', { data, error, count: data?.length });
       
       if (error) {
-        console.error('Error fetching panels:', error);
+        console.error('PANELS: Query error:', error);
         throw error;
       }
       
-      console.log(`Successfully fetched ${data?.length || 0} panels`);
+      console.log('PANELS: Successfully fetched', data?.length || 0, 'panels');
       return data as Panel[];
     },
     retry: 1
@@ -57,16 +56,21 @@ export const PanelsManagement = () => {
 
   const savePanelMutation = useMutation({
     mutationFn: async (panelData: Partial<Panel> & { id?: string }) => {
-      console.log('Saving panel:', panelData);
+      console.log('PANELS: Saving panel data:', panelData);
       
       if (panelData.id) {
+        console.log('PANELS: Updating existing panel');
         const { id, ...updateData } = panelData;
         const { error } = await supabase
           .from('panel_servers')
           .update(updateData)
           .eq('id', id);
-        if (error) throw error;
+        if (error) {
+          console.error('PANELS: Update error:', error);
+          throw error;
+        }
       } else {
+        console.log('PANELS: Creating new panel');
         const insertData = {
           name: panelData.name!,
           type: panelData.type!,
@@ -78,40 +82,50 @@ export const PanelsManagement = () => {
           default_inbounds: panelData.default_inbounds || [],
           is_active: panelData.is_active ?? true,
         };
-        console.log('Inserting panel:', insertData);
-        const { error } = await supabase
+        console.log('PANELS: Insert data:', insertData);
+        const { data, error } = await supabase
           .from('panel_servers')
-          .insert(insertData);
-        if (error) throw error;
+          .insert(insertData)
+          .select();
+        if (error) {
+          console.error('PANELS: Insert error:', error);
+          throw error;
+        }
+        console.log('PANELS: Insert successful:', data);
       }
     },
     onSuccess: () => {
+      console.log('PANELS: Save mutation successful');
       queryClient.invalidateQueries({ queryKey: ['admin-panels'] });
       setEditingPanel(null);
       setShowNewPanelForm(false);
       toast.success('Panel saved successfully');
     },
     onError: (error: any) => {
-      console.error('Error saving panel:', error);
+      console.error('PANELS: Save mutation error:', error);
       toast.error('Failed to save panel: ' + error.message);
     }
   });
 
   const deletePanelMutation = useMutation({
     mutationFn: async (id: string) => {
-      console.log('Deleting panel:', id);
+      console.log('PANELS: Deleting panel:', id);
       const { error } = await supabase
         .from('panel_servers')
         .delete()
         .eq('id', id);
-      if (error) throw error;
+      if (error) {
+        console.error('PANELS: Delete error:', error);
+        throw error;
+      }
+      console.log('PANELS: Delete successful');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-panels'] });
       toast.success('Panel deleted successfully');
     },
     onError: (error: any) => {
-      console.error('Error deleting panel:', error);
+      console.error('PANELS: Delete mutation error:', error);
       toast.error('Failed to delete panel: ' + error.message);
     }
   });
@@ -135,6 +149,7 @@ export const PanelsManagement = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
+      console.log('PANELS: Form submitted with data:', formData);
       onSave({ ...formData, id: panel?.id });
     };
 
@@ -256,9 +271,10 @@ export const PanelsManagement = () => {
     }
   };
 
-  // Show error state
+  console.log('PANELS: Component render - isLoading:', isLoading, 'panels count:', panels?.length, 'error:', error);
+
   if (error) {
-    console.error('Panels component error:', error);
+    console.error('PANELS: Component error state:', error);
     return (
       <div className="space-y-6">
         <div>
@@ -278,6 +294,7 @@ export const PanelsManagement = () => {
   }
 
   if (isLoading) {
+    console.log('PANELS: Component loading state');
     return (
       <div className="space-y-6">
         <div>

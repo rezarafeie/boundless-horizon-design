@@ -36,22 +36,21 @@ export const PlansManagement = () => {
   const { data: plans, isLoading, error } = useQuery({
     queryKey: ['admin-plans'],
     queryFn: async () => {
-      console.log('Fetching subscription plans...');
+      console.log('=== PLANS: Starting fetch ===');
       
-      // Try to fetch with explicit error handling
       const { data, error } = await supabase
         .from('subscription_plans')
         .select('*')
         .order('created_at', { ascending: false });
       
-      console.log('Plans query result:', { data, error });
+      console.log('PLANS: Raw response:', { data, error, count: data?.length });
       
       if (error) {
-        console.error('Error fetching plans:', error);
+        console.error('PLANS: Query error:', error);
         throw error;
       }
       
-      console.log(`Successfully fetched ${data?.length || 0} plans`);
+      console.log('PLANS: Successfully fetched', data?.length || 0, 'plans');
       return data as Plan[];
     },
     retry: 1
@@ -59,16 +58,21 @@ export const PlansManagement = () => {
 
   const savePlanMutation = useMutation({
     mutationFn: async (planData: Partial<Plan> & { id?: string }) => {
-      console.log('Saving plan:', planData);
+      console.log('PLANS: Saving plan data:', planData);
       
       if (planData.id) {
+        console.log('PLANS: Updating existing plan');
         const { id, ...updateData } = planData;
         const { error } = await supabase
           .from('subscription_plans')
           .update(updateData)
           .eq('id', id);
-        if (error) throw error;
+        if (error) {
+          console.error('PLANS: Update error:', error);
+          throw error;
+        }
       } else {
+        console.log('PLANS: Creating new plan');
         const insertData = {
           plan_id: planData.plan_id!,
           name_en: planData.name_en!,
@@ -82,21 +86,27 @@ export const PlansManagement = () => {
           is_visible: planData.is_visible ?? true,
           is_active: planData.is_active ?? true,
         };
-        console.log('Inserting plan:', insertData);
-        const { error } = await supabase
+        console.log('PLANS: Insert data:', insertData);
+        const { data, error } = await supabase
           .from('subscription_plans')
-          .insert(insertData);
-        if (error) throw error;
+          .insert(insertData)
+          .select();
+        if (error) {
+          console.error('PLANS: Insert error:', error);
+          throw error;
+        }
+        console.log('PLANS: Insert successful:', data);
       }
     },
     onSuccess: () => {
+      console.log('PLANS: Save mutation successful');
       queryClient.invalidateQueries({ queryKey: ['admin-plans'] });
       setEditingPlan(null);
       setShowNewPlanForm(false);
       toast.success('Plan saved successfully');
     },
     onError: (error: any) => {
-      console.error('Error saving plan:', error);
+      console.error('PLANS: Save mutation error:', error);
       toast.error('Failed to save plan: ' + error.message);
     }
   });
@@ -141,6 +151,7 @@ export const PlansManagement = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
+      console.log('PLANS: Form submitted with data:', formData);
       onSave({ ...formData, id: plan?.id });
     };
 
@@ -278,9 +289,33 @@ export const PlansManagement = () => {
     );
   };
 
-  // Show error state
+  const deletePlanMutation = useMutation({
+    mutationFn: async (id: string) => {
+      console.log('PLANS: Deleting plan:', id);
+      const { error } = await supabase
+        .from('subscription_plans')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        console.error('PLANS: Delete error:', error);
+        throw error;
+      }
+      console.log('PLANS: Delete successful');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-plans'] });
+      toast.success('Plan deleted successfully');
+    },
+    onError: (error: any) => {
+      console.error('PLANS: Delete mutation error:', error);
+      toast.error('Failed to delete plan: ' + error.message);
+    }
+  });
+
+  console.log('PLANS: Component render - isLoading:', isLoading, 'plans count:', plans?.length, 'error:', error);
+
   if (error) {
-    console.error('Plans component error:', error);
+    console.error('PLANS: Component error state:', error);
     return (
       <div className="space-y-6">
         <div>
@@ -300,6 +335,7 @@ export const PlansManagement = () => {
   }
 
   if (isLoading) {
+    console.log('PLANS: Component loading state');
     return (
       <div className="space-y-6">
         <div>

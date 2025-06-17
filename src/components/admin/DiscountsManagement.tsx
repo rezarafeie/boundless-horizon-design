@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,21 +35,21 @@ export const DiscountsManagement = () => {
   const { data: discounts, isLoading, error } = useQuery({
     queryKey: ['admin-discounts'],
     queryFn: async () => {
-      console.log('Fetching discount codes...');
+      console.log('=== DISCOUNTS: Starting fetch ===');
       
       const { data, error } = await supabase
         .from('discount_codes')
         .select('*')
         .order('created_at', { ascending: false });
       
-      console.log('Discounts query result:', { data, error });
+      console.log('DISCOUNTS: Raw response:', { data, error, count: data?.length });
       
       if (error) {
-        console.error('Error fetching discounts:', error);
+        console.error('DISCOUNTS: Query error:', error);
         throw error;
       }
       
-      console.log(`Successfully fetched ${data?.length || 0} discounts`);
+      console.log('DISCOUNTS: Successfully fetched', data?.length || 0, 'discounts');
       return data as DiscountCode[];
     },
     retry: 1
@@ -58,16 +57,21 @@ export const DiscountsManagement = () => {
 
   const saveDiscountMutation = useMutation({
     mutationFn: async (discountData: Partial<DiscountCode> & { id?: string }) => {
-      console.log('Saving discount:', discountData);
+      console.log('DISCOUNTS: Saving discount data:', discountData);
       
       if (discountData.id) {
+        console.log('DISCOUNTS: Updating existing discount');
         const { id, ...updateData } = discountData;
         const { error } = await supabase
           .from('discount_codes')
           .update(updateData)
           .eq('id', id);
-        if (error) throw error;
+        if (error) {
+          console.error('DISCOUNTS: Update error:', error);
+          throw error;
+        }
       } else {
+        console.log('DISCOUNTS: Creating new discount');
         const insertData = {
           code: discountData.code!,
           discount_type: discountData.discount_type!,
@@ -79,40 +83,50 @@ export const DiscountsManagement = () => {
           expires_at: discountData.expires_at,
           is_active: discountData.is_active ?? true,
         };
-        console.log('Inserting discount:', insertData);
-        const { error } = await supabase
+        console.log('DISCOUNTS: Insert data:', insertData);
+        const { data, error } = await supabase
           .from('discount_codes')
-          .insert(insertData);
-        if (error) throw error;
+          .insert(insertData)
+          .select();
+        if (error) {
+          console.error('DISCOUNTS: Insert error:', error);
+          throw error;
+        }
+        console.log('DISCOUNTS: Insert successful:', data);
       }
     },
     onSuccess: () => {
+      console.log('DISCOUNTS: Save mutation successful');
       queryClient.invalidateQueries({ queryKey: ['admin-discounts'] });
       setEditingDiscount(null);
       setShowNewDiscountForm(false);
       toast.success('Discount code saved successfully');
     },
     onError: (error: any) => {
-      console.error('Error saving discount:', error);
+      console.error('DISCOUNTS: Save mutation error:', error);
       toast.error('Failed to save discount code: ' + error.message);
     }
   });
 
   const deleteDiscountMutation = useMutation({
     mutationFn: async (id: string) => {
-      console.log('Deleting discount:', id);
+      console.log('DISCOUNTS: Deleting discount:', id);
       const { error } = await supabase
         .from('discount_codes')
         .delete()
         .eq('id', id);
-      if (error) throw error;
+      if (error) {
+        console.error('DISCOUNTS: Delete error:', error);
+        throw error;
+      }
+      console.log('DISCOUNTS: Delete successful');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-discounts'] });
       toast.success('Discount code deleted successfully');
     },
     onError: (error: any) => {
-      console.error('Error deleting discount:', error);
+      console.error('DISCOUNTS: Delete mutation error:', error);
       toast.error('Failed to delete discount code: ' + error.message);
     }
   });
@@ -136,6 +150,7 @@ export const DiscountsManagement = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
+      console.log('DISCOUNTS: Form submitted with data:', formData);
       const submitData = {
         ...formData,
         expires_at: formData.expires_at ? new Date(formData.expires_at).toISOString() : null,
@@ -263,9 +278,10 @@ export const DiscountsManagement = () => {
     return <Badge className="bg-green-100 text-green-800">Active</Badge>;
   };
 
-  // Show error state
+  console.log('DISCOUNTS: Component render - isLoading:', isLoading, 'discounts count:', discounts?.length, 'error:', error);
+
   if (error) {
-    console.error('Discounts component error:', error);
+    console.error('DISCOUNTS: Component error state:', error);
     return (
       <div className="space-y-6">
         <div>
@@ -285,6 +301,7 @@ export const DiscountsManagement = () => {
   }
 
   if (isLoading) {
+    console.log('DISCOUNTS: Component loading state');
     return (
       <div className="space-y-6">
         <div>
