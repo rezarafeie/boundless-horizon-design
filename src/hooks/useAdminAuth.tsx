@@ -34,7 +34,16 @@ export const useAdminAuth = () => {
                 .eq('is_active', true)
                 .single();
               
-              setAdminUser(adminData);
+              if (adminData && (adminData.role === 'superadmin' || adminData.role === 'editor')) {
+                setAdminUser({
+                  id: adminData.id,
+                  user_id: adminData.user_id,
+                  role: adminData.role as 'superadmin' | 'editor',
+                  is_active: adminData.is_active
+                });
+              } else {
+                setAdminUser(null);
+              }
             } catch (error) {
               console.log('User is not an admin');
               setAdminUser(null);
@@ -64,7 +73,16 @@ export const useAdminAuth = () => {
               .eq('is_active', true)
               .single();
             
-            setAdminUser(adminData);
+            if (adminData && (adminData.role === 'superadmin' || adminData.role === 'editor')) {
+              setAdminUser({
+                id: adminData.id,
+                user_id: adminData.user_id,
+                role: adminData.role as 'superadmin' | 'editor',
+                is_active: adminData.is_active
+              });
+            } else {
+              setAdminUser(null);
+            }
           } catch (error) {
             console.log('User is not an admin');
             setAdminUser(null);

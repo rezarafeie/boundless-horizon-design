@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Sidebar } from './AdminSidebar';
+import { AdminSidebar } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
 import { Loader2 } from 'lucide-react';
 
@@ -30,7 +30,7 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex">
-        <Sidebar />
+        <AdminSidebar />
         <div className="flex-1 flex flex-col">
           <AdminHeader />
           <main className="flex-1 p-6">
