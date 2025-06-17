@@ -14,8 +14,8 @@ serve(async (req) => {
   try {
     console.log('=== NOWPAYMENTS CREATE FUNCTION STARTED ===');
     
-    const { price_amount, price_currency, pay_currency, order_id, order_description } = await req.json();
-    console.log('Request body:', { price_amount, price_currency, pay_currency, order_id, order_description });
+    const { price_amount, price_currency, pay_currency, order_id, order_description, sandbox } = await req.json();
+    console.log('Request body:', { price_amount, price_currency, pay_currency, order_id, order_description, sandbox });
 
     const nowpaymentsApiKey = Deno.env.get('NOWPAYMENTS_API_KEY');
     if (!nowpaymentsApiKey) {
@@ -36,7 +36,11 @@ serve(async (req) => {
       throw new Error('Order ID and description are required');
     }
 
-    // Ensure minimum amount for crypto payments ($10 minimum to avoid frequent failures)
+    // Use sandbox environment if requested
+    const baseUrl = sandbox ? 'https://api-sandbox.nowpayments.io' : 'https://api.nowpayments.io';
+    console.log('Using API environment:', sandbox ? 'SANDBOX' : 'PRODUCTION');
+
+    // Ensure minimum amount for crypto payments
     const minAmount = 10;
     const adjustedAmount = Math.max(price_amount, minAmount);
     
@@ -55,7 +59,7 @@ serve(async (req) => {
 
     console.log('Creating NowPayments invoice with payload:', requestBody);
 
-    const response = await fetch('https://api.nowpayments.io/v1/payment', {
+    const response = await fetch(`${baseUrl}/v1/payment`, {
       method: 'POST',
       headers: {
         'x-api-key': nowpaymentsApiKey,
@@ -91,7 +95,8 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({ 
         success: true, 
-        invoice: responseData 
+        invoice: responseData,
+        sandbox_mode: !!sandbox
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
