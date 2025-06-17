@@ -11,6 +11,7 @@ import { AlertCircle, Loader2, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import SubscriptionSuccess from './SubscriptionSuccess';
+import { useNavigate } from 'react-router-dom';
 
 interface SubscriptionPlan {
   id: string;
@@ -30,6 +31,7 @@ interface DiscountCode {
 const MarzbanSubscriptionForm = () => {
   const { language } = useLanguage();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
@@ -46,14 +48,18 @@ const MarzbanSubscriptionForm = () => {
 
   useEffect(() => {
     const fetchPlans = async () => {
+      console.log('=== SUBSCRIPTION FORM: Fetching plans ===');
+      
       const { data, error } = await supabase
         .from('subscription_plans')
         .select('*')
         .eq('is_active', true)
         .eq('is_visible', true);
 
+      console.log('SUBSCRIPTION FORM: Plans response:', { data, error, count: data?.length });
+
       if (error) {
-        console.error('Error fetching plans:', error);
+        console.error('SUBSCRIPTION FORM: Error fetching plans:', error);
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
           description: language === 'fa' ? 'مشکلی در دریافت پلن‌ها وجود دارد.' : 'There was an issue fetching the plans.',
@@ -69,6 +75,7 @@ const MarzbanSubscriptionForm = () => {
           apiType: plan.api_type as 'marzban' | 'marzneshin',
           durationDays: plan.default_duration_days
         }));
+        console.log('SUBSCRIPTION FORM: Mapped plans:', mappedPlans);
         setPlans(mappedPlans);
       }
     };
@@ -79,6 +86,8 @@ const MarzbanSubscriptionForm = () => {
   const applyDiscount = async () => {
     if (!discountCode) return;
 
+    console.log('SUBSCRIPTION FORM: Applying discount code:', discountCode);
+
     const { data, error } = await supabase
       .from('discount_codes')
       .select('*')
@@ -86,8 +95,10 @@ const MarzbanSubscriptionForm = () => {
       .eq('is_active', true)
       .single();
 
+    console.log('SUBSCRIPTION FORM: Discount response:', { data, error });
+
     if (error) {
-      console.error('Error fetching discount:', error);
+      console.error('SUBSCRIPTION FORM: Error fetching discount:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'کد تخفیف معتبر نیست.' : 'Invalid discount code.',
@@ -102,6 +113,7 @@ const MarzbanSubscriptionForm = () => {
         description: data.description || ''
       };
       setDiscountUsed(mappedDiscount);
+      console.log('SUBSCRIPTION FORM: Discount applied:', mappedDiscount);
       toast({
         title: language === 'fa' ? 'تخفیف اعمال شد' : 'Discount Applied',
         description: language === 'fa' ? `تخفیف ${data.discount_value}% اعمال شد!` : `Discount of ${data.discount_value}% applied!`,
@@ -121,7 +133,12 @@ const MarzbanSubscriptionForm = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('=== SUBSCRIPTION FORM: Starting submission ===');
+    console.log('SUBSCRIPTION FORM: Form data:', formData);
+    console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
+    
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
+      console.error('SUBSCRIPTION FORM: Missing required fields');
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
@@ -136,7 +153,7 @@ const MarzbanSubscriptionForm = () => {
     setError('');
 
     try {
-      console.log('=== SUBSCRIPTION: Starting process ===');
+      console.log('=== SUBSCRIPTION: Starting subscription creation process ===');
       
       // Calculate final price with discount
       let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
@@ -153,6 +170,10 @@ const MarzbanSubscriptionForm = () => {
         finalPrice 
       });
 
+      // Generate unique username
+      const username = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log('SUBSCRIPTION: Generated username:', username);
+
       // First, save the subscription to database
       const subscriptionData = {
         mobile: formData.mobile,
@@ -160,8 +181,8 @@ const MarzbanSubscriptionForm = () => {
         duration_days: formData.duration,
         price_toman: finalPrice,
         status: 'pending',
-        username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days`
+        username: username,
+        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days, API: ${selectedPlan.apiType}`
       };
 
       console.log('SUBSCRIPTION: Saving to database:', subscriptionData);
@@ -177,20 +198,23 @@ const MarzbanSubscriptionForm = () => {
         throw new Error(`Failed to save subscription: ${saveError.message}`);
       }
 
-      console.log('SUBSCRIPTION: Saved to database:', savedSubscription);
+      console.log('SUBSCRIPTION: Successfully saved to database:', savedSubscription);
 
       // Create VPN user via API
-      console.log('SUBSCRIPTION: Creating VPN user...');
+      console.log('SUBSCRIPTION: Creating VPN user via API...');
       
       const vpnUserRequest = {
         username: savedSubscription.username,
         data_limit: formData.dataLimit * 1073741824, // Convert GB to bytes
         expire_duration: formData.duration,
-        note: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}`
+        note: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
       };
+
+      console.log('SUBSCRIPTION: VPN user request data:', vpnUserRequest);
 
       let vpnResponse;
       if (selectedPlan.apiType === 'marzneshin') {
+        console.log('SUBSCRIPTION: Using Marzneshin API');
         const marzneshinResponse = await fetch('/api/marzneshin/create-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -198,6 +222,7 @@ const MarzbanSubscriptionForm = () => {
         });
         vpnResponse = await marzneshinResponse.json();
       } else {
+        console.log('SUBSCRIPTION: Using Marzban API');
         const marzbanResponse = await fetch('/api/marzban/create-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -206,12 +231,24 @@ const MarzbanSubscriptionForm = () => {
         vpnResponse = await marzbanResponse.json();
       }
 
+      console.log('SUBSCRIPTION: VPN API response:', vpnResponse);
+
       if (!vpnResponse.success) {
         console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse.error);
+        
+        // Update subscription status to failed
+        await supabase
+          .from('subscriptions')
+          .update({ 
+            status: 'failed',
+            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResponse.error}`
+          })
+          .eq('id', savedSubscription.id);
+        
         throw new Error(`Failed to create VPN user: ${vpnResponse.error}`);
       }
 
-      console.log('SUBSCRIPTION: VPN user created:', vpnResponse.data);
+      console.log('SUBSCRIPTION: VPN user created successfully:', vpnResponse.data);
 
       // Update subscription with VPN details
       const updateData = {
@@ -220,6 +257,8 @@ const MarzbanSubscriptionForm = () => {
         marzban_user_created: true,
         expire_at: new Date(vpnResponse.data.expire * 1000).toISOString()
       };
+
+      console.log('SUBSCRIPTION: Updating subscription with VPN details:', updateData);
 
       const { error: updateError } = await supabase
         .from('subscriptions')
@@ -231,7 +270,7 @@ const MarzbanSubscriptionForm = () => {
         throw new Error(`Failed to update subscription: ${updateError.message}`);
       }
 
-      console.log('SUBSCRIPTION: Updated with VPN details');
+      console.log('SUBSCRIPTION: Successfully updated subscription with VPN details');
 
       // Log discount usage if applicable
       if (discountUsed && discountUsed.code) {
@@ -263,7 +302,7 @@ const MarzbanSubscriptionForm = () => {
             })
             .eq('id', discountRecord.id);
 
-          console.log('SUBSCRIPTION: Discount usage logged');
+          console.log('SUBSCRIPTION: Discount usage logged successfully');
         }
       }
 
@@ -273,14 +312,22 @@ const MarzbanSubscriptionForm = () => {
         subscription_url: vpnResponse.data.subscription_url,
         expire: vpnResponse.data.expire,
         data_limit: vpnResponse.data.data_limit,
-        planName: selectedPlan.name
+        planName: selectedPlan.name,
+        subscriptionId: savedSubscription.id
       };
 
-      console.log('SUBSCRIPTION: Process completed successfully');
-      setResult(successResult);
+      console.log('SUBSCRIPTION: Process completed successfully, result:', successResult);
+      
+      // Store data for delivery page
+      localStorage.setItem('deliverySubscriptionData', JSON.stringify(successResult));
+      
+      // Navigate to delivery page with data
+      navigate('/delivery', { 
+        state: { subscriptionData: successResult }
+      });
 
     } catch (error: any) {
-      console.error('SUBSCRIPTION: Process failed:', error);
+      console.error('SUBSCRIPTION: Process failed with error:', error);
       setError(error.message || 'An unexpected error occurred');
       
       toast({
@@ -331,27 +378,38 @@ const MarzbanSubscriptionForm = () => {
               <Label className="text-sm font-medium">
                 {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
               </Label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                {plans.map((plan) => (
-                  <Card 
-                    key={plan.id}
-                    className={`cursor-pointer transition-all ${
-                      selectedPlan?.id === plan.id 
-                        ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                    }`}
-                    onClick={() => setSelectedPlan(plan)}
-                  >
-                    <CardContent className="p-4">
-                      <h3 className="font-bold text-lg">{plan.name}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{plan.description}</p>
-                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
-                        {plan.pricePerGB.toLocaleString()} {language === 'fa' ? 'تومان/گیگ' : 'Toman/GB'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {plans.length === 0 ? (
+                <div className="mt-2 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <p className="text-yellow-800 dark:text-yellow-200">
+                    {language === 'fa' ? 'هیچ پلنی در دسترس نیست' : 'No plans available'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  {plans.map((plan) => (
+                    <Card 
+                      key={plan.id}
+                      className={`cursor-pointer transition-all ${
+                        selectedPlan?.id === plan.id 
+                          ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                      onClick={() => setSelectedPlan(plan)}
+                    >
+                      <CardContent className="p-4">
+                        <h3 className="font-bold text-lg">{plan.name}</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{plan.description}</p>
+                        <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
+                          {plan.pricePerGB.toLocaleString()} {language === 'fa' ? 'تومان/گیگ' : 'Toman/GB'}
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {plan.apiType} - {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Data Limit */}
@@ -447,7 +505,7 @@ const MarzbanSubscriptionForm = () => {
               type="submit" 
               size="lg" 
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
-              disabled={isLoading || !selectedPlan || !formData.dataLimit}
+              disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0}
             >
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {language === 'fa' ? 'ایجاد اشتراک' : 'Create Subscription'}
