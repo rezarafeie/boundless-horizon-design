@@ -189,42 +189,46 @@ const MultiStepSubscriptionForm = () => {
   const progressPercentage = ((currentStep - 1) / (STEPS.length - 1)) * 100;
 
   const renderStepContent = () => {
-    const step = currentStep;
-    switch (step) {
-      case 1:
-        return (
-          <div className="space-y-6">
-            <PlanSelector
-              selectedPlan={formData.selectedPlan}
-              onPlanSelect={(plan) => updateFormData('selectedPlan', plan)}
-              dataLimit={formData.dataLimit}
-            />
-          </div>
-        );
-      case 2:
-        return (
-          <UserInfoStep
-            formData={formData}
-            onUpdate={updateFormData}
-            appliedDiscount={appliedDiscount}
+    if (currentStep === 1) {
+      return (
+        <div className="space-y-6">
+          <PlanSelector
+            selectedPlan={formData.selectedPlan}
+            onPlanSelect={(plan) => updateFormData('selectedPlan', plan)}
+            dataLimit={formData.dataLimit}
           />
-        );
-      case 3:
-        return (
-          <PaymentStep
-            amount={calculateTotalPrice()}
-            subscriptionId={subscriptionId}
-            onSuccess={handlePaymentSuccess}
-            onBack={handlePrevious}
-          />
-        );
-      case 4:
-        return result ? (
-          <SubscriptionSuccess result={result} />
-        ) : null;
-      default:
-        return null;
+        </div>
+      );
     }
+    
+    if (currentStep === 2) {
+      return (
+        <UserInfoStep
+          formData={formData}
+          onUpdate={updateFormData}
+          appliedDiscount={appliedDiscount}
+        />
+      );
+    }
+    
+    if (currentStep === 3) {
+      return (
+        <PaymentStep
+          amount={calculateTotalPrice()}
+          subscriptionId={subscriptionId}
+          onSuccess={handlePaymentSuccess}
+          onBack={handlePrevious}
+        />
+      );
+    }
+    
+    if (currentStep === 4) {
+      return result ? (
+        <SubscriptionSuccess result={result} />
+      ) : null;
+    }
+    
+    return null;
   };
 
   const getCurrentStepInfo = () => {
