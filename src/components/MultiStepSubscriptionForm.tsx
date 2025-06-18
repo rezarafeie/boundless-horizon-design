@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -80,6 +81,15 @@ const MultiStepSubscriptionForm = () => {
     }
   };
 
+  const generateSubscriptionId = (): string => {
+    // Generate a UUID v4
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
   const createSubscriptionRecord = async (): Promise<string | null> => {
     if (!formData.selectedPlan) {
       console.error('No plan selected');
@@ -92,8 +102,10 @@ const MultiStepSubscriptionForm = () => {
       console.log('Creating subscription record...', formData);
       
       const totalPrice = calculateTotalPrice();
+      const newSubscriptionId = generateSubscriptionId();
       
       const subscriptionData = {
+        id: newSubscriptionId,
         username: formData.username,
         mobile: formData.mobile,
         data_limit_gb: formData.dataLimit,
