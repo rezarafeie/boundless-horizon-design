@@ -1,9 +1,12 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ChevronLeft, ChevronRight, CheckCircle, CreditCard, User, Settings } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import PlanSelector from '@/components/PlanSelector';
 import UserInfoStep from '@/components/UserInfoStep';
 import PaymentStep from '@/components/PaymentStep';
@@ -35,6 +38,7 @@ const STEPS = [
 
 const MultiStepSubscriptionForm = () => {
   const { language } = useLanguage();
+  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>({
     username: '',
@@ -48,6 +52,7 @@ const MultiStepSubscriptionForm = () => {
   const [result, setResult] = useState<SubscriptionResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subscriptionId, setSubscriptionId] = useState<string>('');
+  const [isCreatingSubscription, setIsCreatingSubscription] = useState(false);
 
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -76,8 +81,70 @@ const MultiStepSubscriptionForm = () => {
     }
   };
 
-  const handleNext = () => {
-    if (canProceedFromStep(currentStep) && currentStep < 4) {
+  const createSubscriptionRecord = async (): Promise<string | null> => {
+    if (!formData.selectedPlan) {
+      console.error('No plan selected');
+      return null;
+    }
+
+    setIsCreatingSubscription(true);
+    
+    try {
+      console.log('Creating subscription record...', formData);
+      
+      const totalPrice = calculateTotalPrice();
+      
+      const subscriptionData = {
+        username: formData.username,
+        mobile: formData.mobile,
+        data_limit_gb: formData.dataLimit,
+        duration_days: formData.duration,
+        price_toman: totalPrice,
+        notes: formData.notes || '',
+        status: 'pending'
+      };
+
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .insert([subscriptionData])
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Failed to create subscription:', error);
+        throw error;
+      }
+
+      console.log('Subscription created with ID:', data.id);
+      return data.id;
+    } catch (error) {
+      console.error('Error creating subscription:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'خطا در ایجاد سفارش. لطفاً دوباره تلاش کنید.' : 
+          'Failed to create order. Please try again.',
+        variant: 'destructive'
+      });
+      return null;
+    } finally {
+      setIsCreatingSubscription(false);
+    }
+  };
+
+  const handleNext = async () => {
+    if (!canProceedFromStep(currentStep)) return;
+
+    // If moving from step 2 to step 3, create subscription record
+    if (currentStep === 2) {
+      const newSubscriptionId = await createSubscriptionRecord();
+      if (!newSubscriptionId) {
+        return; // Failed to create subscription, don't proceed
+      }
+      setSubscriptionId(newSubscriptionId);
+    }
+
+    if (currentStep < 4) {
       setCurrentStep(prev => prev + 1);
     }
   };
@@ -214,8 +281,8 @@ const MultiStepSubscriptionForm = () => {
             {renderStepContent()}
           </div>
 
-          {/* Navigation Buttons - Only show for steps 2 and beyond */}
-          {currentStep >= 2 && currentStep < 4 && (
+          {/* Navigation Buttons - Only show for step 2 */}
+          {currentStep === 2 && (
             <div className="flex justify-between items-center pt-8 border-t border-gray-200 dark:border-gray-700">
               <Button
                 variant="outline"
@@ -227,21 +294,21 @@ const MultiStepSubscriptionForm = () => {
                 {language === 'fa' ? 'قبلی' : 'Previous'}
               </Button>
 
-              {currentStep === 2 && (
-                <Button
-                  variant="hero-primary"
-                  onClick={handleNext}
-                  disabled={!canProceedFromStep(currentStep)}
-                  className="flex items-center gap-2 w-full max-w-xs"
-                >
-                  {language === 'fa' ? 'بعدی' : 'Next'}
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              )}
-
-              {currentStep === 3 && (
-                <div className="w-24" /> // Spacer for layout consistency
-              )}
+              <Button
+                variant="hero-primary"
+                onClick={handleNext}
+                disabled={!canProceedFromStep(currentStep) || isCreatingSubscription}
+                className="flex items-center gap-2 w-full max-w-xs"
+              >
+                {isCreatingSubscription ? (
+                  language === 'fa' ? 'در حال ایجاد سفارش...' : 'Creating Order...'
+                ) : (
+                  <>
+                    {language === 'fa' ? 'بعدی' : 'Next'}
+                    <ChevronRight className="w-4 h-4" />
+                  </>
+                )}
+              </Button>
             </div>
           )}
         </CardContent>
