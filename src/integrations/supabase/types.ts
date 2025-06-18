@@ -433,6 +433,117 @@ export type Database = {
         }
         Relationships: []
       }
+      zarinpal_contracts: {
+        Row: {
+          bank_code: string | null
+          cancelled_at: string | null
+          created_at: string
+          expire_at: string
+          id: string
+          max_amount: number
+          max_daily_count: number
+          max_monthly_count: number
+          merchant_id: string
+          payman_authority: string
+          signature: string | null
+          signed_at: string | null
+          status: string
+          updated_at: string
+          user_mobile: string
+        }
+        Insert: {
+          bank_code?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          expire_at: string
+          id?: string
+          max_amount: number
+          max_daily_count: number
+          max_monthly_count: number
+          merchant_id: string
+          payman_authority: string
+          signature?: string | null
+          signed_at?: string | null
+          status?: string
+          updated_at?: string
+          user_mobile: string
+        }
+        Update: {
+          bank_code?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          expire_at?: string
+          id?: string
+          max_amount?: number
+          max_daily_count?: number
+          max_monthly_count?: number
+          merchant_id?: string
+          payman_authority?: string
+          signature?: string | null
+          signed_at?: string | null
+          status?: string
+          updated_at?: string
+          user_mobile?: string
+        }
+        Relationships: []
+      }
+      zarinpal_direct_payments: {
+        Row: {
+          amount: number
+          authority: string
+          completed_at: string | null
+          contract_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          reference_id: number | null
+          status: string
+          subscription_id: string | null
+          zarinpal_response: Json | null
+        }
+        Insert: {
+          amount: number
+          authority: string
+          completed_at?: string | null
+          contract_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          reference_id?: number | null
+          status?: string
+          subscription_id?: string | null
+          zarinpal_response?: Json | null
+        }
+        Update: {
+          amount?: number
+          authority?: string
+          completed_at?: string | null
+          contract_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          reference_id?: number | null
+          status?: string
+          subscription_id?: string | null
+          zarinpal_response?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zarinpal_direct_payments_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "zarinpal_contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zarinpal_direct_payments_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

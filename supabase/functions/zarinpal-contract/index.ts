@@ -26,24 +26,48 @@ serve(async (req) => {
     const requestBody = await req.json()
     console.log('Direct Debit contract request received:', requestBody)
 
-    const { merchant_id, mobile, expire_at, max_daily_count, max_monthly_count, max_amount, callback_url } = requestBody
+    const { merchant_id, mobile, ssn, expire_at, max_daily_count, max_monthly_count, max_amount, callback_url } = requestBody
+
+    // Get merchant ID from environment if not provided
+    const finalMerchantId = merchant_id || Deno.env.get('ZARINPAL_MERCHANT_ID');
+    
+    if (!finalMerchantId) {
+      console.error('ZARINPAL_MERCHANT_ID not configured');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Payment gateway not configured'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
 
     // Convert timestamp to proper date format for Zarinpal Direct Debit
-    const expireDate = new Date(expire_at * 1000)
-    const formattedExpireAt = expireDate.toISOString().slice(0, 19).replace('T', ' ')
+    let formattedExpireAt = expire_at;
+    if (typeof expire_at === 'number') {
+      const expireDate = new Date(expire_at * 1000);
+      formattedExpireAt = expireDate.toISOString().slice(0, 19).replace('T', ' ');
+    }
 
     // Direct Debit contract request structure according to Zarinpal docs
     const directDebitRequest = {
-      merchant_id,
+      merchant_id: finalMerchantId,
       mobile,
+      ...(ssn && { ssn }), // Include SSN only if provided
       expire_at: formattedExpireAt,
-      max_daily_count,
-      max_monthly_count,
-      max_amount,
+      max_daily_count: max_daily_count.toString(),
+      max_monthly_count: max_monthly_count.toString(),
+      max_amount: max_amount.toString(),
       callback_url
     }
 
-    console.log('Sending to Zarinpal Direct Debit API:', directDebitRequest)
+    console.log('Sending to Zarinpal Direct Debit API:', {
+      ...directDebitRequest,
+      merchant_id: finalMerchantId.substring(0, 8) + '...'
+    })
 
     // Use the correct Direct Debit API endpoint
     const zarinpalResponse = await fetch('https://api.zarinpal.com/pg/v4/payman/request.json', {
