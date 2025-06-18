@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +11,6 @@ import ZarinpalPayment from '@/components/ZarinpalPayment';
 import DiscountField from '@/components/DiscountField';
 import PaymentDebugPanel from '@/components/PaymentDebugPanel';
 import { DiscountCode } from '@/types/subscription';
-import { useSubscriptionSubmit } from '@/hooks/useSubscriptionSubmit';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -33,7 +33,6 @@ const PaymentStep = ({
 }: PaymentStepProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
-  const { submitSubscription } = useSubscriptionSubmit();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('zarinpal');
   const [showDebug, setShowDebug] = useState(false);
 
@@ -54,28 +53,34 @@ const PaymentStep = ({
     debugLog('info', 'Processing free subscription');
     
     try {
-      const subscriptionData = {
-        username: formData.username,
-        mobile: formData.mobile,
-        dataLimit: formData.dataLimit,
-        duration: formData.duration,
-        protocol: 'vmess',
-        selectedPlan: formData.selectedPlan,
-        appliedDiscount
-      };
-
-      const subscriptionId = await submitSubscription(subscriptionData);
-      
-      if (subscriptionId) {
-        debugLog('success', 'Free subscription activated', { subscriptionId });
-        onSuccess({
+      const { data: subscription, error } = await supabase
+        .from('subscriptions')
+        .insert({
           username: formData.username,
-          subscription_url: `vmess://config-url-here`,
-          expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-          data_limit: formData.dataLimit * 1073741824,
-          status: 'active'
-        });
+          mobile: formData.mobile,
+          data_limit_gb: formData.dataLimit,
+          duration_days: formData.duration,
+          protocol: 'vmess',
+          price_toman: finalPrice,
+          status: 'active',
+          notes: `Free subscription - ${appliedDiscount ? `Discount: ${appliedDiscount.code}` : 'No discount'}`,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        debugLog('error', 'Free subscription creation failed', error);
+        throw error;
       }
+
+      debugLog('success', 'Free subscription activated', { subscriptionId: subscription.id });
+      onSuccess({
+        username: formData.username,
+        subscription_url: `vmess://config-url-here`,
+        expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
+        data_limit: formData.dataLimit * 1073741824,
+        status: 'active'
+      });
     } catch (error) {
       console.error('Free subscription error:', error);
       debugLog('error', 'Free subscription failed', error);
@@ -154,27 +159,33 @@ const PaymentStep = ({
     debugLog('info', 'Crypto payment success callback', { paymentId });
     
     try {
-      const subscriptionData = {
-        username: formData.username,
-        mobile: formData.mobile,
-        dataLimit: formData.dataLimit,
-        duration: formData.duration,
-        protocol: 'vmess',
-        selectedPlan: formData.selectedPlan,
-        appliedDiscount
-      };
-
-      const subscriptionId = await submitSubscription(subscriptionData);
-      
-      if (subscriptionId) {
-        debugLog('success', 'Crypto payment completed', { subscriptionId });
-        onSuccess({
+      const { data: subscription, error } = await supabase
+        .from('subscriptions')
+        .insert({
           username: formData.username,
-          subscription_url: `vmess://config-url-here`,
-          expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-          data_limit: formData.dataLimit
-        });
+          mobile: formData.mobile,
+          data_limit_gb: formData.dataLimit,
+          duration_days: formData.duration,
+          protocol: 'vmess',
+          price_toman: finalPrice,
+          status: 'active',
+          notes: `Crypto payment - ${appliedDiscount ? `Discount: ${appliedDiscount.code}` : 'No discount'}`,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        debugLog('error', 'Crypto payment processing failed', error);
+        throw error;
       }
+
+      debugLog('success', 'Crypto payment completed', { subscriptionId: subscription.id });
+      onSuccess({
+        username: formData.username,
+        subscription_url: `vmess://config-url-here`,
+        expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
+        data_limit: formData.dataLimit
+      });
     } catch (error) {
       console.error('Crypto payment processing error:', error);
       debugLog('error', 'Crypto payment processing failed', error);
@@ -193,44 +204,11 @@ const PaymentStep = ({
   };
 
   const handleZarinpalPaymentStart = async () => {
-    setIsSubmitting(true);
     debugLog('info', 'Zarinpal payment started', { amount: finalPrice, mobile: formData.mobile });
     
-    try {
-      // Create subscription first
-      const subscriptionData = {
-        username: formData.username,
-        mobile: formData.mobile,
-        dataLimit: formData.dataLimit,
-        duration: formData.duration,
-        protocol: 'vmess',
-        selectedPlan: formData.selectedPlan,
-        appliedDiscount
-      };
-
-      const subscriptionId = await submitSubscription(subscriptionData);
-      
-      if (!subscriptionId) {
-        throw new Error('Failed to create subscription');
-      }
-
-      debugLog('success', 'Subscription created for Zarinpal payment', { subscriptionId });
-      
-      // The ZarinpalPayment component will handle the actual payment and redirect
-      
-    } catch (error) {
-      console.error('Zarinpal payment setup error:', error);
-      debugLog('error', 'Zarinpal payment setup failed', error);
-      
-      toast({
-        title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Failed',
-        description: language === 'fa' ? 
-          `خطا: ${error.message}` : 
-          `Error: ${error.message}`,
-        variant: 'destructive'
-      });
-      setIsSubmitting(false);
-    }
+    // Note: We do NOT create the subscription here anymore
+    // The subscription will be created after payment confirmation
+    // The ZarinpalPayment component will handle the actual payment flow
   };
 
   // If the final price is 0, show free subscription option
