@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,12 +9,10 @@ import CryptoPaymentForm from '@/components/CryptoPaymentForm';
 import StripePaymentForm from '@/components/StripePaymentForm';
 import DiscountField from '@/components/DiscountField';
 import PaymentDebugPanel from '@/components/PaymentDebugPanel';
-import ZarinpalContractManager from '@/components/ZarinpalContractManager';
 import { DiscountCode } from '@/types/subscription';
 import { useSubscriptionSubmit } from '@/hooks/useSubscriptionSubmit';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { createPaymentRequest, performDirectPayment } from '@/utils/zarinpalContractUtils';
 
 interface PaymentStepProps {
   formData: any;
@@ -37,8 +36,6 @@ const PaymentStep = ({
   const { submitSubscription } = useSubscriptionSubmit();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('zarinpal');
   const [showDebug, setShowDebug] = useState(false);
-  const [showContractManager, setShowContractManager] = useState(false);
-  const [selectedContract, setSelectedContract] = useState<{ authority: string; signature: string } | null>(null);
 
   // Calculate pricing
   const basePrice = formData.dataLimit * (formData.selectedPlan?.pricePerGB || 800);
@@ -195,51 +192,33 @@ const PaymentStep = ({
     debugLog('success', 'Stripe payment initiated', { sessionId });
   };
 
-  const handleZarinpalDirectPayment = async () => {
-    if (!selectedContract) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'ابتدا یک قرارداد فعال انتخاب کنید' : 'Please select an active contract first',
-        variant: 'destructive'
-      });
-      return;
-    }
-
+  const handleZarinpalPayment = async () => {
     setIsSubmitting(true);
-    debugLog('info', 'Zarinpal direct payment started', { amount: finalPrice });
+    debugLog('info', 'Zarinpal payment started', { amount: finalPrice });
     
     try {
-      // Step 1: Create a regular payment request to get authority
-      const paymentRequest = await createPaymentRequest({
-        amount: finalPrice * 10, // Convert Toman to Rial
-        description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`,
-        callback_url: `${window.location.origin}/payment-success`,
-        mobile: formData.mobile
+      // Create payment request using edge function
+      const { data: paymentData, error: paymentError } = await supabase.functions.invoke('zarinpal-payment-request', {
+        body: {
+          merchant_id: 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX', // This should be from environment
+          amount: finalPrice * 10, // Convert Toman to Rial
+          description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`,
+          callback_url: `${window.location.origin}/payment-success`,
+          mobile: formData.mobile
+        }
       });
 
-      if (!paymentRequest.success || !paymentRequest.authority) {
-        throw new Error(paymentRequest.error || 'Failed to create payment request');
+      if (paymentError) {
+        throw new Error(paymentError.message || 'Failed to create payment request');
       }
 
-      debugLog('info', 'Payment request created', { authority: paymentRequest.authority });
-
-      // Step 2: Perform direct payment using the contract signature
-      const directPayment = await performDirectPayment({
-        authority: paymentRequest.authority,
-        signature: selectedContract.signature,
-        amount: finalPrice * 10
-      });
-
-      if (!directPayment.success) {
-        throw new Error(directPayment.error || 'Direct payment failed');
+      if (!paymentData.success || !paymentData.authority) {
+        throw new Error(paymentData.error || 'Failed to get payment authority');
       }
 
-      debugLog('success', 'Direct payment completed', { 
-        reference_id: directPayment.reference_id,
-        amount: directPayment.amount 
-      });
+      debugLog('success', 'Payment request created', { authority: paymentData.authority });
 
-      // Step 3: Create subscription
+      // Store payment info in subscription
       const subscriptionData = {
         username: formData.username,
         mobile: formData.mobile,
@@ -256,44 +235,32 @@ const PaymentStep = ({
         throw new Error('Failed to create subscription');
       }
 
-      // Step 4: Store payment record
-      const { error: paymentError } = await supabase
-        .from('zarinpal_direct_payments')
-        .insert({
-          contract_id: selectedContract.authority, // This should be the contract ID from DB
-          subscription_id: subscriptionId,
-          authority: paymentRequest.authority,
-          reference_id: directPayment.reference_id,
-          amount: finalPrice * 10,
-          status: 'success',
-          zarinpal_response: directPayment
-        });
+      // Update subscription with Zarinpal authority
+      const { error: updateError } = await supabase
+        .from('subscriptions')
+        .update({
+          zarinpal_authority: paymentData.authority,
+          status: 'pending'
+        })
+        .eq('id', subscriptionId);
 
-      if (paymentError) {
-        console.error('Failed to store payment record:', paymentError);
+      if (updateError) {
+        console.error('Failed to update subscription with authority:', updateError);
       }
 
-      debugLog('success', 'Subscription created with direct payment', { subscriptionId });
-      
-      onSuccess({
-        username: formData.username,
-        subscription_url: `vmess://config-url-here`,
-        expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-        data_limit: formData.dataLimit * 1073741824,
-        status: 'active',
-        payment_method: 'zarinpal_direct',
-        reference_id: directPayment.reference_id
-      });
+      // Redirect to Zarinpal gateway
+      debugLog('info', 'Redirecting to payment gateway', { gateway_url: paymentData.gateway_url });
+      window.location.href = paymentData.gateway_url;
 
     } catch (error) {
-      console.error('Zarinpal direct payment error:', error);
-      debugLog('error', 'Zarinpal direct payment failed', { 
+      console.error('Zarinpal payment error:', error);
+      debugLog('error', 'Zarinpal payment failed', { 
         error: error.message,
         stack: error.stack 
       });
       
       toast({
-        title: language === 'fa' ? 'خطا در پرداخت مستقیم' : 'Direct Payment Failed',
+        title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Failed',
         description: language === 'fa' ? 
           `خطا: ${error.message}` : 
           `Error: ${error.message}`,
@@ -302,30 +269,6 @@ const PaymentStep = ({
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleZarinpalPayment = async () => {
-    if (showContractManager || selectedContract) {
-      return handleZarinpalDirectPayment();
-    }
-    
-    // Show contract manager for first-time users
-    setShowContractManager(true);
-    toast({
-      title: language === 'fa' ? 'قرارداد پرداخت مستقیم' : 'Direct Payment Contract',
-      description: language === 'fa' ? 
-        'برای پرداخت با زرین‌پال، ابتدا باید یک قرارداد پرداخت مستقیم ایجاد کنید' : 
-        'To pay with Zarinpal, you need to create a direct payment contract first'
-    });
-  };
-
-  const handleContractReady = (authority: string, signature: string) => {
-    setSelectedContract({ authority, signature });
-    setShowContractManager(false);
-    toast({
-      title: language === 'fa' ? 'قرارداد آماده است' : 'Contract Ready',
-      description: language === 'fa' ? 'اکنون می‌توانید پرداخت کنید' : 'You can now proceed with payment'
-    });
   };
 
   // If the final price is 0, show free subscription option
@@ -429,15 +372,6 @@ const PaymentStep = ({
   }
 
   const renderPaymentForm = () => {
-    if (selectedPaymentMethod === 'zarinpal' && showContractManager) {
-      return (
-        <ZarinpalContractManager
-          mobile={formData.mobile}
-          onContractReady={handleContractReady}
-        />
-      );
-    }
-
     switch (selectedPaymentMethod) {
       case 'manual':
         return (
@@ -479,38 +413,19 @@ const PaymentStep = ({
                   {finalPrice.toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}
                 </div>
                 
-                {selectedContract ? (
-                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                    <div className="flex items-center justify-center gap-4 text-2xl mb-2">
-                      <span>✅</span>
-                      <span>🔒</span>
-                      <span>⚡</span>
-                    </div>
-                    <p className="text-center text-sm text-green-600 dark:text-green-400">
-                      {language === 'fa' ? 
-                        'قرارداد پرداخت مستقیم فعال - پرداخت آنی' : 
-                        'Direct payment contract active - Instant payment'
-                      }
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {language === 'fa' ? 'کد قرارداد:' : 'Contract:'} {selectedContract.authority}
-                    </p>
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                  <div className="flex items-center justify-center gap-4 text-2xl mb-2">
+                    <span>💳</span>
+                    <span>🔒</span>
+                    <span>⚡</span>
                   </div>
-                ) : (
-                  <div className="bg-muted/50 p-4 rounded-lg">
-                    <div className="flex items-center justify-center gap-4 text-2xl mb-2">
-                      <span>📝</span>
-                      <span>🏛️</span>
-                      <span>🔐</span>
-                    </div>
-                    <p className="text-center text-sm text-muted-foreground">
-                      {language === 'fa' ? 
-                        'ایجاد قرارداد پرداخت مستقیم برای پرداخت‌های آینده' : 
-                        'Create direct payment contract for future payments'
-                      }
-                    </p>
-                  </div>
-                )}
+                  <p className="text-center text-sm text-blue-600 dark:text-blue-400">
+                    {language === 'fa' ? 
+                      'پرداخت امن از طریق درگاه زرین‌پال' : 
+                      'Secure payment through Zarinpal gateway'
+                    }
+                  </p>
+                </div>
 
                 <Button
                   onClick={handleZarinpalPayment}
@@ -520,22 +435,10 @@ const PaymentStep = ({
                 >
                   {isSubmitting ? (
                     language === 'fa' ? 'در حال پردازش...' : 'Processing...'
-                  ) : selectedContract ? (
-                    language === 'fa' ? 'پرداخت مستقیم' : 'Direct Payment'
                   ) : (
-                    language === 'fa' ? 'ایجاد قرارداد و پرداخت' : 'Create Contract & Pay'
+                    language === 'fa' ? 'پرداخت با زرین‌پال' : 'Pay with Zarinpal'
                   )}
                 </Button>
-
-                {selectedContract && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowContractManager(true)}
-                    className="w-full"
-                  >
-                    {language === 'fa' ? 'مدیریت قراردادها' : 'Manage Contracts'}
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>
