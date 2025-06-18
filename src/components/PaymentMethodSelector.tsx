@@ -28,7 +28,8 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
       descriptionFa: 'پرداخت با کارت‌های ایرانی',
       icon: CreditCard,
       currency: 'IRR',
-      logo: '💳'
+      logo: '💳',
+      disabled: true
     },
     {
       id: 'manual' as PaymentMethod,
@@ -38,7 +39,8 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
       descriptionFa: 'انتقال دستی کارت به کارت',
       icon: Building2,
       currency: 'IRR',
-      logo: '🏦'
+      logo: '🏦',
+      disabled: false
     },
     {
       id: 'nowpayments' as PaymentMethod,
@@ -48,7 +50,8 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
       descriptionFa: 'پرداخت با ارز دیجیتال',
       icon: Coins,
       currency: 'USD',
-      logo: '₿'
+      logo: '₿',
+      disabled: false
     },
     {
       id: 'stripe' as PaymentMethod,
@@ -58,7 +61,8 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
       descriptionFa: 'ویزا/مسترکارت (دلار)',
       icon: CreditCard,
       currency: 'USD',
-      logo: '💎'
+      logo: '💎',
+      disabled: false
     }
   ];
 
@@ -69,6 +73,13 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
     }
     return `${amount.toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`;
   };
+
+  // Auto-select manual payment if zarinpal was selected but is now disabled
+  React.useEffect(() => {
+    if (selectedMethod === 'zarinpal') {
+      onMethodChange('manual');
+    }
+  }, [selectedMethod, onMethodChange]);
 
   return (
     <div className="space-y-4">
@@ -83,37 +94,63 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
         <div className="grid gap-3">
           {paymentMethods.map((method) => {
             const Icon = method.icon;
+            const isDisabled = method.disabled;
+            
             return (
               <div key={method.id}>
                 <Label
                   htmlFor={method.id}
-                  className="cursor-pointer"
+                  className={`cursor-pointer ${isDisabled ? 'cursor-not-allowed' : ''}`}
                 >
-                  <Card className={`transition-all duration-200 hover:shadow-md ${
-                    selectedMethod === method.id 
+                  <Card className={`transition-all duration-200 ${
+                    isDisabled 
+                      ? 'opacity-50 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700' 
+                      : 'hover:shadow-md'
+                  } ${
+                    selectedMethod === method.id && !isDisabled
                       ? 'ring-2 ring-primary border-primary' 
                       : 'border-border'
                   }`}>
                     <CardContent className="p-4">
                       <div className="flex items-center space-x-3 space-x-reverse">
-                        <RadioGroupItem value={method.id} id={method.id} />
+                        <RadioGroupItem 
+                          value={method.id} 
+                          id={method.id} 
+                          disabled={isDisabled}
+                          className={isDisabled ? 'opacity-50' : ''}
+                        />
                         <div className="flex items-center gap-3 flex-1">
-                          <div className="text-2xl">{method.logo}</div>
+                          <div className={`text-2xl ${isDisabled ? 'grayscale' : ''}`}>
+                            {method.logo}
+                          </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">
+                              <span className={`font-medium ${isDisabled ? 'text-gray-400' : ''}`}>
                                 {language === 'fa' ? method.nameFa : method.nameEn}
                               </span>
                               <Badge variant="outline" className="text-xs">
                                 {method.currency}
                               </Badge>
+                              {isDisabled && (
+                                <Badge variant="destructive" className="text-xs">
+                                  {language === 'fa' ? 'غیرفعال' : 'Disabled'}
+                                </Badge>
+                              )}
                             </div>
-                            <p className="text-sm text-muted-foreground">
+                            <p className={`text-sm ${isDisabled ? 'text-gray-400' : 'text-muted-foreground'}`}>
                               {language === 'fa' ? method.descriptionFa : method.descriptionEn}
+                              {isDisabled && (
+                                <span className="block text-xs mt-1">
+                                  {language === 'fa' 
+                                    ? 'موقتاً غیرفعال - لطفاً روش دیگری انتخاب کنید' 
+                                    : 'Temporarily disabled - please choose another method'
+                                  }
+                                </span>
+                              )}
                             </p>
                           </div>
                           <div className="text-right">
-                            <span className="font-bold text-primary">
+                            <span className={`font-bold ${isDisabled ? 'text-gray-400' : 'text-primary'}`}>
                               {formatAmount(method.id)}
                             </span>
                           </div>
