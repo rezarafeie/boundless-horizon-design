@@ -67,7 +67,7 @@ serve(async (req) => {
       merchant_id: requestPayload.merchant_id.substring(0, 8) + '...'
     });
 
-    // Try multiple API endpoints with shorter timeouts
+    // Try multiple API endpoints with improved error handling
     const endpoints = [
       'https://api.zarinpal.com/pg/v4/payment/request.json',
       'https://www.zarinpal.com/pg/rest/WebGate/PaymentRequest.json'
@@ -78,14 +78,18 @@ serve(async (req) => {
     for (const endpoint of endpoints) {
       console.log(`Trying endpoint: ${endpoint}`);
       
+      // Declare timeout ID outside try block to ensure scope access
+      let timeoutId: number | undefined;
+      
       try {
         // Create abort controller with 3 second timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
+        timeoutId = setTimeout(() => {
           console.log(`Timeout after 3 seconds for ${endpoint}`);
           controller.abort();
         }, 3000);
 
+        const startTime = Date.now();
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
@@ -96,8 +100,14 @@ serve(async (req) => {
           signal: controller.signal
         });
 
-        clearTimeout(timeoutId);
-        console.log(`${endpoint} response status:`, response.status);
+        // Clear timeout on successful response
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+
+        const responseTime = Date.now() - startTime;
+        console.log(`${endpoint} response status: ${response.status} (${responseTime}ms)`);
 
         // Parse response
         let responseData;
@@ -107,7 +117,7 @@ serve(async (req) => {
           responseData = JSON.parse(responseText);
         } catch (parseError) {
           console.error(`Failed to parse response from ${endpoint}:`, parseError);
-          lastError = new Error(`Parse error from ${endpoint}`);
+          lastError = new Error(`Parse error from ${endpoint}: ${parseError.message}`);
           continue;
         }
 
@@ -124,7 +134,7 @@ serve(async (req) => {
           );
 
           const authority = responseData.data?.authority || 
-                          responseData.data?.payman_authority ||
+                          responseData.data?.Authority ||
                           responseData.Authority;
 
           if (isSuccess && authority) {
@@ -135,48 +145,69 @@ serve(async (req) => {
               success: true, 
               redirectUrl,
               authority,
-              endpoint: endpoint
+              endpoint: endpoint,
+              responseTime
             }), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
+          } else {
+            console.log(`${endpoint} returned non-success response:`, { isSuccess, authority, responseData });
           }
+        } else {
+          console.log(`${endpoint} returned HTTP error:`, response.status);
         }
 
         // If we get here, this endpoint didn't work, try the next one
-        lastError = new Error(`API error from ${endpoint}: ${response.status}`);
+        lastError = new Error(`API error from ${endpoint}: HTTP ${response.status}`);
         
       } catch (fetchError) {
-        clearTimeout(timeoutId);
+        // Ensure timeout is cleared in catch block
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+        
         console.error(`${endpoint} failed:`, fetchError.name, fetchError.message);
         lastError = fetchError;
         
         if (fetchError.name === 'AbortError') {
           console.log(`${endpoint} timed out after 3 seconds`);
+          lastError = new Error(`Timeout connecting to ${endpoint}`);
+        } else if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+          console.log(`${endpoint} network error - possibly unreachable`);
+          lastError = new Error(`Network error connecting to ${endpoint}`);
         }
         // Continue to next endpoint
       }
     }
 
     // If all endpoints failed
-    console.error('❌ All Zarinpal endpoints failed');
+    console.error('❌ All Zarinpal endpoints failed. Last error:', lastError?.message);
     
     return new Response(JSON.stringify({ 
       success: false, 
-      error: 'Unable to connect to payment gateway. Please try manual payment.',
+      error: 'Payment gateway temporarily unavailable. Please use manual payment.',
       errorCode: 'ALL_ENDPOINTS_FAILED',
-      lastError: lastError?.message
+      details: {
+        lastError: lastError?.message,
+        suggestion: 'Try manual payment or contact support'
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 502,
     });
 
   } catch (error) {
-    console.error('💥 CRITICAL ERROR:', error);
+    console.error('💥 CRITICAL ERROR in Zarinpal checkout:', error);
     
     return new Response(JSON.stringify({ 
       success: false, 
-      error: 'Internal server error',
-      errorCode: 'INTERNAL_ERROR'
+      error: 'Payment service error. Please try manual payment.',
+      errorCode: 'INTERNAL_ERROR',
+      details: {
+        message: error.message,
+        suggestion: 'Use manual payment option'
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,

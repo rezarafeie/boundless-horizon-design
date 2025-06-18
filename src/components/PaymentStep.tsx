@@ -231,16 +231,16 @@ const PaymentStep = ({
         
         // Immediate fallback to manual payment
         toast({
-          title: language === 'fa' ? 'مشکل در درگاه پرداخت' : 'Payment Gateway Issue',
+          title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switching to Manual Payment',
           description: language === 'fa' ? 
-            'درگاه پرداخت در دسترس نیست. به پرداخت دستی تغییر می‌یابد...' : 
+            'درگاه پرداخت در دسترس نیست. به پرداخت دستی تغییر می‌یابید...' : 
             'Payment gateway unavailable. Switching to manual payment...',
           variant: 'destructive'
         });
 
         setTimeout(() => {
           setSelectedPaymentMethod('manual');
-        }, 2000);
+        }, 1500);
         
         return;
       }
@@ -252,18 +252,22 @@ const PaymentStep = ({
         console.error('Zarinpal function error:', error);
         debugLog('error', 'Function returned error', error);
         
-        // Immediate fallback to manual payment
+        // Check if it's a timeout or connection error
+        const isConnectionError = error.name === 'FunctionsHttpError' || 
+                                error.message?.includes('timeout') ||
+                                error.message?.includes('network');
+        
         toast({
-          title: language === 'fa' ? 'خطا در پرداخت آنلاین' : 'Online Payment Error',
+          title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switching to Manual Payment',
           description: language === 'fa' ? 
-            'درگاه پرداخت آنلاین کار نمی‌کند. به پرداخت دستی تغییر می‌یابد...' : 
+            'درگاه پرداخت آنلاین کار نمی‌کند. به پرداخت دستی تغییر می‌یابید...' : 
             'Online payment is not working. Switching to manual payment...',
           variant: 'destructive'
         });
 
         setTimeout(() => {
           setSelectedPaymentMethod('manual');
-        }, 2000);
+        }, 1500);
 
         return;
       }
@@ -290,16 +294,16 @@ const PaymentStep = ({
         
         // Immediate fallback to manual payment
         toast({
-          title: language === 'fa' ? 'خطا در پرداخت آنلاین' : 'Online Payment Error',
+          title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switching to Manual Payment',
           description: language === 'fa' ? 
-            'درگاه پرداخت کار نمی‌کند. به پرداخت دستی تغییر می‌یابد...' : 
-            'Payment gateway not working. Switching to manual payment...',
+            'درگاه پرداخت مشکل دارد. به پرداخت دستی تغییر می‌یابید...' : 
+            'Payment gateway has issues. Switching to manual payment...',
           variant: 'destructive'
         });
 
         setTimeout(() => {
           setSelectedPaymentMethod('manual');
-        }, 2000);
+        }, 1500);
       }
 
     } catch (error) {
@@ -310,16 +314,16 @@ const PaymentStep = ({
       });
       
       toast({
-        title: language === 'fa' ? 'خطا در پرداخت آنلاین' : 'Online Payment Error',
+        title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switching to Manual Payment',
         description: language === 'fa' ? 
-          'پرداخت آنلاین امکان‌پذیر نیست. به پرداخت دستی تغییر می‌یابد...' : 
+          'پرداخت آنلاین امکان‌پذیر نیست. به پرداخت دستی تغییر می‌یابید...' : 
           'Online payment not possible. Switching to manual payment...',
         variant: 'destructive'
       });
 
       setTimeout(() => {
         setSelectedPaymentMethod('manual');
-      }, 2000);
+      }, 1500);
     } finally {
       setIsSubmitting(false);
     }
