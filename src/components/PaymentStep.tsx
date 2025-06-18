@@ -215,7 +215,7 @@ const PaymentStep = ({
 
       debugLog('info', 'Calling Zarinpal checkout function', { subscriptionId, amount: finalPrice });
       
-      // Call Zarinpal function with improved error handling
+      // Call Zarinpal function with timeout handling
       let functionResponse;
       try {
         functionResponse = await supabase.functions.invoke('zarinpal-checkout', {
@@ -229,29 +229,31 @@ const PaymentStep = ({
         console.error('Supabase function invoke error:', invokeError);
         debugLog('error', 'Function invocation failed', invokeError);
         
-        throw new Error(`Failed to connect to payment service: ${invokeError.message}`);
+        throw new Error('خطا در اتصال به سرویس پرداخت');
       }
 
       const { data, error } = functionResponse;
       debugLog('info', 'Zarinpal function response', { data, error });
 
-      // Handle function errors
       if (error) {
         console.error('Zarinpal function error:', error);
         debugLog('error', 'Function returned error', error);
         
-        let errorMessage = 'Payment service error';
+        let errorMessage = 'خطا در پرداخت';
         
-        if (error.message) {
-          errorMessage = error.message;
+        if (error.name === 'FunctionsHttpError') {
+          errorMessage = 'خطا در سرویس پرداخت. لطفا دوباره تلاش کنید.';
+        } else if (error.name === 'FunctionsFetchError') {
+          errorMessage = 'خطا در اتصال به سرویس پرداخت.';
         } else if (typeof error === 'string') {
           errorMessage = error;
+        } else if (error.message) {
+          errorMessage = error.message;
         }
         
         throw new Error(errorMessage);
       }
 
-      // Handle successful response
       if (data?.success && data?.redirectUrl) {
         debugLog('success', 'Zarinpal checkout successful, redirecting', { 
           redirectUrl: data.redirectUrl,
@@ -259,31 +261,29 @@ const PaymentStep = ({
         });
         
         toast({
-          title: language === 'fa' ? 'درحال انتقال به درگاه پرداخت' : 'Redirecting to Payment Gateway',
+          title: language === 'fa' ? 'انتقال به درگاه پرداخت' : 'Redirecting to Payment Gateway',
           description: language === 'fa' ? 
             'لطفا صبر کنید...' : 
             'Please wait...',
         });
 
-        // Redirect to payment gateway
         setTimeout(() => {
           window.location.href = data.redirectUrl;
         }, 1000);
 
       } else {
-        // Handle failed response
-        debugLog('error', 'Invalid response - no redirect URL', data);
+        debugLog('error', 'Invalid response from payment gateway', data);
         
-        let errorMessage = 'Failed to get payment gateway URL';
+        let errorMessage = 'خطا در ایجاد پرداخت';
         
-        if (data?.error) {
+        if (data?.errorCode === 'TIMEOUT') {
+          errorMessage = 'زمان اتصال به درگاه پرداخت تمام شد. لطفا دوباره تلاش کنید.';
+        } else if (data?.errorCode === 'CONNECTION_ERROR') {
+          errorMessage = 'خطا در اتصال به درگاه پرداخت. لطفا اتصال اینترنت خود را بررسی کنید.';
+        } else if (data?.errorCode === 'PAYMENT_REJECTED') {
+          errorMessage = 'درخواست پرداخت رد شد. لطفا اطلاعات را بررسی کنید.';
+        } else if (data?.error) {
           errorMessage = data.error;
-        } else if (data?.zarinpalResponse?.errors) {
-          errorMessage = Array.isArray(data.zarinpalResponse.errors) ? 
-            data.zarinpalResponse.errors.join(', ') : 
-            String(data.zarinpalResponse.errors);
-        } else if (data?.zarinpalResponse?.message) {
-          errorMessage = data.zarinpalResponse.message;
         }
         
         throw new Error(errorMessage);
@@ -296,26 +296,9 @@ const PaymentStep = ({
         stack: error.stack 
       });
       
-      // User-friendly error messages
-      let userMessage = error?.message || 'Payment processing failed';
-      
-      if (userMessage.includes('Failed to connect to payment service')) {
-        userMessage = language === 'fa' ? 
-          'خطا در اتصال به سرویس پرداخت. لطفا دوباره تلاش کنید.' :
-          'Connection error to payment service. Please try again.';
-      } else if (userMessage.includes('merchant') || userMessage.includes('configuration')) {
-        userMessage = language === 'fa' ? 
-          'خطا در تنظیمات درگاه پرداخت. لطفا با پشتیبانی تماس بگیرید.' :
-          'Payment gateway configuration error. Please contact support.';
-      } else if (userMessage.includes('network') || userMessage.includes('fetch')) {
-        userMessage = language === 'fa' ? 
-          'خطا در اتصال شبکه. لطفا اتصال اینترنت خود را بررسی کنید.' :
-          'Network connection error. Please check your internet connection.';
-      }
-      
       toast({
         title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
-        description: userMessage,
+        description: error?.message || (language === 'fa' ? 'خطا در پردازش پرداخت' : 'Payment processing failed'),
         variant: 'destructive'
       });
     } finally {

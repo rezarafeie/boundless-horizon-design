@@ -14,12 +14,8 @@ serve(async (req) => {
 
   try {
     console.log('=== ZARINPAL CHECKOUT FUNCTION STARTED ===');
-    console.log('Request method:', req.method);
-    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
     
-    // Validate request method
     if (req.method !== 'POST') {
-      console.error('Invalid request method:', req.method);
       return new Response(JSON.stringify({ 
         success: false, 
         error: 'Method not allowed' 
@@ -29,29 +25,11 @@ serve(async (req) => {
       });
     }
 
-    // Parse request body with error handling
-    let requestBody;
-    try {
-      const bodyText = await req.text();
-      console.log('Raw request body:', bodyText);
-      requestBody = JSON.parse(bodyText);
-    } catch (parseError) {
-      console.error('Failed to parse request body:', parseError);
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'Invalid JSON in request body' 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      });
-    }
+    // Parse request body
+    const { amount, subscriptionId, description } = await req.json();
+    console.log('Request data:', { amount, subscriptionId, description });
 
-    const { amount, subscriptionId, description } = requestBody;
-    console.log('Parsed request data:', { amount, subscriptionId, description });
-
-    // Validate required fields
     if (!amount || !subscriptionId) {
-      console.error('Missing required fields:', { amount: !!amount, subscriptionId: !!subscriptionId });
       return new Response(JSON.stringify({ 
         success: false, 
         error: 'Amount and subscription ID are required' 
@@ -61,29 +39,25 @@ serve(async (req) => {
       });
     }
 
-    // Check environment variables
+    // Check merchant ID
     const merchantId = Deno.env.get('ZARINPAL_MERCHANT_ID');
-    console.log('Environment check:', {
-      merchantIdExists: !!merchantId,
-      merchantIdLength: merchantId?.length || 0,
-      allEnvVars: Object.keys(Deno.env.toObject()).filter(key => key.includes('ZARINPAL'))
-    });
-
     if (!merchantId) {
-      console.error('ZARINPAL_MERCHANT_ID environment variable not found');
+      console.error('ZARINPAL_MERCHANT_ID not configured');
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Payment gateway configuration error' 
+        error: 'Payment gateway not configured' 
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
       });
     }
 
-    // Prepare Zarinpal request
-    const zarinpalRequest = {
+    console.log('Merchant ID configured:', merchantId.substring(0, 8) + '...');
+
+    // Prepare request payload
+    const requestPayload = {
       merchant_id: merchantId,
-      amount: amount,
+      amount: Number(amount),
       description: description || `VPN Subscription Payment`,
       callback_url: `https://bnets.co/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`,
       metadata: {
@@ -91,102 +65,108 @@ serve(async (req) => {
       }
     };
 
-    console.log('Zarinpal request payload:', zarinpalRequest);
+    console.log('Sending request to Zarinpal with payload:', {
+      ...requestPayload,
+      merchant_id: requestPayload.merchant_id.substring(0, 8) + '...'
+    });
 
-    // Make request to Zarinpal with timeout and proper error handling
-    let zarinpalResponse;
+    // Create abort controller with 15 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log('Request timeout - aborting after 15 seconds');
+      controller.abort();
+    }, 15000);
+
+    let response;
     try {
-      console.log('Sending request to Zarinpal API...');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      zarinpalResponse = await fetch('https://api.zarinpal.com/pg/v4/payment/request.json', {
+      // Make request to Zarinpal API
+      response = await fetch('https://api.zarinpal.com/pg/v4/payment/request.json', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'User-Agent': 'VPN-Service/1.0'
         },
-        body: JSON.stringify(zarinpalRequest),
+        body: JSON.stringify(requestPayload),
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
-      console.log('Zarinpal API response status:', zarinpalResponse.status);
-      console.log('Zarinpal API response headers:', Object.fromEntries(zarinpalResponse.headers.entries()));
+      console.log('Zarinpal API response status:', response.status);
 
     } catch (fetchError) {
-      console.error('Failed to fetch from Zarinpal:', fetchError);
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'Failed to connect to payment gateway',
-        details: fetchError.message
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      });
-    }
+      clearTimeout(timeoutId);
+      console.error('Zarinpal API request failed:', fetchError.name, fetchError.message);
 
-    // Parse Zarinpal response
-    let responseData;
-    try {
-      const responseText = await zarinpalResponse.text();
-      console.log('Zarinpal raw response:', responseText);
-      responseData = JSON.parse(responseText);
-      console.log('Zarinpal parsed response:', responseData);
-    } catch (parseError) {
-      console.error('Failed to parse Zarinpal response:', parseError);
+      if (fetchError.name === 'AbortError') {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'Payment gateway timeout. Please try again.',
+          errorCode: 'TIMEOUT'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 408,
+        });
+      }
+
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Invalid response from payment gateway' 
+        error: 'Unable to connect to payment gateway. Please try again.',
+        errorCode: 'CONNECTION_ERROR'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 502,
       });
     }
 
-    // Check for successful response
-    if (zarinpalResponse.ok && responseData) {
-      let isSuccess = false;
-      let authority = null;
+    // Parse response
+    let responseData;
+    try {
+      const responseText = await response.text();
+      console.log('Zarinpal raw response:', responseText);
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Zarinpal response:', parseError);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Invalid response from payment gateway',
+        errorCode: 'PARSE_ERROR'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 502,
+      });
+    }
 
-      // Check multiple success conditions
-      if (responseData.data && responseData.data.code === 100) {
-        isSuccess = true;
-        authority = responseData.data.authority;
-        console.log('✅ Success: data.code === 100');
-      } else if (responseData.code === 100) {
-        isSuccess = true;
-        authority = responseData.authority;
-        console.log('✅ Success: code === 100');
-      } else if (responseData.status === 'OK' || responseData.Status === 'OK') {
-        isSuccess = true;
-        authority = responseData.authority || responseData.Authority;
-        console.log('✅ Success: status === OK');
-      }
+    console.log('Zarinpal parsed response:', responseData);
+
+    // Check for successful response
+    if (response.ok) {
+      // Check multiple success patterns
+      const isSuccess = (
+        (responseData.data && responseData.data.code === 100) ||
+        (responseData.code === 100) ||
+        (responseData.status === 'OK') ||
+        (responseData.Status === 'OK')
+      );
+
+      const authority = responseData.data?.authority || responseData.authority || responseData.Authority;
 
       if (isSuccess && authority) {
         const redirectUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
-        console.log('✅ PAYMENT REQUEST SUCCESSFUL');
-        console.log('Authority:', authority);
-        console.log('Redirect URL:', redirectUrl);
+        console.log('✅ SUCCESS - Payment request created:', { authority, redirectUrl });
 
         return new Response(JSON.stringify({ 
           success: true, 
           redirectUrl,
-          authority,
-          zarinpalResponse: responseData
+          authority
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       } else {
-        console.error('❌ Payment request failed - no authority');
-        console.log('Response analysis:', {
-          hasData: !!responseData.data,
-          dataCode: responseData.data?.code,
-          directCode: responseData.code,
-          status: responseData.status,
-          authority: responseData.authority,
-          errors: responseData.errors
+        console.log('❌ Payment request failed - response analysis:', {
+          isSuccess,
+          authority,
+          responseData
         });
 
         const errorMessage = responseData.errors?.join(', ') || 
@@ -196,37 +176,36 @@ serve(async (req) => {
         return new Response(JSON.stringify({ 
           success: false, 
           error: errorMessage,
-          zarinpalResponse: responseData
+          errorCode: 'PAYMENT_REJECTED'
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400,
         });
       }
     } else {
-      console.error('❌ Zarinpal API error');
+      console.error('❌ Zarinpal API returned error status:', response.status);
+      
       const errorMessage = responseData?.errors?.join(', ') || 
                          responseData?.message || 
-                         `HTTP ${zarinpalResponse.status}`;
+                         `HTTP ${response.status}`;
       
       return new Response(JSON.stringify({ 
         success: false, 
         error: `Payment gateway error: ${errorMessage}`,
-        zarinpalResponse: responseData
+        errorCode: 'API_ERROR'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: zarinpalResponse.status,
+        status: response.status,
       });
     }
 
   } catch (error) {
-    console.error('💥 ZARINPAL CHECKOUT CRITICAL ERROR:', error);
-    console.log('Error stack:', error.stack);
+    console.error('💥 CRITICAL ERROR:', error);
     
     return new Response(JSON.stringify({ 
       success: false, 
       error: 'Internal server error',
-      details: error.message,
-      stack: error.stack
+      errorCode: 'INTERNAL_ERROR'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
