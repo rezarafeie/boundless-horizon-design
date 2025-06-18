@@ -215,28 +215,49 @@ const PaymentStep = ({
 
       debugLog('info', 'Calling Zarinpal checkout function', { subscriptionId, amount: finalPrice });
       
-      const { data, error } = await supabase.functions.invoke('zarinpal-checkout', {
-        body: {
-          amount: finalPrice,
-          subscriptionId,
-          description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`
-        }
-      });
-
-      debugLog('info', 'Zarinpal function response', { data, error });
-
-      if (error) {
-        debugLog('error', 'Zarinpal checkout function error', error);
-        throw new Error(`Function error: ${error.message}`);
+      // Call Zarinpal function with improved error handling
+      let functionResponse;
+      try {
+        functionResponse = await supabase.functions.invoke('zarinpal-checkout', {
+          body: {
+            amount: finalPrice,
+            subscriptionId,
+            description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`
+          }
+        });
+      } catch (invokeError) {
+        console.error('Supabase function invoke error:', invokeError);
+        debugLog('error', 'Function invocation failed', invokeError);
+        
+        throw new Error(`Failed to connect to payment service: ${invokeError.message}`);
       }
 
+      const { data, error } = functionResponse;
+      debugLog('info', 'Zarinpal function response', { data, error });
+
+      // Handle function errors
+      if (error) {
+        console.error('Zarinpal function error:', error);
+        debugLog('error', 'Function returned error', error);
+        
+        let errorMessage = 'Payment service error';
+        
+        if (error.message) {
+          errorMessage = error.message;
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      // Handle successful response
       if (data?.success && data?.redirectUrl) {
         debugLog('success', 'Zarinpal checkout successful, redirecting', { 
           redirectUrl: data.redirectUrl,
           authority: data.authority 
         });
         
-        // Show success message before redirect
         toast({
           title: language === 'fa' ? 'درحال انتقال به درگاه پرداخت' : 'Redirecting to Payment Gateway',
           description: language === 'fa' ? 
@@ -244,26 +265,25 @@ const PaymentStep = ({
             'Please wait...',
         });
 
-        // Small delay to show the toast, then redirect
+        // Redirect to payment gateway
         setTimeout(() => {
           window.location.href = data.redirectUrl;
         }, 1000);
 
       } else {
-        debugLog('error', 'Invalid Zarinpal response - no redirect URL', data);
+        // Handle failed response
+        debugLog('error', 'Invalid response - no redirect URL', data);
         
         let errorMessage = 'Failed to get payment gateway URL';
         
         if (data?.error) {
           errorMessage = data.error;
-        } else if (data?.zarinpalResponse) {
-          // Try to extract error from Zarinpal response
-          const zResponse = data.zarinpalResponse;
-          if (zResponse.errors && Array.isArray(zResponse.errors)) {
-            errorMessage = zResponse.errors.join(', ');
-          } else if (zResponse.message) {
-            errorMessage = zResponse.message;
-          }
+        } else if (data?.zarinpalResponse?.errors) {
+          errorMessage = Array.isArray(data.zarinpalResponse.errors) ? 
+            data.zarinpalResponse.errors.join(', ') : 
+            String(data.zarinpalResponse.errors);
+        } else if (data?.zarinpalResponse?.message) {
+          errorMessage = data.zarinpalResponse.message;
         }
         
         throw new Error(errorMessage);
@@ -276,22 +296,26 @@ const PaymentStep = ({
         stack: error.stack 
       });
       
-      let userFriendlyMessage = error?.message || 'Payment processing failed';
+      // User-friendly error messages
+      let userMessage = error?.message || 'Payment processing failed';
       
-      // Make error messages more user-friendly
-      if (userFriendlyMessage.includes('merchant')) {
-        userFriendlyMessage = language === 'fa' ? 
+      if (userMessage.includes('Failed to connect to payment service')) {
+        userMessage = language === 'fa' ? 
+          'خطا در اتصال به سرویس پرداخت. لطفا دوباره تلاش کنید.' :
+          'Connection error to payment service. Please try again.';
+      } else if (userMessage.includes('merchant') || userMessage.includes('configuration')) {
+        userMessage = language === 'fa' ? 
           'خطا در تنظیمات درگاه پرداخت. لطفا با پشتیبانی تماس بگیرید.' :
           'Payment gateway configuration error. Please contact support.';
-      } else if (userFriendlyMessage.includes('network') || userFriendlyMessage.includes('fetch')) {
-        userFriendlyMessage = language === 'fa' ? 
-          'خطا در اتصال به درگاه پرداخت. لطفا دوباره تلاش کنید.' :
-          'Connection error to payment gateway. Please try again.';
+      } else if (userMessage.includes('network') || userMessage.includes('fetch')) {
+        userMessage = language === 'fa' ? 
+          'خطا در اتصال شبکه. لطفا اتصال اینترنت خود را بررسی کنید.' :
+          'Network connection error. Please check your internet connection.';
       }
       
       toast({
         title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
-        description: userFriendlyMessage,
+        description: userMessage,
         variant: 'destructive'
       });
     } finally {
