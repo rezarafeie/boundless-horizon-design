@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -48,6 +47,7 @@ const MultiStepSubscriptionForm = () => {
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [result, setResult] = useState<SubscriptionResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [subscriptionId, setSubscriptionId] = useState<string>('');
 
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -88,7 +88,15 @@ const MultiStepSubscriptionForm = () => {
     }
   };
 
-  const handlePaymentSuccess = (subscriptionResult: SubscriptionResponse) => {
+  const handlePaymentSuccess = (subscriptionUrl?: string) => {
+    // Create a mock SubscriptionResponse object since we only have the URL
+    const subscriptionResult: SubscriptionResponse = {
+      username: formData.username,
+      subscription_url: subscriptionUrl || '',
+      expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
+      data_limit: formData.dataLimit
+    };
+    
     setResult(subscriptionResult);
     setCurrentStep(4);
   };
@@ -118,12 +126,10 @@ const MultiStepSubscriptionForm = () => {
       case 3:
         return (
           <PaymentStep
-            formData={formData}
-            appliedDiscount={appliedDiscount}
+            amount={formData.selectedPlan?.price || 0}
+            subscriptionId={subscriptionId}
             onSuccess={handlePaymentSuccess}
-            isSubmitting={isSubmitting}
-            setIsSubmitting={setIsSubmitting}
-            onDiscountApply={setAppliedDiscount}
+            onBack={handlePrevious}
           />
         );
       case 4:

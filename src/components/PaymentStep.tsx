@@ -145,7 +145,6 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
       {selectedMethod === 'nowpayments' && (
         <CryptoPaymentForm
           amount={amount}
-          subscriptionId={subscriptionId}
           onSuccess={onSuccess}
         />
       )}
@@ -153,8 +152,9 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
       {selectedMethod === 'stripe' && (
         <StripePaymentForm
           amount={amount}
-          subscriptionId={subscriptionId}
-          onSuccess={onSuccess}
+          subscriptionData={{}} 
+          onPaymentSuccess={() => onSuccess()}
+          isSubmitting={isSubmitting}
         />
       )}
     </div>
