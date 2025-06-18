@@ -25,88 +25,114 @@ serve(async (req) => {
       });
     }
 
-    // Simple test payload
+    // Test payload
     const testPayload = {
       merchant_id: merchantId,
-      amount: 1000, // 1000 Toman test amount
+      amount: 1000,
       description: "Test Payment",
       callback_url: "https://bnets.co/test"
     };
 
-    console.log('Testing Zarinpal connectivity with minimal payload');
+    console.log('Testing Zarinpal connectivity');
 
-    // Test with 5-second timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log('Test timeout - aborting after 5 seconds');
-      controller.abort();
-    }, 5000);
+    // Test multiple endpoints
+    const endpoints = [
+      'https://api.zarinpal.com/pg/v4/payment/request.json',
+      'https://www.zarinpal.com/pg/rest/WebGate/PaymentRequest.json',
+      'https://sandbox.zarinpal.com/pg/rest/WebGate/PaymentRequest.json'
+    ];
 
-    let response;
-    const startTime = Date.now();
+    const results = [];
 
-    try {
-      response = await fetch('https://api.zarinpal.com/pg/v4/payment/request.json', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(testPayload),
-        signal: controller.signal
-      });
+    for (const endpoint of endpoints) {
+      console.log(`Testing endpoint: ${endpoint}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log(`Test timeout for ${endpoint} after 3 seconds`);
+        controller.abort();
+      }, 3000);
 
-      clearTimeout(timeoutId);
-      const responseTime = Date.now() - startTime;
-      console.log(`✅ Zarinpal API responded in ${responseTime}ms with status:`, response.status);
+      let result = {
+        endpoint,
+        success: false,
+        error: null,
+        responseTime: 0,
+        status: null
+      };
 
-      const responseText = await response.text();
-      console.log('Raw response:', responseText);
-
-      let responseData;
       try {
-        responseData = JSON.parse(responseText);
-      } catch (parseError) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'Invalid JSON response',
-          details: { responseText, parseError: parseError.message, responseTime }
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        const startTime = Date.now();
+        
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(testPayload),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
+        result.responseTime = Date.now() - startTime;
+        result.status = response.status;
+
+        console.log(`${endpoint} responded in ${result.responseTime}ms with status: ${response.status}`);
+
+        if (response.ok || response.status === 422) { // 422 might be expected for test data
+          result.success = true;
+          
+          try {
+            const responseText = await response.text();
+            const responseData = JSON.parse(responseText);
+            result.data = responseData;
+          } catch (parseError) {
+            result.error = 'Parse error';
+          }
+        } else {
+          result.error = `HTTP ${response.status}`;
+        }
+
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        result.responseTime = Date.now() - startTime;
+        
+        if (fetchError.name === 'AbortError') {
+          result.error = 'Timeout (3s)';
+        } else {
+          result.error = fetchError.message;
+        }
+        
+        console.error(`${endpoint} test failed:`, fetchError.name, fetchError.message);
       }
 
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: 'Zarinpal API is reachable',
-        details: {
-          responseTime,
-          status: response.status,
-          responseData,
-          merchantIdConfigured: true
-        }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      const responseTime = Date.now() - startTime;
-      
-      console.error('❌ Zarinpal test failed:', fetchError.name, fetchError.message);
-
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: `Connection failed: ${fetchError.message}`,
-        details: {
-          errorName: fetchError.name,
-          responseTime,
-          merchantIdConfigured: true
-        }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      results.push(result);
     }
+
+    // Find working endpoints
+    const workingEndpoints = results.filter(r => r.success);
+    const fastestEndpoint = workingEndpoints.length > 0 ? 
+      workingEndpoints.reduce((prev, current) => 
+        (prev.responseTime < current.responseTime) ? prev : current
+      ) : null;
+
+    return new Response(JSON.stringify({ 
+      success: workingEndpoints.length > 0, 
+      message: workingEndpoints.length > 0 ? 
+        `Found ${workingEndpoints.length} working endpoint(s)` : 
+        'No working endpoints found',
+      details: {
+        merchantIdConfigured: true,
+        totalEndpoints: endpoints.length,
+        workingEndpoints: workingEndpoints.length,
+        fastestEndpoint: fastestEndpoint?.endpoint,
+        fastestResponseTime: fastestEndpoint?.responseTime,
+        results
+      }
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error) {
     console.error('💥 TEST FUNCTION ERROR:', error);
