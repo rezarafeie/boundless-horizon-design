@@ -6,6 +6,7 @@ import PaymentMethodSelector, { PaymentMethod } from '@/components/PaymentMethod
 import ManualPaymentForm from '@/components/ManualPaymentForm';
 import CryptoPaymentForm from '@/components/CryptoPaymentForm';
 import StripePaymentForm from '@/components/StripePaymentForm';
+import ZarinpalPayment from '@/components/ZarinpalPayment';
 import DiscountField from '@/components/DiscountField';
 import PaymentDebugPanel from '@/components/PaymentDebugPanel';
 import { DiscountCode } from '@/types/subscription';
@@ -191,35 +192,12 @@ const PaymentStep = ({
     debugLog('success', 'Stripe payment initiated', { sessionId });
   };
 
-  const handleZarinpalPayment = async () => {
+  const handleZarinpalPaymentStart = async () => {
     setIsSubmitting(true);
-    debugLog('info', 'Zarinpal Payman contract started', { amount: finalPrice });
+    debugLog('info', 'Zarinpal payment started', { amount: finalPrice, mobile: formData.mobile });
     
     try {
-      // Create Payman contract request using edge function
-      const { data: paymentData, error: paymentError } = await supabase.functions.invoke('zarinpal-payment-request', {
-        body: {
-          amount: finalPrice * 10, // Convert Toman to Rial
-          description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`,
-          callback_url: `${window.location.origin}/payment-success`,
-          mobile: formData.mobile
-        }
-      });
-
-      if (paymentError) {
-        throw new Error(paymentError.message || 'Failed to create Payman contract');
-      }
-
-      if (!paymentData.success || !paymentData.payman_authority) {
-        throw new Error(paymentData.error || 'Failed to get Payman authority');
-      }
-
-      debugLog('success', 'Payman contract created', { 
-        payman_authority: paymentData.payman_authority,
-        gateway_url: paymentData.gateway_url 
-      });
-
-      // Store payment info in subscription
+      // Create subscription first
       const subscriptionData = {
         username: formData.username,
         mobile: formData.mobile,
@@ -236,29 +214,13 @@ const PaymentStep = ({
         throw new Error('Failed to create subscription');
       }
 
-      // Update subscription with Zarinpal Payman authority
-      const { error: updateError } = await supabase
-        .from('subscriptions')
-        .update({
-          zarinpal_authority: paymentData.payman_authority,
-          status: 'pending'
-        })
-        .eq('id', subscriptionId);
-
-      if (updateError) {
-        console.error('Failed to update subscription with Payman authority:', updateError);
-      }
-
-      // Redirect to Zarinpal Payman gateway
-      debugLog('info', 'Redirecting to Payman gateway', { gateway_url: paymentData.gateway_url });
-      window.location.href = paymentData.gateway_url;
-
+      debugLog('success', 'Subscription created for Zarinpal payment', { subscriptionId });
+      
+      // The ZarinpalPayment component will handle the actual payment and redirect
+      
     } catch (error) {
-      console.error('Zarinpal Payman contract error:', error);
-      debugLog('error', 'Zarinpal Payman contract failed', { 
-        error: error.message,
-        stack: error.stack 
-      });
+      console.error('Zarinpal payment setup error:', error);
+      debugLog('error', 'Zarinpal payment setup failed', error);
       
       toast({
         title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Failed',
@@ -267,7 +229,6 @@ const PaymentStep = ({
           `Error: ${error.message}`,
         variant: 'destructive'
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -402,47 +363,12 @@ const PaymentStep = ({
       case 'zarinpal':
       default:
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {language === 'fa' ? 'پرداخت زرین‌پال' : 'Zarinpal Payment'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center space-y-4">
-                <div className="text-2xl font-bold text-primary">
-                  {finalPrice.toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}
-                </div>
-                
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                  <div className="flex items-center justify-center gap-4 text-2xl mb-2">
-                    <span>💳</span>
-                    <span>🔒</span>
-                    <span>⚡</span>
-                  </div>
-                  <p className="text-center text-sm text-blue-600 dark:text-blue-400">
-                    {language === 'fa' ? 
-                      'پرداخت امن از طریق قرارداد مستقیم زرین‌پال' : 
-                      'Secure payment through Zarinpal direct contract'
-                    }
-                  </p>
-                </div>
-
-                <Button
-                  onClick={handleZarinpalPayment}
-                  disabled={isSubmitting}
-                  className="w-full"
-                  size="lg"
-                >
-                  {isSubmitting ? (
-                    language === 'fa' ? 'در حال ایجاد قرارداد...' : 'Creating Contract...'
-                  ) : (
-                    language === 'fa' ? 'ایجاد قرارداد پرداخت' : 'Create Payment Contract'
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <ZarinpalPayment
+            amount={finalPrice}
+            mobile={formData.mobile}
+            onPaymentStart={handleZarinpalPaymentStart}
+            isSubmitting={isSubmitting}
+          />
         );
     }
   };

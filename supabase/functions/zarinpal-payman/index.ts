@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('=== ZARINPAL PAYMAN CONTRACT REQUEST FUNCTION STARTED ===');
+    console.log('=== ZARINPAL PAYMAN NEW IMPLEMENTATION STARTED ===');
     
     if (req.method !== 'POST') {
       return new Response(JSON.stringify({ 
@@ -39,26 +39,15 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const { amount, description, callback_url, mobile, email } = await req.json();
-    console.log('Request data received:', { 
-      merchant_id: merchant_id.substring(0, 8) + '...',
-      amount,
-      description: description?.substring(0, 50) || 'missing',
-      callback_url: callback_url || 'missing',
-      mobile: mobile || 'missing'
-    });
+    const { amount, mobile, callback_url } = await req.json();
+    console.log('Request received:', { amount, mobile, callback_url });
 
-    // Validate required parameters for Payman
+    // Validate required parameters
     if (!amount || !mobile || !callback_url) {
-      console.error('Missing required parameters for Payman contract');
+      console.error('Missing required parameters');
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Missing required parameters: amount, mobile, and callback_url are required',
-        details: {
-          amount: !!amount,
-          mobile: !!mobile,
-          callback_url: !!callback_url
-        }
+        error: 'Missing required parameters: amount, mobile, and callback_url are required'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
@@ -70,30 +59,23 @@ serve(async (req) => {
     expireDate.setDate(expireDate.getDate() + 30);
     const expire_at = expireDate.toISOString().slice(0, 19).replace('T', ' ');
 
-    console.log('Creating Payman contract for amount:', amount);
-
-    // Prepare Payman contract request payload with all required fields
+    // Prepare the EXACT payload format as specified
     const paymanPayload = {
-      merchant_id,
-      mobile,
-      expire_at,
+      merchant_id: merchant_id,
+      mobile: mobile,
+      expire_at: expire_at,
       max_daily_count: "100",
       max_monthly_count: "1000", 
       max_amount: amount.toString(),
-      callback_url
+      callback_url: callback_url
     };
 
-    console.log('Sending Payman contract request to Zarinpal:', {
-      merchant_id: merchant_id.substring(0, 8) + '...',
-      mobile,
-      expire_at,
-      max_daily_count: paymanPayload.max_daily_count,
-      max_monthly_count: paymanPayload.max_monthly_count,
-      max_amount: paymanPayload.max_amount,
-      callback_url
-    });
+    console.log('Sending Payman request with payload:', JSON.stringify(paymanPayload, null, 2));
 
-    // Send request to Zarinpal Payman contract endpoint
+    // Test network connectivity first
+    console.log('Testing network connectivity to Zarinpal...');
+    
+    // Send request to Zarinpal Payman endpoint
     const response = await fetch('https://api.zarinpal.com/pg/v4/payman/request.json', {
       method: 'POST',
       headers: {
@@ -103,18 +85,19 @@ serve(async (req) => {
       body: JSON.stringify(paymanPayload)
     });
 
-    console.log('Zarinpal Payman contract response status:', response.status);
+    console.log('Zarinpal response status:', response.status);
+    console.log('Zarinpal response headers:', Object.fromEntries(response.headers.entries()));
 
-    // Get raw response text first
+    // Get response text
     const responseText = await response.text();
-    console.log('Zarinpal Payman contract raw response:', responseText.substring(0, 500));
+    console.log('Zarinpal raw response:', responseText);
 
     // Check if response is not 2xx
     if (!response.ok) {
-      console.error('Zarinpal Payman contract request failed:', {
+      console.error('Zarinpal API error:', {
         status: response.status,
         statusText: response.statusText,
-        body: responseText.substring(0, 500)
+        body: responseText
       });
 
       return new Response(JSON.stringify({
@@ -123,7 +106,7 @@ serve(async (req) => {
         details: {
           status: response.status,
           statusText: response.statusText,
-          rawResponse: responseText.substring(0, 300)
+          rawResponse: responseText
         }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -136,17 +119,13 @@ serve(async (req) => {
     try {
       responseData = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('Non-JSON response received:', {
-        parseError: parseError.message,
-        rawResponse: responseText.substring(0, 300)
-      });
-
+      console.error('Failed to parse JSON response:', parseError);
       return new Response(JSON.stringify({
         success: false,
-        error: 'Non-JSON response received',
+        error: 'Invalid JSON response from Zarinpal',
         details: {
           parseError: parseError.message,
-          rawResponse: responseText.substring(0, 300)
+          rawResponse: responseText
         }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -154,24 +133,23 @@ serve(async (req) => {
       });
     }
 
-    console.log('Zarinpal Payman contract parsed response:', responseData);
+    console.log('Zarinpal parsed response:', JSON.stringify(responseData, null, 2));
 
     // Check for successful Payman contract creation
     if (responseData.data && responseData.data.code === 100 && responseData.data.payman_authority) {
-      console.log('Payman contract created successfully:', {
-        payman_authority: responseData.data.payman_authority,
-        amount: paymanPayload.max_amount
-      });
+      console.log('Payman contract created successfully!');
+      console.log('Payman Authority:', responseData.data.payman_authority);
 
-      // For Payman, we need to redirect to a different URL structure
+      // Generate the correct gateway URL for Payman
       const gateway_url = `https://www.zarinpal.com/pg/StartPayman/${responseData.data.payman_authority}`;
+      
+      console.log('Gateway URL:', gateway_url);
 
       return new Response(JSON.stringify({ 
         success: true, 
-        authority: responseData.data.payman_authority,
         payman_authority: responseData.data.payman_authority,
-        amount: paymanPayload.max_amount,
-        gateway_url,
+        gateway_url: gateway_url,
+        amount: amount,
         data: responseData.data
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -179,26 +157,22 @@ serve(async (req) => {
     } else {
       console.error('Payman contract creation failed:', responseData);
 
-      // Handle specific Payman error codes
+      // Handle specific error codes
       let errorMessage = 'Payman contract creation failed';
       if (responseData.errors) {
         if (responseData.errors.code === -80) {
           errorMessage = 'Merchant does not have access to Payman service';
         } else if (responseData.errors.code === -9) {
-          errorMessage = 'Invalid validation parameters for Payman';
+          errorMessage = 'Invalid validation parameters';
         } else if (responseData.errors.code === -11) {
-          errorMessage = 'Payman request not found';
+          errorMessage = 'Request not found';
         }
       }
 
       return new Response(JSON.stringify({
         success: false,
         error: errorMessage,
-        details: {
-          code: responseData.data?.code,
-          errors: responseData.errors,
-          fullResponse: responseData
-        }
+        details: responseData
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
@@ -206,11 +180,11 @@ serve(async (req) => {
     }
 
   } catch (error) {
-    console.error('💥 CRITICAL ERROR in Zarinpal Payman contract:', error);
+    console.error('💥 CRITICAL ERROR in Zarinpal Payman:', error);
     
     return new Response(JSON.stringify({ 
       success: false, 
-      error: 'Payman contract service error',
+      error: 'Payman service error',
       details: {
         message: error.message,
         stack: error.stack
