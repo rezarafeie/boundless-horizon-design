@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 interface PaymentRequestParams {
@@ -12,6 +11,7 @@ interface PaymentRequestParams {
 interface PaymentRequestResponse {
   success: boolean;
   authority?: string;
+  payman_authority?: string;
   gateway_url?: string;
   error?: string;
   details?: any;
@@ -21,7 +21,7 @@ export const createZarinpalPaymentRequest = async (
   params: PaymentRequestParams
 ): Promise<PaymentRequestResponse> => {
   try {
-    console.log('Creating Zarinpal payment request:', {
+    console.log('Creating Zarinpal Payman contract request:', {
       amount: params.amount,
       description: params.description.substring(0, 50),
       callback_url: params.callback_url,
@@ -39,7 +39,7 @@ export const createZarinpalPaymentRequest = async (
     });
 
     if (error) {
-      console.error('Payment request function error:', error);
+      console.error('Payman contract function error:', error);
       return {
         success: false,
         error: error.message || 'Function invocation failed',
@@ -49,7 +49,7 @@ export const createZarinpalPaymentRequest = async (
 
     return data;
   } catch (error) {
-    console.error('Payment request error:', error);
+    console.error('Payman contract request error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

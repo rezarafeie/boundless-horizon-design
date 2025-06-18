@@ -193,10 +193,10 @@ const PaymentStep = ({
 
   const handleZarinpalPayment = async () => {
     setIsSubmitting(true);
-    debugLog('info', 'Zarinpal payment started', { amount: finalPrice });
+    debugLog('info', 'Zarinpal Payman contract started', { amount: finalPrice });
     
     try {
-      // Create payment request using edge function
+      // Create Payman contract request using edge function
       const { data: paymentData, error: paymentError } = await supabase.functions.invoke('zarinpal-payment-request', {
         body: {
           amount: finalPrice * 10, // Convert Toman to Rial
@@ -207,14 +207,17 @@ const PaymentStep = ({
       });
 
       if (paymentError) {
-        throw new Error(paymentError.message || 'Failed to create payment request');
+        throw new Error(paymentError.message || 'Failed to create Payman contract');
       }
 
-      if (!paymentData.success || !paymentData.authority) {
-        throw new Error(paymentData.error || 'Failed to get payment authority');
+      if (!paymentData.success || !paymentData.payman_authority) {
+        throw new Error(paymentData.error || 'Failed to get Payman authority');
       }
 
-      debugLog('success', 'Payment request created', { authority: paymentData.authority });
+      debugLog('success', 'Payman contract created', { 
+        payman_authority: paymentData.payman_authority,
+        gateway_url: paymentData.gateway_url 
+      });
 
       // Store payment info in subscription
       const subscriptionData = {
@@ -233,26 +236,26 @@ const PaymentStep = ({
         throw new Error('Failed to create subscription');
       }
 
-      // Update subscription with Zarinpal authority
+      // Update subscription with Zarinpal Payman authority
       const { error: updateError } = await supabase
         .from('subscriptions')
         .update({
-          zarinpal_authority: paymentData.authority,
+          zarinpal_authority: paymentData.payman_authority,
           status: 'pending'
         })
         .eq('id', subscriptionId);
 
       if (updateError) {
-        console.error('Failed to update subscription with authority:', updateError);
+        console.error('Failed to update subscription with Payman authority:', updateError);
       }
 
-      // Redirect to Zarinpal gateway
-      debugLog('info', 'Redirecting to payment gateway', { gateway_url: paymentData.gateway_url });
+      // Redirect to Zarinpal Payman gateway
+      debugLog('info', 'Redirecting to Payman gateway', { gateway_url: paymentData.gateway_url });
       window.location.href = paymentData.gateway_url;
 
     } catch (error) {
-      console.error('Zarinpal payment error:', error);
-      debugLog('error', 'Zarinpal payment failed', { 
+      console.error('Zarinpal Payman contract error:', error);
+      debugLog('error', 'Zarinpal Payman contract failed', { 
         error: error.message,
         stack: error.stack 
       });
@@ -419,8 +422,8 @@ const PaymentStep = ({
                   </div>
                   <p className="text-center text-sm text-blue-600 dark:text-blue-400">
                     {language === 'fa' ? 
-                      'پرداخت امن از طریق درگاه زرین‌پال' : 
-                      'Secure payment through Zarinpal gateway'
+                      'پرداخت امن از طریق قرارداد مستقیم زرین‌پال' : 
+                      'Secure payment through Zarinpal direct contract'
                     }
                   </p>
                 </div>
@@ -432,9 +435,9 @@ const PaymentStep = ({
                   size="lg"
                 >
                   {isSubmitting ? (
-                    language === 'fa' ? 'در حال پردازش...' : 'Processing...'
+                    language === 'fa' ? 'در حال ایجاد قرارداد...' : 'Creating Contract...'
                   ) : (
-                    language === 'fa' ? 'پرداخت با زرین‌پال' : 'Pay with Zarinpal'
+                    language === 'fa' ? 'ایجاد قرارداد پرداخت' : 'Create Payment Contract'
                   )}
                 </Button>
               </div>
