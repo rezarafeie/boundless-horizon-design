@@ -213,98 +213,19 @@ const PaymentStep = ({
         throw new Error('Failed to create subscription');
       }
 
-      debugLog('info', 'Calling Zarinpal checkout function', { subscriptionId, amount: finalPrice });
-      
-      // Call Zarinpal function with improved error handling
-      let functionResponse;
-      try {
-        functionResponse = await supabase.functions.invoke('zarinpal-checkout', {
-          body: {
-            amount: finalPrice,
-            subscriptionId,
-            description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`
-          }
-        });
-      } catch (invokeError) {
-        console.error('Supabase function invoke error:', invokeError);
-        debugLog('error', 'Function invocation failed', invokeError);
-        
-        // Immediate fallback to manual payment
-        toast({
-          title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switching to Manual Payment',
-          description: language === 'fa' ? 
-            'درگاه پرداخت در دسترس نیست. به پرداخت دستی تغییر می‌یابید...' : 
-            'Payment gateway unavailable. Switching to manual payment...',
-          variant: 'destructive'
-        });
+      // For now, show error that direct checkout needs authority and signature
+      toast({
+        title: language === 'fa' ? 'خطا در پیکربندی' : 'Configuration Error',
+        description: language === 'fa' ? 
+          'پرداخت مستقیم نیاز به authority و signature دارد. لطفا ابتدا مراحل قبلی را تکمیل کنید.' : 
+          'Direct checkout requires authority and signature. Please complete previous steps first.',
+        variant: 'destructive'
+      });
 
-        setTimeout(() => {
-          setSelectedPaymentMethod('manual');
-        }, 1500);
-        
-        return;
-      }
-
-      const { data, error } = functionResponse;
-      debugLog('info', 'Zarinpal function response', { data, error });
-
-      if (error) {
-        console.error('Zarinpal function error:', error);
-        debugLog('error', 'Function returned error', error);
-        
-        // Check if it's a timeout or connection error
-        const isConnectionError = error.name === 'FunctionsHttpError' || 
-                                error.message?.includes('timeout') ||
-                                error.message?.includes('network');
-        
-        toast({
-          title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switching to Manual Payment',
-          description: language === 'fa' ? 
-            'درگاه پرداخت آنلاین کار نمی‌کند. به پرداخت دستی تغییر می‌یابید...' : 
-            'Online payment is not working. Switching to manual payment...',
-          variant: 'destructive'
-        });
-
-        setTimeout(() => {
-          setSelectedPaymentMethod('manual');
-        }, 1500);
-
-        return;
-      }
-
-      if (data?.success && data?.redirectUrl) {
-        debugLog('success', 'Zarinpal checkout successful, redirecting', { 
-          redirectUrl: data.redirectUrl,
-          authority: data.authority 
-        });
-        
-        toast({
-          title: language === 'fa' ? 'انتقال به درگاه پرداخت' : 'Redirecting to Payment Gateway',
-          description: language === 'fa' ? 
-            'لطفا صبر کنید...' : 
-            'Please wait...',
-        });
-
-        setTimeout(() => {
-          window.location.href = data.redirectUrl;
-        }, 1000);
-
-      } else {
-        debugLog('error', 'Invalid response from payment gateway', data);
-        
-        // Immediate fallback to manual payment
-        toast({
-          title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switching to Manual Payment',
-          description: language === 'fa' ? 
-            'درگاه پرداخت مشکل دارد. به پرداخت دستی تغییر می‌یابید...' : 
-            'Payment gateway has issues. Switching to manual payment...',
-          variant: 'destructive'
-        });
-
-        setTimeout(() => {
-          setSelectedPaymentMethod('manual');
-        }, 1500);
-      }
+      // Switch to manual payment as fallback
+      setTimeout(() => {
+        setSelectedPaymentMethod('manual');
+      }, 2000);
 
     } catch (error) {
       console.error('Zarinpal payment error:', error);

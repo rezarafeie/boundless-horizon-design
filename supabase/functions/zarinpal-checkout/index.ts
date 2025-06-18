@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('=== ZARINPAL CHECKOUT FUNCTION STARTED ===');
+    console.log('=== ZARINPAL DIRECT CHECKOUT FUNCTION STARTED ===');
     
     if (req.method !== 'POST') {
       return new Response(JSON.stringify({ 
@@ -26,20 +26,26 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const { amount, subscriptionId, description } = await req.json();
-    console.log('Request data:', { amount, subscriptionId, description });
+    const { authority, signature, amount } = await req.json();
+    console.log('Request data:', { authority: authority ? authority.substring(0, 20) + '...' : 'missing', signature: signature ? 'present' : 'missing', amount });
 
-    if (!amount || !subscriptionId) {
+    // Validate required parameters
+    if (!authority || !signature) {
+      console.error('Missing or invalid payment parameters:', { authority: !!authority, signature: !!signature });
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Amount and subscription ID are required' 
+        error: 'Missing or invalid payment parameters',
+        details: {
+          authority: !!authority,
+          signature: !!signature
+        }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       });
     }
 
-    // Check merchant ID
+    // Get merchant ID from environment
     const merchantId = Deno.env.get('ZARINPAL_MERCHANT_ID');
     if (!merchantId) {
       console.error('ZARINPAL_MERCHANT_ID not configured');
@@ -52,161 +58,138 @@ serve(async (req) => {
       });
     }
 
+    console.log(`Starting Zarinpal Checkout for amount: ${amount}`);
     console.log('Merchant ID configured:', merchantId.substring(0, 8) + '...');
 
-    // Prepare request payload
-    const requestPayload = {
+    // Prepare checkout request payload
+    const checkoutPayload = {
       merchant_id: merchantId,
-      amount: Number(amount),
-      description: description || `VPN Subscription Payment - ${subscriptionId}`,
-      callback_url: `https://bnets.co/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`
+      authority: authority,
+      signature: signature
     };
 
-    console.log('Sending request to Zarinpal:', {
-      ...requestPayload,
-      merchant_id: requestPayload.merchant_id.substring(0, 8) + '...'
+    console.log('Sending checkout request to Zarinpal:', {
+      merchant_id: merchantId.substring(0, 8) + '...',
+      authority: authority.substring(0, 20) + '...',
+      signature: 'present'
     });
 
-    // Try multiple API endpoints with improved error handling
-    const endpoints = [
-      'https://api.zarinpal.com/pg/v4/payment/request.json',
-      'https://www.zarinpal.com/pg/rest/WebGate/PaymentRequest.json'
-    ];
+    // Send request to Zarinpal direct checkout endpoint
+    const response = await fetch('https://api.zarinpal.com/pg/v4/payman/checkout.json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(checkoutPayload)
+    });
 
-    let lastError = null;
-    
-    for (const endpoint of endpoints) {
-      console.log(`Trying endpoint: ${endpoint}`);
-      
-      // Declare timeout ID outside try block to ensure scope access
-      let timeoutId: number | undefined;
-      
-      try {
-        // Create abort controller with 3 second timeout
-        const controller = new AbortController();
-        timeoutId = setTimeout(() => {
-          console.log(`Timeout after 3 seconds for ${endpoint}`);
-          controller.abort();
-        }, 3000);
+    console.log('Zarinpal checkout response status:', response.status);
 
-        const startTime = Date.now();
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(requestPayload),
-          signal: controller.signal
-        });
+    // Get response headers for debugging
+    const responseHeaders = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    console.log('Response headers:', responseHeaders);
 
-        // Clear timeout on successful response
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = undefined;
+    // Get raw response text first
+    const responseText = await response.text();
+    console.log('Zarinpal checkout raw response:', responseText.substring(0, 500));
+
+    // Check if response is not 2xx
+    if (!response.ok) {
+      console.error('Zarinpal checkout failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: responseText.substring(0, 500)
+      });
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Zarinpal API error: HTTP ${response.status}`,
+        details: {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+          rawResponse: responseText.substring(0, 300)
         }
-
-        const responseTime = Date.now() - startTime;
-        console.log(`${endpoint} response status: ${response.status} (${responseTime}ms)`);
-
-        // Parse response
-        let responseData;
-        try {
-          const responseText = await response.text();
-          console.log(`${endpoint} raw response:`, responseText);
-          responseData = JSON.parse(responseText);
-        } catch (parseError) {
-          console.error(`Failed to parse response from ${endpoint}:`, parseError);
-          lastError = new Error(`Parse error from ${endpoint}: ${parseError.message}`);
-          continue;
-        }
-
-        console.log(`${endpoint} parsed response:`, responseData);
-
-        // Check for successful response
-        if (response.ok) {
-          // Check multiple success patterns for different endpoints
-          const isSuccess = (
-            (responseData.data && responseData.data.code === 100) ||
-            (responseData.Status === 100) ||
-            (responseData.code === 100) ||
-            (responseData.status === 'OK')
-          );
-
-          const authority = responseData.data?.authority || 
-                          responseData.data?.Authority ||
-                          responseData.Authority;
-
-          if (isSuccess && authority) {
-            const redirectUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
-            console.log('✅ SUCCESS - Payment request created:', { authority, redirectUrl });
-
-            return new Response(JSON.stringify({ 
-              success: true, 
-              redirectUrl,
-              authority,
-              endpoint: endpoint,
-              responseTime
-            }), {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
-          } else {
-            console.log(`${endpoint} returned non-success response:`, { isSuccess, authority, responseData });
-          }
-        } else {
-          console.log(`${endpoint} returned HTTP error:`, response.status);
-        }
-
-        // If we get here, this endpoint didn't work, try the next one
-        lastError = new Error(`API error from ${endpoint}: HTTP ${response.status}`);
-        
-      } catch (fetchError) {
-        // Ensure timeout is cleared in catch block
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = undefined;
-        }
-        
-        console.error(`${endpoint} failed:`, fetchError.name, fetchError.message);
-        lastError = fetchError;
-        
-        if (fetchError.name === 'AbortError') {
-          console.log(`${endpoint} timed out after 3 seconds`);
-          lastError = new Error(`Timeout connecting to ${endpoint}`);
-        } else if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
-          console.log(`${endpoint} network error - possibly unreachable`);
-          lastError = new Error(`Network error connecting to ${endpoint}`);
-        }
-        // Continue to next endpoint
-      }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: response.status,
+      });
     }
 
-    // If all endpoints failed
-    console.error('❌ All Zarinpal endpoints failed. Last error:', lastError?.message);
-    
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: 'Payment gateway temporarily unavailable. Please use manual payment.',
-      errorCode: 'ALL_ENDPOINTS_FAILED',
-      details: {
-        lastError: lastError?.message,
-        suggestion: 'Try manual payment or contact support'
-      }
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 502,
-    });
+    // Try to parse JSON response
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Non-JSON response received:', {
+        parseError: parseError.message,
+        rawResponse: responseText.substring(0, 300)
+      });
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Non-JSON response received',
+        details: {
+          parseError: parseError.message,
+          rawResponse: responseText.substring(0, 300)
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 502,
+      });
+    }
+
+    console.log('Zarinpal checkout parsed response:', responseData);
+
+    // Check for successful checkout
+    if (responseData.data && responseData.data.code === 100) {
+      const referenceId = responseData.data.ref_id || responseData.data.reference_id;
+      
+      console.log('Zarinpal checkout success:', {
+        referenceId,
+        amount,
+        fullResponse: responseData
+      });
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        reference_id: referenceId,
+        amount: amount,
+        data: responseData.data
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } else {
+      console.error('Zarinpal checkout failed with API error:', responseData);
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: responseData.errors?.message || 'Checkout failed',
+        details: {
+          code: responseData.data?.code,
+          errors: responseData.errors,
+          fullResponse: responseData
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      });
+    }
 
   } catch (error) {
-    console.error('💥 CRITICAL ERROR in Zarinpal checkout:', error);
+    console.error('💥 CRITICAL ERROR in Zarinpal direct checkout:', error);
     
     return new Response(JSON.stringify({ 
       success: false, 
-      error: 'Payment service error. Please try manual payment.',
-      errorCode: 'INTERNAL_ERROR',
+      error: 'Payment service error',
       details: {
         message: error.message,
-        suggestion: 'Use manual payment option'
+        stack: error.stack
       }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
