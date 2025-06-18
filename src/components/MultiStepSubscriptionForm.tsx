@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -146,8 +147,7 @@ const MultiStepSubscriptionForm = () => {
     if (!canProceedFromStep(currentStep)) return;
 
     // If moving from step 2 to step 3, create subscription record
-    const stepNumber = Number(currentStep);
-    if (stepNumber === 2) {
+    if (currentStep === 2) {
       const newSubscriptionId = await createSubscriptionRecord();
       if (!newSubscriptionId) {
         return; // Failed to create subscription, don't proceed
@@ -155,7 +155,7 @@ const MultiStepSubscriptionForm = () => {
       setSubscriptionId(newSubscriptionId);
     }
 
-    if (stepNumber < 4) {
+    if (currentStep < 4) {
       setCurrentStep(prev => prev + 1);
     }
   };
