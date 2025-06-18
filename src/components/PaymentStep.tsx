@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +12,7 @@ import PaymentDebugPanel from '@/components/PaymentDebugPanel';
 import { DiscountCode } from '@/types/subscription';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { Loader } from 'lucide-react';
 
 interface PaymentStepProps {
   formData: any;
@@ -35,6 +35,12 @@ const PaymentStep = ({
   const { toast } = useToast();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('zarinpal');
   const [showDebug, setShowDebug] = useState(false);
+  const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
+  const [manualPaymentData, setManualPaymentData] = useState<{
+    trackingNumber: string;
+    paymentTime: string;
+    payerName: string;
+  } | null>(null);
 
   // Calculate pricing
   const basePrice = formData.dataLimit * (formData.selectedPlan?.pricePerGB || 800);
@@ -135,13 +141,13 @@ const PaymentStep = ({
         await paymentData.postCreationCallback(subscription.id);
       }
 
-      onSuccess({
-        username: formData.username,
-        subscription_url: null,
-        expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-        data_limit: formData.dataLimit,
-        status: 'pending'
+      // Store payment data and show waiting state instead of calling onSuccess
+      setManualPaymentData({
+        trackingNumber: paymentData.trackingNumber,
+        paymentTime: paymentData.paymentTime,
+        payerName: paymentData.payerName
       });
+      setIsWaitingForApproval(true);
 
     } catch (error) {
       console.error('Manual payment error:', error);
@@ -352,6 +358,93 @@ const PaymentStep = ({
         );
     }
   };
+
+  // Show waiting for approval state for manual payments
+  if (isWaitingForApproval && manualPaymentData) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <Loader className="w-12 h-12 animate-spin mx-auto text-blue-600" />
+              <h2 className="text-xl font-semibold text-blue-800 dark:text-blue-200">
+                {language === 'fa' ? 'در انتظار تأیید ادمین' : 'Waiting for Admin Approval'}
+              </h2>
+              <p className="text-blue-700 dark:text-blue-300">
+                {language === 'fa' ? 
+                  'سفارش شما دریافت شد. پس از تایید اطلاعات پرداخت لینک اتصال برای شما ساخته خواهد شد. لطفا منتظر بمانید.' : 
+                  'Your order has been received. After payment information approval, the connection link will be created for you. Please wait.'
+                }
+              </p>
+              <div className="bg-white/50 dark:bg-gray-800/50 p-4 rounded-lg text-sm">
+                <div className="grid grid-cols-1 gap-2 text-right">
+                  <div>
+                    <span className="text-muted-foreground">
+                      {language === 'fa' ? 'شماره پیگیری:' : 'Tracking Number:'}
+                    </span>
+                    <span className="font-medium mr-2">{manualPaymentData.trackingNumber}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">
+                      {language === 'fa' ? 'نام پرداخت کننده:' : 'Payer Name:'}
+                    </span>
+                    <span className="font-medium mr-2">{manualPaymentData.payerName}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">
+                      {language === 'fa' ? 'زمان پرداخت:' : 'Payment Time:'}
+                    </span>
+                    <span className="font-medium mr-2">{manualPaymentData.paymentTime}</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-sm text-blue-600">
+                {language === 'fa' ? 
+                  'تا تایید ادمین لطفا منتظر بمانید...' : 
+                  'Please wait for admin approval...'
+                }
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Order Summary */}
+        <Card className="bg-gray-50 dark:bg-gray-800">
+          <CardContent className="pt-6">
+            <h3 className="font-semibold mb-3">
+              {language === 'fa' ? 'خلاصه سفارش' : 'Order Summary'}
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>{language === 'fa' ? 'نام کاربری:' : 'Username:'}</span>
+                <span className="font-medium">{formData.username}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{language === 'fa' ? 'حجم داده:' : 'Data:'}</span>
+                <span className="font-medium">{formData.dataLimit} GB</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{language === 'fa' ? 'مدت زمان:' : 'Duration:'}</span>
+                <span className="font-medium">{formData.duration} {language === 'fa' ? 'روز' : 'days'}</span>
+              </div>
+              {appliedDiscount && (
+                <div className="flex justify-between text-green-600">
+                  <span>{language === 'fa' ? 'تخفیف:' : 'Discount:'}</span>
+                  <span className="font-medium">-{appliedDiscount.percentage}%</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-2 font-bold">
+                <span>{language === 'fa' ? 'مجموع:' : 'Total:'}</span>
+                <span>
+                  {finalPrice.toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

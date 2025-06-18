@@ -279,7 +279,7 @@ const DeliveryPage = () => {
               <div className="text-center space-y-4">
                 <Loader className="w-12 h-12 animate-spin mx-auto text-blue-600" />
                 <h2 className="text-xl font-semibold">
-                  {language === 'fa' ? 'در حال بارگذاری...' : 'Loading...'}
+                  {language === 'fa' ? 'در حال ساخت دسترسی شبکه بدون مرز...' : 'Loading...'}
                 </h2>
               </div>
             </CardContent>

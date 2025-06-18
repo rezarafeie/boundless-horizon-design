@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Search, User, Calendar, DollarSign, RefreshCw, Image } from 'lucide-react';
+import { Search, User, Calendar, DollarSign, RefreshCw, Image, Receipt } from 'lucide-react';
 import { ManualPaymentActions } from './ManualPaymentActions';
 
 interface Subscription {
@@ -65,6 +64,21 @@ export const UsersManagement = () => {
     retry: 1,
     refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
   });
+
+  // Helper function to parse manual payment details from notes
+  const parseManualPaymentDetails = (notes: string) => {
+    if (!notes || !notes.includes('Manual payment')) return null;
+    
+    const trackingMatch = notes.match(/Tracking:\s*([^,]+)/);
+    const payerMatch = notes.match(/Payer:\s*([^,]+)/);
+    const timeMatch = notes.match(/Time:\s*([^-]+)/);
+    
+    return {
+      trackingNumber: trackingMatch ? trackingMatch[1].trim() : null,
+      payerName: payerMatch ? payerMatch[1].trim() : null,
+      paymentTime: timeMatch ? timeMatch[1].trim() : null
+    };
+  };
 
   const getStatusBadge = (status: string, adminDecision?: string) => {
     if (status === 'pending' && adminDecision === 'pending') {
@@ -242,81 +256,121 @@ export const UsersManagement = () => {
 
       {/* Subscriptions List */}
       <div className="grid gap-6">
-        {subscriptions?.map((subscription) => (
-          <Card key={subscription.id} className={subscription.status === 'pending' && subscription.admin_decision === 'pending' ? 'border-orange-200 bg-orange-50' : ''}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    {subscription.username}
-                    {getStatusBadge(subscription.status, subscription.admin_decision)}
-                  </CardTitle>
-                  <CardDescription>
-                    Mobile: {subscription.mobile} • Created: {new Date(subscription.created_at).toLocaleDateString()}
-                  </CardDescription>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold">{subscription.price_toman.toLocaleString()} Toman</p>
-                  <p className="text-sm text-gray-500">{subscription.data_limit_gb}GB • {subscription.duration_days} days</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        {subscriptions?.map((subscription) => {
+          const manualPaymentDetails = parseManualPaymentDetails(subscription.notes || '');
+          
+          return (
+            <Card key={subscription.id} className={subscription.status === 'pending' && subscription.admin_decision === 'pending' ? 'border-orange-200 bg-orange-50' : ''}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
                   <div>
-                    <span className="font-medium">Expiry:</span>
-                    <p>{subscription.expire_at ? new Date(subscription.expire_at).toLocaleDateString() : 'Not set'}</p>
+                    <CardTitle className="flex items-center gap-2">
+                      {subscription.username}
+                      {getStatusBadge(subscription.status, subscription.admin_decision)}
+                    </CardTitle>
+                    <CardDescription>
+                      Mobile: {subscription.mobile} • Created: {new Date(subscription.created_at).toLocaleDateString()}
+                    </CardDescription>
                   </div>
-                  <div>
-                    <span className="font-medium">Subscription URL:</span>
-                    <p className="truncate text-blue-600">
-                      {subscription.subscription_url ? 
-                        <a href={subscription.subscription_url} target="_blank" rel="noopener noreferrer">
-                          View Config
-                        </a> 
-                        : 'Not generated'
-                      }
-                    </p>
-                  </div>
-                  <div>
-                    <span className="font-medium">Notes:</span>
-                    <p className="truncate">{subscription.notes || 'None'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium">ID:</span>
-                    <p className="font-mono text-xs">{subscription.id.slice(0, 8)}...</p>
+                  <div className="text-right">
+                    <p className="text-lg font-bold">{subscription.price_toman.toLocaleString()} Toman</p>
+                    <p className="text-sm text-gray-500">{subscription.data_limit_gb}GB • {subscription.duration_days} days</p>
                   </div>
                 </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium">Expiry:</span>
+                      <p>{subscription.expire_at ? new Date(subscription.expire_at).toLocaleDateString() : 'Not set'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Subscription URL:</span>
+                      <p className="truncate text-blue-600">
+                        {subscription.subscription_url ? 
+                          <a href={subscription.subscription_url} target="_blank" rel="noopener noreferrer">
+                            View Config
+                          </a> 
+                          : 'Not generated'
+                        }
+                      </p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Notes:</span>
+                      <p className="truncate">{subscription.notes || 'None'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">ID:</span>
+                      <p className="font-mono text-xs">{subscription.id.slice(0, 8)}...</p>
+                    </div>
+                  </div>
 
-                {/* Receipt Image */}
-                {subscription.receipt_image_url && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Image className="w-4 h-4" />
-                    <a 
-                      href={subscription.receipt_image_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      View Payment Receipt
-                    </a>
-                  </div>
-                )}
+                  {/* Manual Payment Details */}
+                  {manualPaymentDetails && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Receipt className="w-4 h-4 text-blue-600" />
+                        <span className="font-medium text-blue-800 dark:text-blue-200">Manual Payment Details</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        {manualPaymentDetails.trackingNumber && (
+                          <div>
+                            <span className="font-medium text-muted-foreground">Tracking Number:</span>
+                            <p className="font-mono bg-white dark:bg-gray-800 px-2 py-1 rounded mt-1">
+                              {manualPaymentDetails.trackingNumber}
+                            </p>
+                          </div>
+                        )}
+                        {manualPaymentDetails.payerName && (
+                          <div>
+                            <span className="font-medium text-muted-foreground">Payer Name:</span>
+                            <p className="bg-white dark:bg-gray-800 px-2 py-1 rounded mt-1">
+                              {manualPaymentDetails.payerName}
+                            </p>
+                          </div>
+                        )}
+                        {manualPaymentDetails.paymentTime && (
+                          <div>
+                            <span className="font-medium text-muted-foreground">Payment Time:</span>
+                            <p className="bg-white dark:bg-gray-800 px-2 py-1 rounded mt-1">
+                              {manualPaymentDetails.paymentTime}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                {/* Manual Payment Actions */}
-                <ManualPaymentActions
-                  subscriptionId={subscription.id}
-                  status={subscription.status}
-                  adminDecision={subscription.admin_decision}
-                  username={subscription.username}
-                  amount={subscription.price_toman}
-                  onStatusUpdate={handleRefresh}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                  {/* Receipt Image */}
+                  {subscription.receipt_image_url && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Image className="w-4 h-4" />
+                      <a 
+                        href={subscription.receipt_image_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        View Payment Receipt
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Manual Payment Actions */}
+                  <ManualPaymentActions
+                    subscriptionId={subscription.id}
+                    status={subscription.status}
+                    adminDecision={subscription.admin_decision}
+                    username={subscription.username}
+                    amount={subscription.price_toman}
+                    onStatusUpdate={handleRefresh}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {(!subscriptions || subscriptions.length === 0) && !isLoading && (

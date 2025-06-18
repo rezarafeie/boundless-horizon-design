@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 
 interface ManualPaymentFormProps {
   amount: number;
@@ -29,10 +28,6 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const [trackingNumber, setTrackingNumber] = useState('');
   const [paymentTime, setPaymentTime] = useState('');
   const [payerName, setPayerName] = useState('');
-  const [isSendingNotification, setIsSendingNotification] = useState(false);
-  const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
-  const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
 
   const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
     console.log(`[MANUAL-PAYMENT] ${type.toUpperCase()}: ${message}`, data || '');
@@ -40,77 +35,6 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       window.debugPayment('manual', type, message, data);
     }
   };
-
-  // Poll for payment approval
-  useEffect(() => {
-    if (!subscriptionId || !isPolling) return;
-
-    const pollInterval = setInterval(async () => {
-      try {
-        debugLog('info', 'Polling for admin decision', { subscriptionId });
-        
-        const { data: subscription, error } = await supabase
-          .from('subscriptions')
-          .select('id, username, admin_decision, status, subscription_url, data_limit_gb, duration_days')
-          .eq('id', subscriptionId)
-          .single();
-
-        if (error) {
-          debugLog('error', 'Polling error', error);
-          console.error('Polling error:', error);
-          return;
-        }
-
-        debugLog('info', 'Polling result', { 
-          admin_decision: subscription.admin_decision, 
-          status: subscription.status 
-        });
-
-        if (subscription.admin_decision === 'approved' && subscription.status === 'active') {
-          debugLog('success', 'Manual payment approved by admin', subscription);
-          setIsPolling(false);
-          setIsWaitingForApproval(false);
-          
-          toast({
-            title: language === 'fa' ? 'پرداخت تأیید شد' : 'Payment Approved',
-            description: language === 'fa' ? 
-              'پرداخت شما تأیید شد. در حال انتقال...' : 
-              'Your payment has been approved. Redirecting...',
-          });
-
-          // Redirect to delivery page with subscription data
-          setTimeout(() => {
-            const deliveryUrl = `/delivery?subscriptionData=${encodeURIComponent(JSON.stringify({
-              username: subscription.username,
-              subscription_url: subscription.subscription_url,
-              expire: Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
-              data_limit: subscription.data_limit_gb * 1073741824,
-              status: 'active'
-            }))}`;
-            debugLog('info', 'Redirecting to delivery page', { url: deliveryUrl });
-            window.location.href = deliveryUrl;
-          }, 2000);
-        } else if (subscription.admin_decision === 'rejected') {
-          debugLog('error', 'Manual payment rejected by admin', subscription);
-          setIsPolling(false);
-          setIsWaitingForApproval(false);
-          
-          toast({
-            title: language === 'fa' ? 'پرداخت رد شد' : 'Payment Rejected',
-            description: language === 'fa' ? 
-              'پرداخت شما رد شد. لطفا با پشتیبانی تماس بگیرید.' : 
-              'Your payment was rejected. Please contact support.',
-            variant: 'destructive'
-          });
-        }
-      } catch (error) {
-        debugLog('error', 'Polling exception', error);
-        console.error('Polling error:', error);
-      }
-    }, 5000);
-
-    return () => clearInterval(pollInterval);
-  }, [subscriptionId, isPolling, language, toast]);
 
   const bankInfo = {
     bankName: language === 'fa' ? 'بلوبانک ( سامان )' : 'Bluebank (Saman)',
@@ -127,55 +51,25 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
     });
   };
 
-  const sendNotificationToAdmin = async (subscriptionId: string) => {
+  // Convert datetime-local to Persian date for display
+  const formatPersianDateTime = (dateTimeString: string) => {
+    if (!dateTimeString) return '';
+    
     try {
-      setIsSendingNotification(true);
-      debugLog('info', 'Sending notification to admin', { 
-        subscriptionId, 
-        trackingNumber, 
-        paymentTime, 
-        payerName 
-      });
+      const date = new Date(dateTimeString);
+      const options: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        calendar: 'persian',
+        numberingSystem: 'latn'
+      };
       
-      const { data, error } = await supabase.functions.invoke('send-manual-payment-email', {
-        body: {
-          subscriptionId,
-          trackingNumber,
-          paymentTime,
-          payerName
-        }
-      });
-
-      debugLog('info', 'Admin notification response', { data, error });
-
-      if (error) {
-        debugLog('error', 'Admin notification failed', error);
-        console.error('Notification sending error:', error);
-        throw error;
-      }
-
-      if (!data.success) {
-        debugLog('error', 'Admin notification function returned error', data);
-        throw new Error(data.error || 'Failed to send notification');
-      }
-
-      debugLog('success', 'Admin notification sent successfully', data);
-      
-      return true;
+      return new Intl.DateTimeFormat('fa-IR-u-ca-persian', options).format(date);
     } catch (error) {
-      console.error('Failed to send admin notification:', error);
-      debugLog('error', 'Admin notification failed', error);
-      
-      toast({
-        title: language === 'fa' ? 'توجه' : 'Notice',
-        description: language === 'fa' ? 
-          'سفارش ثبت شد اما اطلاع‌رسانی به ادمین ناموفق بود. لطفا با پشتیبانی تماس بگیرید.' : 
-          'Order saved but admin notification failed. Please contact support.',
-        variant: 'destructive'
-      });
-      return false;
-    } finally {
-      setIsSendingNotification(false);
+      return dateTimeString;
     }
   };
 
@@ -209,66 +103,18 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       confirmed 
     });
 
+    // Format the payment time for display
+    const formattedPaymentTime = language === 'fa' ? 
+      formatPersianDateTime(paymentTime) : 
+      new Date(paymentTime).toLocaleString();
+
     onPaymentConfirm({
       trackingNumber,
-      paymentTime,
+      paymentTime: formattedPaymentTime,
       payerName,
-      confirmed,
-      postCreationCallback: async (subId: string) => {
-        setSubscriptionId(subId);
-        
-        const notificationSent = await sendNotificationToAdmin(subId);
-        
-        setIsWaitingForApproval(true);
-        setIsPolling(true);
-      }
+      confirmed
     });
   };
-
-  if (isWaitingForApproval) {
-    return (
-      <div className="space-y-6">
-        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <Loader className="w-12 h-12 animate-spin mx-auto text-blue-600" />
-              <h2 className="text-xl font-semibold text-blue-800 dark:text-blue-200">
-                {language === 'fa' ? 'در انتظار تأیید ادمین' : 'Waiting for Admin Approval'}
-              </h2>
-              <p className="text-blue-700 dark:text-blue-300">
-                {language === 'fa' ? 
-                  'سفارش شما دریافت شد. پس از تایید اطلاعات پرداخت لینک اتصال برای شما ساخته خواهد شد. لطفا منتظر بمانید.' : 
-                  'Your order has been received. After payment information approval, the connection link will be created for you. Please wait.'
-                }
-              </p>
-              <div className="bg-white/50 dark:bg-gray-800/50 p-4 rounded-lg text-sm">
-                <div className="grid grid-cols-1 gap-2 text-right">
-                  <div>
-                    <span className="text-muted-foreground">
-                      {language === 'fa' ? 'شماره پیگیری:' : 'Tracking Number:'}
-                    </span>
-                    <span className="font-medium mr-2">{trackingNumber}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">
-                      {language === 'fa' ? 'نام پرداخت کننده:' : 'Payer Name:'}
-                    </span>
-                    <span className="font-medium mr-2">{payerName}</span>
-                  </div>
-                </div>
-              </div>
-              <p className="text-sm text-blue-600">
-                {language === 'fa' ? 
-                  'وضعیت پرداخت هر ۵ ثانیه بررسی می‌شود...' : 
-                  'Checking payment status every 5 seconds...'
-                }
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -359,6 +205,11 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
                 className="mt-1"
                 required
               />
+              {paymentTime && language === 'fa' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  تاریخ شمسی: {formatPersianDateTime(paymentTime)}
+                </p>
+              )}
             </div>
 
             <div>
@@ -405,18 +256,14 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
           <Button 
             onClick={handleSubmit}
-            disabled={!confirmed || !trackingNumber || !paymentTime || !payerName || isSubmitting || isSendingNotification}
+            disabled={!confirmed || !trackingNumber || !paymentTime || !payerName || isSubmitting}
             className="w-full mt-4"
             size="lg"
           >
-            {isSubmitting || isSendingNotification ? (
+            {isSubmitting ? (
               <>
                 <Loader className="w-4 h-4 mr-2 animate-spin" />
-                {isSendingNotification ? (
-                  language === 'fa' ? 'ارسال به ادمین...' : 'Sending to Admin...'
-                ) : (
-                  language === 'fa' ? 'در حال پردازش...' : 'Processing...'
-                )}
+                {language === 'fa' ? 'در حال پردازش...' : 'Processing...'}
               </>
             ) : (
               language === 'fa' ? 'تأیید پرداخت' : 'Confirm Payment'
