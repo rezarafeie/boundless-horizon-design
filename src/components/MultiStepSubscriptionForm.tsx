@@ -101,6 +101,11 @@ const MultiStepSubscriptionForm = () => {
     setCurrentStep(4);
   };
 
+  const calculateTotalPrice = (): number => {
+    if (!formData.selectedPlan) return 0;
+    return formData.selectedPlan.pricePerGB * formData.dataLimit;
+  };
+
   const progressPercentage = ((currentStep - 1) / (STEPS.length - 1)) * 100;
 
   const renderStepContent = () => {
@@ -126,7 +131,7 @@ const MultiStepSubscriptionForm = () => {
       case 3:
         return (
           <PaymentStep
-            amount={formData.selectedPlan?.price || 0}
+            amount={calculateTotalPrice()}
             subscriptionId={subscriptionId}
             onSuccess={handlePaymentSuccess}
             onBack={handlePrevious}

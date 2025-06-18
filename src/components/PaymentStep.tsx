@@ -145,7 +145,8 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
       {selectedMethod === 'nowpayments' && (
         <CryptoPaymentForm
           amount={amount}
-          onSuccess={onSuccess}
+          onPaymentSuccess={onSuccess}
+          isSubmitting={isSubmitting}
         />
       )}
 
