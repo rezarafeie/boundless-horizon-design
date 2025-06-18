@@ -189,10 +189,7 @@ const MultiStepSubscriptionForm = () => {
   const progressPercentage = ((currentStep - 1) / (STEPS.length - 1)) * 100;
 
   const renderStepContent = () => {
-    // Store currentStep in a variable to avoid literal type issues
-    const step: number = currentStep;
-    
-    switch (step) {
+    switch (currentStep) {
       case 1:
         return (
           <div className="space-y-6">

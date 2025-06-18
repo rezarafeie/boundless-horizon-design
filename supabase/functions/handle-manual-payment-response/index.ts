@@ -54,22 +54,113 @@ serve(async (req) => {
       try {
         console.log('Approving payment for subscription:', subscription.id);
 
-        // Create VPN user via Marzneshin
-        const { data: vpnResult, error: vpnError } = await supabase.functions.invoke(
-          'marzneshin-create-user',
-          {
-            body: {
-              username: subscription.username,
-              dataLimitGB: subscription.data_limit_gb,
-              durationDays: subscription.duration_days,
-              notes: `Manual payment approved - Amount: ${subscription.price_toman} Toman`
+        // Get the plan configuration from database to determine which API to use
+        let planApiType = 'marzneshin'; // Default fallback
+        let primaryPanelId = null;
+        
+        // Try to get plan information from subscription notes or lookup by plan ID
+        if (subscription.notes) {
+          // Extract plan info from notes - look for patterns like "Plan: lite" or "Plan: pro"
+          const planMatch = subscription.notes.match(/Plan:\s*(\w+)/i);
+          if (planMatch) {
+            const planName = planMatch[1].toLowerCase();
+            console.log('Found plan name in notes:', planName);
+            
+            // Query the subscription_plans table to get the API type
+            const { data: planData, error: planError } = await supabase
+              .from('subscription_plans')
+              .select('api_type, id')
+              .ilike('plan_id', planName)
+              .eq('is_active', true)
+              .single();
+            
+            if (!planError && planData) {
+              planApiType = planData.api_type;
+              console.log('Found plan API type from database:', planApiType);
+              
+              // Get the primary panel for this plan
+              const { data: mappingData, error: mappingError } = await supabase
+                .from('plan_panel_mappings')
+                .select(`
+                  panel_id,
+                  is_primary,
+                  panel_servers (
+                    id,
+                    name,
+                    type,
+                    is_active
+                  )
+                `)
+                .eq('plan_id', planData.id)
+                .eq('is_primary', true)
+                .single();
+              
+              if (!mappingError && mappingData) {
+                primaryPanelId = mappingData.panel_id;
+                console.log('Found primary panel for plan:', primaryPanelId);
+              }
+            } else {
+              console.warn('Could not find plan in database, using default API type');
             }
           }
-        );
+        }
 
-        if (vpnError) {
-          console.error('VPN creation error:', vpnError);
-          throw new Error(`VPN user creation failed: ${vpnError.message}`);
+        console.log(`Using API type: ${planApiType} for subscription:`, subscription.id);
+
+        // Create VPN user via the appropriate API
+        let vpnResult = null;
+        let apiUsed = '';
+        
+        if (planApiType === 'marzban') {
+          console.log('Creating VPN user via Marzban API...');
+          const { data: marzbanResult, error: marzbanError } = await supabase.functions.invoke(
+            'marzban-create-user',
+            {
+              body: {
+                username: subscription.username,
+                dataLimitGB: subscription.data_limit_gb,
+                durationDays: subscription.duration_days,
+                notes: `Manual payment approved - Amount: ${subscription.price_toman} Toman`
+              }
+            }
+          );
+          
+          if (marzbanError) {
+            console.error('Marzban API error:', marzbanError);
+            throw new Error(`VPN user creation failed via Marzban: ${marzbanError.message}`);
+          }
+          
+          if (!marzbanResult?.success) {
+            throw new Error(`VPN user creation failed via Marzban: ${marzbanResult?.error || 'Unknown error'}`);
+          }
+          
+          vpnResult = marzbanResult.data;
+          apiUsed = 'marzban';
+        } else {
+          console.log('Creating VPN user via Marzneshin API...');
+          const { data: marzneshinResult, error: marzneshinError } = await supabase.functions.invoke(
+            'marzneshin-create-user',
+            {
+              body: {
+                username: subscription.username,
+                dataLimitGB: subscription.data_limit_gb,
+                durationDays: subscription.duration_days,
+                notes: `Manual payment approved - Amount: ${subscription.price_toman} Toman`
+              }
+            }
+          );
+          
+          if (marzneshinError) {
+            console.error('Marzneshin API error:', marzneshinError);
+            throw new Error(`VPN user creation failed via Marzneshin: ${marzneshinError.message}`);
+          }
+          
+          if (!marzneshinResult?.success) {
+            throw new Error(`VPN user creation failed via Marzneshin: ${marzneshinResult?.error || 'Unknown error'}`);
+          }
+          
+          vpnResult = marzneshinResult.data;
+          apiUsed = 'marzneshin';
         }
 
         // Update subscription status
@@ -81,9 +172,13 @@ serve(async (req) => {
           expire_at: new Date(Date.now() + subscription.duration_days * 24 * 60 * 60 * 1000).toISOString()
         };
 
-        if (vpnResult?.success && vpnResult.data?.subscription_url) {
-          updateData.subscription_url = vpnResult.data.subscription_url;
+        if (vpnResult?.subscription_url) {
+          updateData.subscription_url = vpnResult.subscription_url;
         }
+
+        // Update notes to include which API was used
+        const existingNotes = subscription.notes || '';
+        updateData.notes = `${existingNotes} - VPN created via ${apiUsed}`;
 
         const { error: updateError } = await supabase
           .from('subscriptions')
@@ -94,7 +189,7 @@ serve(async (req) => {
           throw new Error('Failed to update subscription status');
         }
 
-        console.log('Payment approved and VPN user created successfully');
+        console.log(`Payment approved and VPN user created successfully via ${apiUsed}`);
 
         return new Response(`
           <html>
@@ -107,6 +202,7 @@ serve(async (req) => {
                 <p><strong>Data Limit:</strong> ${subscription.data_limit_gb} GB</p>
                 <p><strong>Duration:</strong> ${subscription.duration_days} days</p>
                 <p><strong>Status:</strong> Active</p>
+                <p><strong>API Used:</strong> ${apiUsed}</p>
               </div>
             </body>
           </html>

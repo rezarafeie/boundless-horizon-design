@@ -56,24 +56,71 @@ export const ManualPaymentActions = ({
       if (decision === 'approved') {
         updateData.status = 'active';
         
-        // Try to create VPN user via edge function
-        try {
-          console.log('Creating VPN user for approved manual payment');
-          
-          // Get subscription details first
-          const { data: subscription } = await supabase
-            .from('subscriptions')
-            .select('*')
-            .eq('id', subscriptionId)
-            .single();
+        // Get subscription details to determine which API to use
+        const { data: subscription } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('id', subscriptionId)
+          .single();
 
-          if (subscription) {
-            // Try Marzneshin first, then Marzban
-            let vpnResult = null;
-            let apiUsed = '';
-            
-            try {
-              console.log('Trying Marzneshin API...');
+        if (subscription) {
+          // Determine API type from plan configuration
+          let planApiType = 'marzneshin'; // Default fallback
+          
+          if (subscription.notes) {
+            // Extract plan info from notes
+            const planMatch = subscription.notes.match(/Plan:\s*(\w+)/i);
+            if (planMatch) {
+              const planName = planMatch[1].toLowerCase();
+              console.log('Found plan name in notes:', planName);
+              
+              // Query the subscription_plans table to get the API type
+              const { data: planData, error: planError } = await supabase
+                .from('subscription_plans')
+                .select('api_type')
+                .ilike('plan_id', planName)
+                .eq('is_active', true)
+                .single();
+              
+              if (!planError && planData) {
+                planApiType = planData.api_type;
+                console.log('Found plan API type from database:', planApiType);
+              } else {
+                console.warn('Could not find plan in database, using default API type');
+              }
+            }
+          }
+
+          console.log(`Using API type: ${planApiType} for subscription:`, subscriptionId);
+
+          // Try to create VPN user via the appropriate API
+          let vpnResult = null;
+          let apiUsed = '';
+          
+          try {
+            if (planApiType === 'marzban') {
+              console.log('Creating VPN user via Marzban API...');
+              const { data: marzbanResult, error: marzbanError } = await supabase.functions.invoke(
+                'marzban-create-user',
+                {
+                  body: {
+                    username: subscription.username,
+                    dataLimitGB: subscription.data_limit_gb,
+                    durationDays: subscription.duration_days,
+                    notes: `Manual payment approved - ${subscription.notes || ''}`
+                  }
+                }
+              );
+              
+              if (!marzbanError && marzbanResult?.success) {
+                vpnResult = marzbanResult.data;
+                apiUsed = 'marzban';
+                console.log('Marzban user created successfully');
+              } else {
+                throw new Error(marzbanError?.message || 'Marzban API failed');
+              }
+            } else {
+              console.log('Creating VPN user via Marzneshin API...');
               const { data: marzneshinResult, error: marzneshinError } = await supabase.functions.invoke(
                 'marzneshin-create-user',
                 {
@@ -91,34 +138,7 @@ export const ManualPaymentActions = ({
                 apiUsed = 'marzneshin';
                 console.log('Marzneshin user created successfully');
               } else {
-                throw new Error(marzneshinError?.message || 'Marzneshin failed');
-              }
-            } catch (marzneshinError) {
-              console.log('Marzneshin failed, trying Marzban...', marzneshinError);
-              
-              try {
-                const { data: marzbanResult, error: marzbanError } = await supabase.functions.invoke(
-                  'marzban-create-user',
-                  {
-                    body: {
-                      username: subscription.username,
-                      dataLimitGB: subscription.data_limit_gb,
-                      durationDays: subscription.duration_days,
-                      notes: `Manual payment approved - ${subscription.notes || ''}`
-                    }
-                  }
-                );
-                
-                if (!marzbanError && marzbanResult?.success) {
-                  vpnResult = marzbanResult.data;
-                  apiUsed = 'marzban';
-                  console.log('Marzban user created successfully');
-                } else {
-                  throw new Error(marzbanError?.message || 'Marzban failed');
-                }
-              } catch (marzbanError) {
-                console.error('Both APIs failed:', marzbanError);
-                throw new Error('Failed to create VPN user on both panels');
+                throw new Error(marzneshinError?.message || 'Marzneshin API failed');
               }
             }
             
@@ -126,14 +146,18 @@ export const ManualPaymentActions = ({
               updateData.subscription_url = vpnResult.subscription_url;
               updateData.marzban_user_created = true;
               updateData.expire_at = new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString();
-              updateData.notes = `${subscription.notes || ''} - VPN created via ${apiUsed}`;
+              
+              // Update notes to include which API was used
+              const existingNotes = subscription.notes || '';
+              updateData.notes = `${existingNotes} - VPN created via ${apiUsed}`;
               console.log(`VPN user created successfully via ${apiUsed}`);
             }
+          } catch (vpnError) {
+            console.error('VPN creation failed:', vpnError);
+            // Continue with approval even if VPN creation fails
+            const existingNotes = subscription.notes || '';
+            updateData.notes = `${existingNotes} - VPN creation failed: ${vpnError.message}`;
           }
-        } catch (vpnError) {
-          console.error('VPN creation failed:', vpnError);
-          // Continue with approval even if VPN creation fails
-          updateData.notes = `${updateData.notes || ''} - VPN creation failed: ${vpnError.message}`;
         }
       }
 
@@ -189,7 +213,7 @@ export const ManualPaymentActions = ({
             <AlertDialogTitle>Approve Payment</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to approve the payment of {amount.toLocaleString()} Toman for {username}?
-              This will activate their VPN subscription immediately.
+              This will activate their VPN subscription immediately using the appropriate API based on their plan configuration.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
