@@ -72,7 +72,7 @@ const ZarinpalTestButton = () => {
       {testing ? (
         language === 'fa' ? 'در حال تست...' : 'Testing...'
       ) : (
-        language === 'fa' ? 'تست اتصال زرین‌پال' : 'Test Zarinpal'
+        language === 'fa' ? 'تست زرین‌پال' : 'Test Zarinpal'
       )}
     </Button>
   );

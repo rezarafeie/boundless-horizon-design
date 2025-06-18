@@ -87,8 +87,8 @@ const ZarinpalPayment = ({ amount, mobile, onPaymentStart, isSubmitting }: Zarin
             </div>
             <p className="text-center text-sm text-blue-600 dark:text-blue-400">
               {language === 'fa' ? 
-                'پرداخت امن از طریق قرارداد مستقیم زرین‌پال' : 
-                'Secure payment through Zarinpal direct contract'
+                'پرداخت امن با زرین‌پال' : 
+                'Secure payment with Zarinpal'
               }
             </p>
           </div>
@@ -104,7 +104,7 @@ const ZarinpalPayment = ({ amount, mobile, onPaymentStart, isSubmitting }: Zarin
             size="lg"
           >
             {isSubmitting ? (
-              language === 'fa' ? 'در حال ایجاد قرارداد...' : 'Creating Contract...'
+              language === 'fa' ? 'در حال پردازش...' : 'Processing...'
             ) : (
               language === 'fa' ? 'پرداخت با زرین‌پال' : 'Pay with Zarinpal'
             )}
