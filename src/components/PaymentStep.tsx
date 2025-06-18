@@ -95,7 +95,9 @@ const PaymentStep = ({
   };
 
   const handleManualPayment = async (paymentData: { 
-    receiptFile?: File; 
+    trackingNumber: string; 
+    paymentTime: string; 
+    payerName: string; 
     confirmed: boolean;
     postCreationCallback?: (subscriptionId: string) => Promise<void>;
   }) => {
@@ -116,7 +118,7 @@ const PaymentStep = ({
           price_toman: finalPrice,
           status: 'pending',
           admin_decision: 'pending',
-          notes: `Manual payment - ${appliedDiscount ? `Discount: ${appliedDiscount.code}` : 'No discount'}`,
+          notes: `Manual payment - Tracking: ${paymentData.trackingNumber}, Payer: ${paymentData.payerName}, Time: ${paymentData.paymentTime} - ${appliedDiscount ? `Discount: ${appliedDiscount.code}` : 'No discount'}`,
           user_id: null
         })
         .select()

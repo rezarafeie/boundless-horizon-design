@@ -6,13 +6,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ManualPaymentFormProps {
   amount: number;
-  onPaymentConfirm: (data: { receiptFile?: File; confirmed: boolean; postCreationCallback?: (subscriptionId: string) => Promise<void> }) => void;
+  onPaymentConfirm: (data: { 
+    trackingNumber: string; 
+    paymentTime: string; 
+    payerName: string; 
+    confirmed: boolean; 
+    postCreationCallback?: (subscriptionId: string) => Promise<void> 
+  }) => void;
   isSubmitting: boolean;
 }
 
@@ -20,9 +26,10 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   const { language } = useLanguage();
   const { toast } = useToast();
   const [confirmed, setConfirmed] = useState(false);
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [paymentTime, setPaymentTime] = useState('');
+  const [payerName, setPayerName] = useState('');
+  const [isSendingNotification, setIsSendingNotification] = useState(false);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
@@ -106,9 +113,9 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
   }, [subscriptionId, isPolling, language, toast]);
 
   const bankInfo = {
-    bankName: language === 'fa' ? 'بانک ملت' : 'Bank Mellat',
-    cardNumber: '6104-3378-8765-4321',
-    accountHolder: language === 'fa' ? 'شرکت شبکه بدون مرز' : 'Boundless Network Company',
+    bankName: language === 'fa' ? 'بلوبانک ( سامان )' : 'Bluebank (Saman)',
+    cardNumber: '6219-8619-9131-3783',
+    accountHolder: language === 'fa' ? 'مهران ذبحی' : 'Mehran Zabhi',
     amount: amount.toLocaleString()
   };
 
@@ -120,104 +127,55 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
     });
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        debugLog('error', 'File size too large', { size: file.size });
-        toast({
-          title: language === 'fa' ? 'خطا' : 'Error',
-          description: language === 'fa' ? 'حجم فایل نباید بیشتر از ۵ مگابایت باشد' : 'File size should not exceed 5MB',
-          variant: 'destructive'
-        });
-        return;
-      }
-      debugLog('success', 'Receipt file selected', { name: file.name, size: file.size });
-      setReceiptFile(file);
-    }
-  };
-
-  const uploadReceiptToStorage = async (file: File, subscriptionId: string): Promise<string | null> => {
+  const sendNotificationToAdmin = async (subscriptionId: string) => {
     try {
-      setIsUploading(true);
-      debugLog('info', 'Starting receipt upload', { fileName: file.name, subscriptionId });
-      
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${subscriptionId}/receipt_${Date.now()}.${fileExt}`;
-      
-      const { data, error } = await supabase.storage
-        .from('manual-payment-receipts')
-        .upload(fileName, file);
-
-      if (error) {
-        debugLog('error', 'Storage upload failed', error);
-        console.error('Storage upload error:', error);
-        throw error;
-      }
-
-      debugLog('success', 'Receipt uploaded successfully', { fileName, path: data.path });
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('manual-payment-receipts')
-        .getPublicUrl(fileName);
-
-      return publicUrl;
-    } catch (error) {
-      console.error('Failed to upload receipt:', error);
-      debugLog('error', 'Receipt upload failed', error);
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'خطا در آپلود تصویر' : 'Failed to upload image',
-        variant: 'destructive'
+      setIsSendingNotification(true);
+      debugLog('info', 'Sending notification to admin', { 
+        subscriptionId, 
+        trackingNumber, 
+        paymentTime, 
+        payerName 
       });
-      return null;
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const sendEmailNotification = async (subscriptionId: string, receiptUrl?: string) => {
-    try {
-      setIsSendingEmail(true);
-      debugLog('info', 'Sending email notification', { subscriptionId, receiptUrl });
       
       const { data, error } = await supabase.functions.invoke('send-manual-payment-email', {
         body: {
           subscriptionId,
-          receiptImageUrl: receiptUrl
+          trackingNumber,
+          paymentTime,
+          payerName
         }
       });
 
-      debugLog('info', 'Email function response', { data, error });
+      debugLog('info', 'Admin notification response', { data, error });
 
       if (error) {
-        debugLog('error', 'Email sending failed', error);
-        console.error('Email sending error:', error);
+        debugLog('error', 'Admin notification failed', error);
+        console.error('Notification sending error:', error);
         throw error;
       }
 
       if (!data.success) {
-        debugLog('error', 'Email function returned error', data);
-        throw new Error(data.error || 'Failed to send email');
+        debugLog('error', 'Admin notification function returned error', data);
+        throw new Error(data.error || 'Failed to send notification');
       }
 
-      debugLog('success', 'Email sent successfully', data);
+      debugLog('success', 'Admin notification sent successfully', data);
       
       return true;
     } catch (error) {
-      console.error('Failed to send email notification:', error);
-      debugLog('error', 'Email notification failed', error);
+      console.error('Failed to send admin notification:', error);
+      debugLog('error', 'Admin notification failed', error);
       
       toast({
         title: language === 'fa' ? 'توجه' : 'Notice',
         description: language === 'fa' ? 
-          'سفارش ثبت شد اما ایمیل به ادمین ارسال نشد. لطفا با پشتیبانی تماس بگیرید.' : 
-          'Order saved but email to admin failed. Please contact support.',
+          'سفارش ثبت شد اما اطلاع‌رسانی به ادمین ناموفق بود. لطفا با پشتیبانی تماس بگیرید.' : 
+          'Order saved but admin notification failed. Please contact support.',
         variant: 'destructive'
       });
       return false;
     } finally {
-      setIsSendingEmail(false);
+      setIsSendingNotification(false);
     }
   };
 
@@ -232,26 +190,34 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       return;
     }
 
+    if (!trackingNumber || !paymentTime || !payerName) {
+      debugLog('warning', 'Required fields missing');
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً تمام فیلدهای الزامی را پر کنید' : 
+          'Please fill all required fields',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     debugLog('info', 'Manual payment submission started', { 
-      hasReceipt: !!receiptFile,
+      trackingNumber,
+      paymentTime,
+      payerName,
       confirmed 
     });
 
     onPaymentConfirm({
-      receiptFile: receiptFile || undefined,
+      trackingNumber,
+      paymentTime,
+      payerName,
       confirmed,
       postCreationCallback: async (subId: string) => {
         setSubscriptionId(subId);
-        let receiptUrl = null;
         
-        if (receiptFile) {
-          receiptUrl = await uploadReceiptToStorage(receiptFile, subId);
-          if (!receiptUrl) {
-            return;
-          }
-        }
-        
-        const emailSent = await sendEmailNotification(subId, receiptUrl);
+        const notificationSent = await sendNotificationToAdmin(subId);
         
         setIsWaitingForApproval(true);
         setIsPolling(true);
@@ -271,10 +237,26 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
               </h2>
               <p className="text-blue-700 dark:text-blue-300">
                 {language === 'fa' ? 
-                  'سفارش شما دریافت شد. پس از تایید رسید پرداخت لینک اتصال برای شما ساخته خواهد شد. لطفا منتظر بمانید.' : 
-                  'Your order has been received. After payment receipt approval, the connection link will be created for you. Please wait.'
+                  'سفارش شما دریافت شد. پس از تایید اطلاعات پرداخت لینک اتصال برای شما ساخته خواهد شد. لطفا منتظر بمانید.' : 
+                  'Your order has been received. After payment information approval, the connection link will be created for you. Please wait.'
                 }
               </p>
+              <div className="bg-white/50 dark:bg-gray-800/50 p-4 rounded-lg text-sm">
+                <div className="grid grid-cols-1 gap-2 text-right">
+                  <div>
+                    <span className="text-muted-foreground">
+                      {language === 'fa' ? 'شماره پیگیری:' : 'Tracking Number:'}
+                    </span>
+                    <span className="font-medium mr-2">{trackingNumber}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">
+                      {language === 'fa' ? 'نام پرداخت کننده:' : 'Payer Name:'}
+                    </span>
+                    <span className="font-medium mr-2">{payerName}</span>
+                  </div>
+                </div>
+              </div>
               <p className="text-sm text-blue-600">
                 {language === 'fa' ? 
                   'وضعیت پرداخت هر ۵ ثانیه بررسی می‌شود...' : 
@@ -345,47 +327,54 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       <Card>
         <CardHeader>
           <CardTitle>
-            {language === 'fa' ? 'آپلود رسید (اختیاری)' : 'Upload Receipt (Optional)'}
+            {language === 'fa' ? 'اطلاعات پرداخت' : 'Payment Details'}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="receipt" className="cursor-pointer">
-                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center hover:border-muted-foreground/50 transition-colors">
-                  {isUploading ? (
-                    <Loader className="w-8 h-8 mx-auto mb-2 text-muted-foreground animate-spin" />
-                  ) : (
-                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                  )}
-                  <p className="text-sm text-muted-foreground">
-                    {receiptFile ? receiptFile.name : (
-                      language === 'fa' ? 
-                        'کلیک کنید تا تصویر رسید را انتخاب کنید' : 
-                        'Click to select receipt image'
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {language === 'fa' ? 'حداکثر ۵ مگابایت' : 'Max 5MB'}
-                  </p>
-                </div>
+              <Label htmlFor="tracking-number" className="text-sm font-medium">
+                {language === 'fa' ? 'شماره پیگیری *' : 'Tracking Number *'}
               </Label>
               <Input
-                id="receipt"
-                type="file"
-                accept="image/*"
-                onChange={handleFileUpload}
-                className="hidden"
-                disabled={isUploading}
+                id="tracking-number"
+                type="text"
+                value={trackingNumber}
+                onChange={(e) => setTrackingNumber(e.target.value)}
+                placeholder={language === 'fa' ? 'شماره پیگیری تراکنش را وارد کنید' : 'Enter transaction tracking number'}
+                className="mt-1"
+                required
               />
             </div>
 
-            {receiptFile && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <CheckCircle className="w-4 h-4" />
-                {language === 'fa' ? 'فایل انتخاب شد:' : 'File selected:'} {receiptFile.name}
-              </div>
-            )}
+            <div>
+              <Label htmlFor="payment-time" className="text-sm font-medium">
+                {language === 'fa' ? 'زمان دقیق پرداخت *' : 'Exact Payment Time *'}
+              </Label>
+              <Input
+                id="payment-time"
+                type="datetime-local"
+                value={paymentTime}
+                onChange={(e) => setPaymentTime(e.target.value)}
+                className="mt-1"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="payer-name" className="text-sm font-medium">
+                {language === 'fa' ? 'نام پرداخت کننده *' : 'Payer Name *'}
+              </Label>
+              <Input
+                id="payer-name"
+                type="text"
+                value={payerName}
+                onChange={(e) => setPayerName(e.target.value)}
+                placeholder={language === 'fa' ? 'نام کامل پرداخت کننده را وارد کنید' : 'Enter full name of payer'}
+                className="mt-1"
+                required
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -407,8 +396,8 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
               </Label>
               <p className="text-sm text-muted-foreground">
                 {language === 'fa' ? 
-                  'با تیک زدن این گزینه، تأیید می‌کنم که مبلغ را واریز کرده‌ام' : 
-                  'By checking this option, I confirm that I have transferred the amount'
+                  'با تیک زدن این گزینه، تأیید می‌کنم که مبلغ را واریز کرده‌ام و اطلاعات فوق صحیح است' : 
+                  'By checking this option, I confirm that I have transferred the amount and the above information is correct'
                 }
               </p>
             </div>
@@ -416,17 +405,15 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
 
           <Button 
             onClick={handleSubmit}
-            disabled={!confirmed || isSubmitting || isUploading || isSendingEmail}
+            disabled={!confirmed || !trackingNumber || !paymentTime || !payerName || isSubmitting || isSendingNotification}
             className="w-full mt-4"
             size="lg"
           >
-            {isSubmitting || isUploading || isSendingEmail ? (
+            {isSubmitting || isSendingNotification ? (
               <>
                 <Loader className="w-4 h-4 mr-2 animate-spin" />
-                {isSendingEmail ? (
+                {isSendingNotification ? (
                   language === 'fa' ? 'ارسال به ادمین...' : 'Sending to Admin...'
-                ) : isUploading ? (
-                  language === 'fa' ? 'آپلود رسید...' : 'Uploading Receipt...'
                 ) : (
                   language === 'fa' ? 'در حال پردازش...' : 'Processing...'
                 )}
