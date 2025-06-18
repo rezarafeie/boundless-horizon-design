@@ -34,12 +34,12 @@ const STEPS = [
   { id: 2, name: 'info', icon: User, titleFa: 'اطلاعات کاربری', titleEn: 'User Info' },
   { id: 3, name: 'payment', icon: CreditCard, titleFa: 'پرداخت', titleEn: 'Payment' },
   { id: 4, name: 'success', icon: CheckCircle, titleFa: 'تکمیل', titleEn: 'Complete' },
-] as const;
+];
 
 const MultiStepSubscriptionForm = () => {
   const { language } = useLanguage();
   const { toast } = useToast();
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState<number>(1);
   const [formData, setFormData] = useState<FormData>({
     username: '',
     dataLimit: 10,
