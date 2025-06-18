@@ -34,12 +34,12 @@ const STEPS = [
   { id: 2, name: 'info', icon: User, titleFa: 'اطلاعات کاربری', titleEn: 'User Info' },
   { id: 3, name: 'payment', icon: CreditCard, titleFa: 'پرداخت', titleEn: 'Payment' },
   { id: 4, name: 'success', icon: CheckCircle, titleFa: 'تکمیل', titleEn: 'Complete' },
-];
+] as const;
 
 const MultiStepSubscriptionForm = () => {
   const { language } = useLanguage();
   const { toast } = useToast();
-  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>({
     username: '',
     dataLimit: 10,
@@ -155,14 +155,16 @@ const MultiStepSubscriptionForm = () => {
       setSubscriptionId(newSubscriptionId);
     }
 
-    if (currentStep < 4) {
-      setCurrentStep(prev => prev + 1);
+    const nextStep = currentStep + 1;
+    if (nextStep <= 4) {
+      setCurrentStep(nextStep);
     }
   };
 
   const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep(prev => prev - 1);
+    const prevStep = currentStep - 1;
+    if (prevStep >= 1) {
+      setCurrentStep(prevStep);
     }
   };
 
