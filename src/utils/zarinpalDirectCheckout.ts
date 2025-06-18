@@ -30,7 +30,6 @@ export const createZarinpalPaymentRequest = async (
 
     const { data, error } = await supabase.functions.invoke('zarinpal-payment-request', {
       body: {
-        merchant_id: 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX', // This should come from environment
         amount: params.amount,
         description: params.description,
         callback_url: params.callback_url,
@@ -81,7 +80,6 @@ export const verifyZarinpalPayment = async (
 
     const { data, error } = await supabase.functions.invoke('zarinpal-verify', {
       body: {
-        merchant_id: 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX', // This should come from environment
         authority: params.authority
       }
     });

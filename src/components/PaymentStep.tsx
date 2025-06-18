@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -200,7 +199,6 @@ const PaymentStep = ({
       // Create payment request using edge function
       const { data: paymentData, error: paymentError } = await supabase.functions.invoke('zarinpal-payment-request', {
         body: {
-          merchant_id: 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX', // This should be from environment
           amount: finalPrice * 10, // Convert Toman to Rial
           description: `VPN Subscription - ${formData.username} - ${formData.dataLimit}GB`,
           callback_url: `${window.location.origin}/payment-success`,

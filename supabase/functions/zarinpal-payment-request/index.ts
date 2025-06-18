@@ -25,10 +25,23 @@ serve(async (req) => {
       });
     }
 
+    // Get merchant ID from environment
+    const merchant_id = Deno.env.get('ZARINPAL_MERCHANT_ID');
+    if (!merchant_id) {
+      console.error('ZARINPAL_MERCHANT_ID not configured');
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Zarinpal merchant ID not configured'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      });
+    }
+
     // Parse request body
-    const { merchant_id, amount, description, callback_url, mobile, email } = await req.json();
+    const { amount, description, callback_url, mobile, email } = await req.json();
     console.log('Request data:', { 
-      merchant_id: merchant_id ? merchant_id.substring(0, 8) + '...' : 'missing', 
+      merchant_id: merchant_id.substring(0, 8) + '...',
       amount,
       description: description?.substring(0, 50) || 'missing',
       callback_url: callback_url || 'missing',
@@ -36,13 +49,12 @@ serve(async (req) => {
     });
 
     // Validate required parameters
-    if (!merchant_id || !amount || !description || !callback_url) {
+    if (!amount || !description || !callback_url) {
       console.error('Missing required parameters');
       return new Response(JSON.stringify({ 
         success: false, 
         error: 'Missing required parameters',
         details: {
-          merchant_id: !!merchant_id,
           amount: !!amount,
           description: !!description,
           callback_url: !!callback_url
