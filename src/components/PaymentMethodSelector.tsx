@@ -19,6 +19,10 @@ interface PaymentMethodSelectorProps {
 const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: PaymentMethodSelectorProps) => {
   const { language } = useLanguage();
 
+  // Calculate USD equivalent (approximate rate: 1 USD = 60,000 Toman)
+  const usdAmount = Math.ceil(amount / 60000);
+  const isUnderMinimum = usdAmount < 10;
+
   const paymentMethods = [
     {
       id: 'zarinpal' as PaymentMethod,
@@ -51,7 +55,7 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
       icon: Coins,
       currency: 'USD',
       logo: '₿',
-      disabled: false
+      disabled: isUnderMinimum
     },
     {
       id: 'stripe' as PaymentMethod,
@@ -68,7 +72,6 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
 
   const formatAmount = (method: PaymentMethod) => {
     if (method === 'nowpayments' || method === 'stripe') {
-      const usdAmount = Math.ceil(amount / 60000); // Convert Toman to USD (approximate rate)
       return `$${usdAmount}`;
     }
     return `${amount.toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`;
@@ -79,7 +82,11 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
     if (selectedMethod === 'zarinpal') {
       onMethodChange('manual');
     }
-  }, [selectedMethod, onMethodChange]);
+    // Auto-select alternative if nowpayments was selected but amount is under minimum
+    if (selectedMethod === 'nowpayments' && isUnderMinimum) {
+      onMethodChange('manual');
+    }
+  }, [selectedMethod, onMethodChange, isUnderMinimum]);
 
   return (
     <div className="space-y-4">
@@ -95,6 +102,7 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
           {paymentMethods.map((method) => {
             const Icon = method.icon;
             const isDisabled = method.disabled;
+            const isNowPaymentsUnderLimit = method.id === 'nowpayments' && isUnderMinimum;
             
             return (
               <div key={method.id}>
@@ -124,7 +132,7 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
                             {method.logo}
                           </div>
                           <div className="flex-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className={`font-medium ${isDisabled ? 'text-gray-400' : ''}`}>
                                 {language === 'fa' ? method.nameFa : method.nameEn}
                               </span>
@@ -136,14 +144,27 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
                                   {language === 'fa' ? 'غیرفعال' : 'Disabled'}
                                 </Badge>
                               )}
+                              {isNowPaymentsUnderLimit && (
+                                <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800">
+                                  {language === 'fa' ? 'حداقل ۱۰ دلار' : 'Min $10'}
+                                </Badge>
+                              )}
                             </div>
                             <p className={`text-sm ${isDisabled ? 'text-gray-400' : 'text-muted-foreground'}`}>
                               {language === 'fa' ? method.descriptionFa : method.descriptionEn}
-                              {isDisabled && (
+                              {method.id === 'zarinpal' && isDisabled && (
                                 <span className="block text-xs mt-1">
                                   {language === 'fa' 
                                     ? 'موقتاً غیرفعال - لطفاً روش دیگری انتخاب کنید' 
                                     : 'Temporarily disabled - please choose another method'
+                                  }
+                                </span>
+                              )}
+                              {isNowPaymentsUnderLimit && (
+                                <span className="block text-xs mt-1">
+                                  {language === 'fa' 
+                                    ? 'حداقل مبلغ ۱۰ دلار - لطفاً روش دیگری انتخاب کنید' 
+                                    : 'Minimum $10 required - please choose another method'
                                   }
                                 </span>
                               )}

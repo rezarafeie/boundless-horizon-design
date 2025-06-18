@@ -55,11 +55,86 @@ export const ManualPaymentActions = ({
 
       if (decision === 'approved') {
         updateData.status = 'active';
-        // Generate subscription URL with proper format
-        const timestamp = Date.now();
-        const randomId = Math.random().toString(36).substring(2, 8);
-        updateData.subscription_url = `vmess://eyJ2IjoiMiIsInBzIjoiQm91bmRsZXNzTmV0LSR7dXNlcm5hbWV9IiwiYWRkIjoic2VydmVyLmJuZXRzLmNvIiwicG9ydCI6IjQ0MyIsImlkIjoiJHtyYW5kb21JZH0iLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6IndzIiwidHlwZSI6Im5vbmUiLCJob3N0IjoiIiwicGF0aCI6Ii8iLCJ0bHMiOiJ0bHMiLCJzbmkiOiIifQ==`;
-        updateData.expire_at = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString(); // 30 days from now
+        
+        // Try to create VPN user via edge function
+        try {
+          console.log('Creating VPN user for approved manual payment');
+          
+          // Get subscription details first
+          const { data: subscription } = await supabase
+            .from('subscriptions')
+            .select('*')
+            .eq('id', subscriptionId)
+            .single();
+
+          if (subscription) {
+            // Try Marzneshin first, then Marzban
+            let vpnResult = null;
+            let apiUsed = '';
+            
+            try {
+              console.log('Trying Marzneshin API...');
+              const { data: marzneshinResult, error: marzneshinError } = await supabase.functions.invoke(
+                'marzneshin-create-user',
+                {
+                  body: {
+                    username: subscription.username,
+                    dataLimitGB: subscription.data_limit_gb,
+                    durationDays: subscription.duration_days,
+                    notes: `Manual payment approved - ${subscription.notes || ''}`
+                  }
+                }
+              );
+              
+              if (!marzneshinError && marzneshinResult?.success) {
+                vpnResult = marzneshinResult.data;
+                apiUsed = 'marzneshin';
+                console.log('Marzneshin user created successfully');
+              } else {
+                throw new Error(marzneshinError?.message || 'Marzneshin failed');
+              }
+            } catch (marzneshinError) {
+              console.log('Marzneshin failed, trying Marzban...', marzneshinError);
+              
+              try {
+                const { data: marzbanResult, error: marzbanError } = await supabase.functions.invoke(
+                  'marzban-create-user',
+                  {
+                    body: {
+                      username: subscription.username,
+                      dataLimitGB: subscription.data_limit_gb,
+                      durationDays: subscription.duration_days,
+                      notes: `Manual payment approved - ${subscription.notes || ''}`
+                    }
+                  }
+                );
+                
+                if (!marzbanError && marzbanResult?.success) {
+                  vpnResult = marzbanResult.data;
+                  apiUsed = 'marzban';
+                  console.log('Marzban user created successfully');
+                } else {
+                  throw new Error(marzbanError?.message || 'Marzban failed');
+                }
+              } catch (marzbanError) {
+                console.error('Both APIs failed:', marzbanError);
+                throw new Error('Failed to create VPN user on both panels');
+              }
+            }
+            
+            if (vpnResult?.subscription_url) {
+              updateData.subscription_url = vpnResult.subscription_url;
+              updateData.marzban_user_created = true;
+              updateData.expire_at = new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString();
+              updateData.notes = `${subscription.notes || ''} - VPN created via ${apiUsed}`;
+              console.log(`VPN user created successfully via ${apiUsed}`);
+            }
+          }
+        } catch (vpnError) {
+          console.error('VPN creation failed:', vpnError);
+          // Continue with approval even if VPN creation fails
+          updateData.notes = `${updateData.notes || ''} - VPN creation failed: ${vpnError.message}`;
+        }
       }
 
       const { error } = await supabase

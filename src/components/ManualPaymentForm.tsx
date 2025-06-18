@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { PersianDateTimePicker } from './PersianDateTimePicker';
 
 interface ManualPaymentFormProps {
   amount: number;
@@ -193,24 +193,13 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
               />
             </div>
 
-            <div>
-              <Label htmlFor="payment-time" className="text-sm font-medium">
-                {language === 'fa' ? 'زمان دقیق پرداخت *' : 'Exact Payment Time *'}
-              </Label>
-              <Input
-                id="payment-time"
-                type="datetime-local"
-                value={paymentTime}
-                onChange={(e) => setPaymentTime(e.target.value)}
-                className="mt-1"
-                required
-              />
-              {paymentTime && language === 'fa' && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  تاریخ شمسی: {formatPersianDateTime(paymentTime)}
-                </p>
-              )}
-            </div>
+            <PersianDateTimePicker
+              value={paymentTime}
+              onChange={setPaymentTime}
+              label={language === 'fa' ? 'زمان دقیق پرداخت' : 'Exact Payment Time'}
+              placeholder={language === 'fa' ? 'زمان پرداخت را انتخاب کنید' : 'Select payment time'}
+              required
+            />
 
             <div>
               <Label htmlFor="payer-name" className="text-sm font-medium">
