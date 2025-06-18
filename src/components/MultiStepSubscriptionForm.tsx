@@ -189,7 +189,8 @@ const MultiStepSubscriptionForm = () => {
   const progressPercentage = ((currentStep - 1) / (STEPS.length - 1)) * 100;
 
   const renderStepContent = () => {
-    switch (currentStep) {
+    const step = currentStep;
+    switch (step) {
       case 1:
         return (
           <div className="space-y-6">
