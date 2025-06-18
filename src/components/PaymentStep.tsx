@@ -226,29 +226,72 @@ const PaymentStep = ({
       debugLog('info', 'Zarinpal function response', { data, error });
 
       if (error) {
-        debugLog('error', 'Zarinpal checkout failed', error);
-        throw error;
+        debugLog('error', 'Zarinpal checkout function error', error);
+        throw new Error(`Function error: ${error.message}`);
       }
 
       if (data?.success && data?.redirectUrl) {
-        debugLog('info', 'Redirecting to Zarinpal', { url: data.redirectUrl });
-        window.location.href = data.redirectUrl;
+        debugLog('success', 'Zarinpal checkout successful, redirecting', { 
+          redirectUrl: data.redirectUrl,
+          authority: data.authority 
+        });
+        
+        // Show success message before redirect
+        toast({
+          title: language === 'fa' ? 'درحال انتقال به درگاه پرداخت' : 'Redirecting to Payment Gateway',
+          description: language === 'fa' ? 
+            'لطفا صبر کنید...' : 
+            'Please wait...',
+        });
+
+        // Small delay to show the toast, then redirect
+        setTimeout(() => {
+          window.location.href = data.redirectUrl;
+        }, 1000);
+
       } else {
-        debugLog('error', 'Invalid Zarinpal response', data);
-        throw new Error(data?.error || 'Failed to get Zarinpal redirect URL');
+        debugLog('error', 'Invalid Zarinpal response - no redirect URL', data);
+        
+        let errorMessage = 'Failed to get payment gateway URL';
+        
+        if (data?.error) {
+          errorMessage = data.error;
+        } else if (data?.zarinpalResponse) {
+          // Try to extract error from Zarinpal response
+          const zResponse = data.zarinpalResponse;
+          if (zResponse.errors && Array.isArray(zResponse.errors)) {
+            errorMessage = zResponse.errors.join(', ');
+          } else if (zResponse.message) {
+            errorMessage = zResponse.message;
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
     } catch (error) {
       console.error('Zarinpal payment error:', error);
-      debugLog('error', 'Zarinpal payment failed', error);
+      debugLog('error', 'Zarinpal payment failed', { 
+        error: error.message,
+        stack: error.stack 
+      });
       
-      const errorMessage = error?.message || 'Payment processing failed';
+      let userFriendlyMessage = error?.message || 'Payment processing failed';
+      
+      // Make error messages more user-friendly
+      if (userFriendlyMessage.includes('merchant')) {
+        userFriendlyMessage = language === 'fa' ? 
+          'خطا در تنظیمات درگاه پرداخت. لطفا با پشتیبانی تماس بگیرید.' :
+          'Payment gateway configuration error. Please contact support.';
+      } else if (userFriendlyMessage.includes('network') || userFriendlyMessage.includes('fetch')) {
+        userFriendlyMessage = language === 'fa' ? 
+          'خطا در اتصال به درگاه پرداخت. لطفا دوباره تلاش کنید.' :
+          'Connection error to payment gateway. Please try again.';
+      }
       
       toast({
         title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
-        description: language === 'fa' ? 
-          `خطا در پردازش پرداخت: ${errorMessage}` : 
-          `Payment processing failed: ${errorMessage}`,
+        description: userFriendlyMessage,
         variant: 'destructive'
       });
     } finally {

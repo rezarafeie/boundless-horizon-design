@@ -29,8 +29,6 @@ serve(async (req) => {
     }
 
     console.log('Sending payment request to Zarinpal...');
-
-    // Amount should be in Toman (Zarinpal expects Toman, not Rial)
     console.log(`Using amount: ${amount} Toman (NOT converting to Rial)`);
 
     // Create payment request to Zarinpal
@@ -56,33 +54,119 @@ serve(async (req) => {
     });
 
     console.log('Zarinpal response status:', response.status);
+    console.log('Zarinpal response headers:', Object.fromEntries(response.headers.entries()));
 
-    const responseData = await response.json();
-    console.log('Zarinpal response data:', responseData);
+    // Get response text first to debug
+    const responseText = await response.text();
+    console.log('Zarinpal raw response:', responseText);
 
-    if (response.ok && responseData.data && responseData.data.code === 100) {
-      const authority = responseData.data.authority;
-      const redirectUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Zarinpal response:', parseError);
+      throw new Error(`Invalid JSON response from Zarinpal: ${responseText.substring(0, 200)}`);
+    }
+
+    console.log('Zarinpal parsed response data:', responseData);
+
+    // Check for successful response
+    if (response.ok) {
+      console.log('Zarinpal API call was successful, checking response data...');
       
-      console.log('Payment request successful:', { authority, redirectUrl });
+      // Check different possible success conditions
+      let isSuccess = false;
+      let authority = null;
+      let errors = null;
 
-      return new Response(JSON.stringify({ 
-        success: true, 
-        redirectUrl,
-        authority 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Check for data.code === 100 (most common success condition)
+      if (responseData.data && responseData.data.code === 100) {
+        isSuccess = true;
+        authority = responseData.data.authority;
+        console.log('Success condition met: data.code === 100');
+      }
+      // Check for direct code === 100
+      else if (responseData.code === 100) {
+        isSuccess = true;
+        authority = responseData.authority;
+        console.log('Success condition met: code === 100');
+      }
+      // Check for status === 'OK' or similar
+      else if (responseData.status === 'OK' || responseData.Status === 'OK') {
+        isSuccess = true;
+        authority = responseData.authority || responseData.Authority;
+        console.log('Success condition met: status === OK');
+      }
+      // Check for direct authority presence
+      else if (responseData.authority || responseData.Authority) {
+        isSuccess = true;
+        authority = responseData.authority || responseData.Authority;
+        console.log('Success condition met: authority present');
+      }
+
+      if (responseData.errors) {
+        errors = responseData.errors;
+        console.log('Zarinpal returned errors:', errors);
+      }
+
+      if (isSuccess && authority) {
+        const redirectUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
+        
+        console.log('✅ PAYMENT REQUEST SUCCESSFUL');
+        console.log('Authority:', authority);
+        console.log('Redirect URL:', redirectUrl);
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          redirectUrl,
+          authority,
+          zarinpalResponse: responseData
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } else {
+        console.error('❌ PAYMENT REQUEST FAILED - No authority or success condition not met');
+        console.log('Response structure analysis:', {
+          hasData: !!responseData.data,
+          dataCode: responseData.data?.code,
+          directCode: responseData.code,
+          status: responseData.status || responseData.Status,
+          authority: responseData.authority || responseData.Authority,
+          errors: responseData.errors
+        });
+        
+        const errorMessage = errors ? errors.join(', ') : 
+                           responseData.message || 
+                           'Payment request failed - no authority received';
+        
+        throw new Error(errorMessage);
+      }
     } else {
-      console.error('Zarinpal API error:', responseData);
-      throw new Error(responseData.errors?.join(', ') || 'Payment request failed');
+      console.error('❌ ZARINPAL API HTTP ERROR');
+      console.log('HTTP Status:', response.status);
+      console.log('Response data:', responseData);
+      
+      const errorMessage = responseData.errors?.join(', ') || 
+                         responseData.message || 
+                         `HTTP ${response.status}: ${response.statusText}`;
+      
+      throw new Error(`Zarinpal API error: ${errorMessage}`);
     }
 
   } catch (error) {
-    console.error('Zarinpal checkout error:', error);
+    console.error('💥 ZARINPAL CHECKOUT ERROR:', error);
+    console.log('Error details:', {
+      message: error.message,
+      stack: error.stack
+    });
+    
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message 
+      error: error.message || 'Payment request failed',
+      details: {
+        timestamp: new Date().toISOString(),
+        errorType: error.constructor.name
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,

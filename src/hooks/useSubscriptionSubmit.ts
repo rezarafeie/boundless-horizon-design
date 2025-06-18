@@ -150,6 +150,8 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
             } else {
               console.log(`Free subscription completed successfully using ${data.selectedPlan.apiType}`);
             }
+          } else {
+            console.warn('VPN user created but no subscription URL returned');
           }
           
           toast({

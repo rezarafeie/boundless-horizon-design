@@ -20,6 +20,13 @@ interface MarzbanUserResponse {
   data_limit: number;
 }
 
+interface MarzbanInbound {
+  tag: string;
+  protocol: string;
+  port: number;
+  settings: any;
+}
+
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[MARZBAN-CREATE] ${step}${detailsStr}`);
@@ -38,7 +45,6 @@ async function testPanelHealth(baseUrl: string): Promise<boolean> {
       accessible: response.ok || response.status === 404 
     });
     
-    // 404 is OK for /docs, means panel is accessible but docs might not be enabled
     return response.ok || response.status === 404;
   } catch (error) {
     logStep('Panel health check failed', { error: error.message });
@@ -47,7 +53,6 @@ async function testPanelHealth(baseUrl: string): Promise<boolean> {
 }
 
 async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
-  // Try multiple possible authentication endpoints
   const authEndpoints = [
     '/api/admin/token',
     '/api/admin/auth',
@@ -97,6 +102,65 @@ async function getAuthToken(baseUrl: string, username: string, password: string)
   throw new Error('Failed to authenticate with any known Marzban authentication endpoint');
 }
 
+async function fetchAvailableInbounds(baseUrl: string, token: string): Promise<MarzbanInbound[]> {
+  logStep('Fetching available inbounds');
+  
+  const inboundEndpoints = [
+    '/api/inbounds',
+    '/api/inbound',
+    '/inbounds',
+    '/inbound'
+  ];
+  
+  for (const endpoint of inboundEndpoints) {
+    try {
+      const url = `${baseUrl}${endpoint}`;
+      logStep('Trying inbound endpoint', { url });
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        logStep('Inbound endpoint successful', { endpoint, dataType: typeof data, isArray: Array.isArray(data) });
+        
+        // Handle different response formats
+        let inbounds = [];
+        if (Array.isArray(data)) {
+          inbounds = data;
+        } else if (data.inbounds && Array.isArray(data.inbounds)) {
+          inbounds = data.inbounds;
+        } else if (data.data && Array.isArray(data.data)) {
+          inbounds = data.data;
+        }
+        
+        if (inbounds.length > 0) {
+          logStep('Found inbounds', { count: inbounds.length, tags: inbounds.map(i => i.tag || i.name) });
+          return inbounds;
+        }
+      } else {
+        logStep('Inbound endpoint failed', { endpoint, status: response.status });
+      }
+    } catch (error) {
+      logStep('Inbound endpoint error', { endpoint, error: error.message });
+    }
+  }
+  
+  // If no inbounds found, return default configuration
+  logStep('No inbounds found, using default VMESS configuration');
+  return [{
+    tag: 'vmess-inbound',
+    protocol: 'vmess',
+    port: 443,
+    settings: {}
+  }];
+}
+
 async function createMarzbanUser(
   baseUrl: string,
   token: string,
@@ -110,12 +174,37 @@ async function createMarzbanUser(
   
   logStep('Starting user creation', userData);
   
-  // Calculate expiration timestamp (current time + duration in days)
+  // Fetch available inbounds
+  const inbounds = await fetchAvailableInbounds(baseUrl, token);
+  
+  // Create proxy configuration from available inbounds
+  const proxies: Record<string, any> = {};
+  
+  // Use the first available inbound or create a default one
+  if (inbounds.length > 0) {
+    const primaryInbound = inbounds[0];
+    const protocol = primaryInbound.protocol || 'vmess';
+    
+    proxies[protocol] = {
+      id: crypto.randomUUID(),
+      flow: protocol === 'vless' ? '' : undefined
+    };
+    
+    logStep('Created proxy configuration', { protocol, proxies });
+  } else {
+    // Default VMESS configuration if no inbounds found
+    proxies.vmess = {
+      id: crypto.randomUUID()
+    };
+    logStep('Using default VMESS proxy configuration', { proxies });
+  }
+  
+  // Calculate expiration timestamp
   const expirationTimestamp = Math.floor(Date.now() / 1000) + (userData.durationDays * 24 * 60 * 60);
   
   const userRequest = {
     username: userData.username,
-    proxies: {},
+    proxies: proxies, // Now includes proper proxy configuration
     data_limit: userData.dataLimitGB * 1073741824, // Convert GB to bytes
     expire: expirationTimestamp,
     data_limit_reset_strategy: "no_reset",
@@ -167,11 +256,40 @@ async function createMarzbanUser(
   const result = await response.json();
   logStep('User creation successful', result);
   
-  // Marzban doesn't return subscription_url, so we need to construct it manually
-  const subscriptionUrl = `${baseUrl}/sub/${userData.username}`;
-  logStep('Constructed subscription URL', { subscriptionUrl });
+  // Construct the correct subscription URL - Marzban typically uses format: /sub/{username}/{token}
+  let subscriptionUrl = `${baseUrl}/sub/${userData.username}`;
   
-  // Return response in the same format as Marzneshin for consistency
+  // If result contains a subscription_url, use it
+  if (result.subscription_url) {
+    subscriptionUrl = result.subscription_url;
+    logStep('Using API provided subscription URL', { subscriptionUrl });
+  } else {
+    // Try to get user details to find the correct subscription token/key
+    try {
+      const userDetailsResponse = await fetch(`${baseUrl}/api/user/${userData.username}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (userDetailsResponse.ok) {
+        const userDetails = await userDetailsResponse.json();
+        if (userDetails.subscription_url) {
+          subscriptionUrl = userDetails.subscription_url;
+          logStep('Found subscription URL in user details', { subscriptionUrl });
+        } else if (userDetails.sub_url) {
+          subscriptionUrl = userDetails.sub_url;
+          logStep('Found sub_url in user details', { subscriptionUrl });
+        }
+      }
+    } catch (error) {
+      logStep('Could not fetch user details for subscription URL', { error: error.message });
+    }
+  }
+  
+  // Return response in consistent format
   const marzbanResponse: MarzbanUserResponse = {
     username: result.username || userData.username,
     subscription_url: subscriptionUrl,
@@ -184,7 +302,6 @@ async function createMarzbanUser(
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -272,7 +389,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Clean base URL (remove trailing slash)
+    // Clean base URL
     const cleanBaseUrl = baseUrl.replace(/\/$/, '');
     logStep('Using clean base URL', { cleanBaseUrl });
     
@@ -294,7 +411,7 @@ Deno.serve(async (req) => {
 
     logStep('Starting Marzban user creation process');
 
-    // Get authentication token with retry logic
+    // Get authentication token
     let token: string;
     try {
       token = await getAuthToken(cleanBaseUrl, adminUsername, adminPassword);
