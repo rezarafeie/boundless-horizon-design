@@ -54,15 +54,12 @@ serve(async (req) => {
 
     console.log('Merchant ID configured:', merchantId.substring(0, 8) + '...');
 
-    // Prepare request payload
+    // Prepare request payload for regular payment (not payman)
     const requestPayload = {
       merchant_id: merchantId,
       amount: Number(amount),
       description: description || `VPN Subscription Payment`,
-      callback_url: `https://bnets.co/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`,
-      metadata: {
-        subscription_id: subscriptionId
-      }
+      callback_url: `https://bnets.co/delivery?payment=zarinpal&subscriptionId=${subscriptionId}`
     };
 
     console.log('Sending request to Zarinpal with payload:', {
@@ -70,22 +67,21 @@ serve(async (req) => {
       merchant_id: requestPayload.merchant_id.substring(0, 8) + '...'
     });
 
-    // Create abort controller with 15 second timeout
+    // Create abort controller with 10 second timeout (reduced from 15)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log('Request timeout - aborting after 15 seconds');
+      console.log('Request timeout - aborting after 10 seconds');
       controller.abort();
-    }, 15000);
+    }, 10000);
 
     let response;
     try {
-      // Make request to Zarinpal API
+      // Use the correct API endpoint for regular payments
       response = await fetch('https://api.zarinpal.com/pg/v4/payment/request.json', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'VPN-Service/1.0'
+          'Accept': 'application/json'
         },
         body: JSON.stringify(requestPayload),
         signal: controller.signal

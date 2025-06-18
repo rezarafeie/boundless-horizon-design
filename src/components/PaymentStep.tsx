@@ -229,7 +229,7 @@ const PaymentStep = ({
         console.error('Supabase function invoke error:', invokeError);
         debugLog('error', 'Function invocation failed', invokeError);
         
-        throw new Error('خطا در اتصال به سرویس پرداخت');
+        throw new Error(language === 'fa' ? 'خطا در اتصال به سرویس پرداخت' : 'Failed to connect to payment service');
       }
 
       const { data, error } = functionResponse;
@@ -239,19 +239,41 @@ const PaymentStep = ({
         console.error('Zarinpal function error:', error);
         debugLog('error', 'Function returned error', error);
         
-        let errorMessage = 'خطا در پرداخت';
+        let errorMessage = language === 'fa' ? 'خطا در پرداخت' : 'Payment error';
         
         if (error.name === 'FunctionsHttpError') {
-          errorMessage = 'خطا در سرویس پرداخت. لطفا دوباره تلاش کنید.';
+          errorMessage = language === 'fa' ? 
+            'سرویس پرداخت در دسترس نیست. لطفا پرداخت دستی را انتخاب کنید.' : 
+            'Payment service unavailable. Please try manual payment.';
         } else if (error.name === 'FunctionsFetchError') {
-          errorMessage = 'خطا در اتصال به سرویس پرداخت.';
+          errorMessage = language === 'fa' ? 
+            'خطا در اتصال به سرویس پرداخت. لطفا پرداخت دستی را امتحان کنید.' : 
+            'Connection error. Please try manual payment.';
         } else if (typeof error === 'string') {
           errorMessage = error;
         } else if (error.message) {
           errorMessage = error.message;
         }
         
-        throw new Error(errorMessage);
+        // Show error and suggest fallback
+        toast({
+          title: language === 'fa' ? 'خطا در پرداخت آنلاین' : 'Online Payment Error',
+          description: errorMessage,
+          variant: 'destructive'
+        });
+
+        // Auto-switch to manual payment after 3 seconds
+        setTimeout(() => {
+          setSelectedPaymentMethod('manual');
+          toast({
+            title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switched to Manual Payment',
+            description: language === 'fa' ? 
+              'به دلیل مشکل در درگاه پرداخت، به روش پرداخت دستی تغییر یافت.' : 
+              'Due to payment gateway issues, switched to manual payment method.',
+          });
+        }, 3000);
+
+        return;
       }
 
       if (data?.success && data?.redirectUrl) {
@@ -274,19 +296,40 @@ const PaymentStep = ({
       } else {
         debugLog('error', 'Invalid response from payment gateway', data);
         
-        let errorMessage = 'خطا در ایجاد پرداخت';
+        let errorMessage = language === 'fa' ? 'خطا در ایجاد پرداخت' : 'Payment creation failed';
         
         if (data?.errorCode === 'TIMEOUT') {
-          errorMessage = 'زمان اتصال به درگاه پرداخت تمام شد. لطفا دوباره تلاش کنید.';
+          errorMessage = language === 'fa' ? 
+            'زمان اتصال به درگاه پرداخت تمام شد. لطفا پرداخت دستی را امتحان کنید.' : 
+            'Payment gateway timeout. Please try manual payment.';
         } else if (data?.errorCode === 'CONNECTION_ERROR') {
-          errorMessage = 'خطا در اتصال به درگاه پرداخت. لطفا اتصال اینترنت خود را بررسی کنید.';
+          errorMessage = language === 'fa' ? 
+            'خطا در اتصال به درگاه پرداخت. لطفا پرداخت دستی را امتحان کنید.' : 
+            'Connection error. Please try manual payment.';
         } else if (data?.errorCode === 'PAYMENT_REJECTED') {
-          errorMessage = 'درخواست پرداخت رد شد. لطفا اطلاعات را بررسی کنید.';
+          errorMessage = language === 'fa' ? 
+            'درخواست پرداخت رد شد. لطفا اطلاعات را بررسی کنید یا پرداخت دستی را امتحان کنید.' : 
+            'Payment rejected. Please check details or try manual payment.';
         } else if (data?.error) {
           errorMessage = data.error;
         }
         
-        throw new Error(errorMessage);
+        toast({
+          title: language === 'fa' ? 'خطا در پرداخت آنلاین' : 'Online Payment Error',
+          description: errorMessage,
+          variant: 'destructive'
+        });
+
+        // Auto-switch to manual payment after 3 seconds
+        setTimeout(() => {
+          setSelectedPaymentMethod('manual');
+          toast({
+            title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switched to Manual Payment',
+            description: language === 'fa' ? 
+              'به دلیل مشکل در درگاه پرداخت، به روش پرداخت دستی تغییر یافت.' : 
+              'Due to payment gateway issues, switched to manual payment method.',
+          });
+        }, 3000);
       }
 
     } catch (error) {
@@ -297,10 +340,21 @@ const PaymentStep = ({
       });
       
       toast({
-        title: language === 'fa' ? 'خطا در پرداخت' : 'Payment Error',
-        description: error?.message || (language === 'fa' ? 'خطا در پردازش پرداخت' : 'Payment processing failed'),
+        title: language === 'fa' ? 'خطا در پرداخت آنلاین' : 'Online Payment Error',
+        description: error?.message || (language === 'fa' ? 'خطا در پردازش پرداخت. لطفا پرداخت دستی را امتحان کنید.' : 'Payment processing failed. Please try manual payment.'),
         variant: 'destructive'
       });
+
+      // Auto-switch to manual payment after 3 seconds
+      setTimeout(() => {
+        setSelectedPaymentMethod('manual');
+        toast({
+          title: language === 'fa' ? 'تغییر به پرداخت دستی' : 'Switched to Manual Payment',
+          description: language === 'fa' ? 
+            'به دلیل مشکل در درگاه پرداخت، به روش پرداخت دستی تغییر یافت.' : 
+            'Due to payment gateway issues, switched to manual payment method.',
+        });
+      }, 3000);
     } finally {
       setIsSubmitting(false);
     }

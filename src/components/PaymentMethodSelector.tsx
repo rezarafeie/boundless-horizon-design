@@ -6,6 +6,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CreditCard, Building2, Coins } from 'lucide-react';
+import ZarinpalTestButton from '@/components/ZarinpalTestButton';
 
 export type PaymentMethod = 'zarinpal' | 'manual' | 'nowpayments' | 'stripe';
 
@@ -71,9 +72,12 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">
-        {language === 'fa' ? 'روش پرداخت' : 'Payment Method'}
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">
+          {language === 'fa' ? 'روش پرداخت' : 'Payment Method'}
+        </h3>
+        <ZarinpalTestButton />
+      </div>
       
       <RadioGroup value={selectedMethod} onValueChange={onMethodChange}>
         <div className="grid gap-3">
