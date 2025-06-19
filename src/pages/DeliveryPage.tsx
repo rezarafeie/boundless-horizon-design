@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -117,7 +118,7 @@ const DeliveryPage = () => {
           throw new Error('No subscription data found');
         }
 
-        console.log('DELIVERY: Using subscription data with API type:', { 
+        console.log('DELIVERY: Using subscription data:', { 
           username: data.username, 
           apiType: data.apiType || 'unknown' 
         });
@@ -282,8 +283,8 @@ const DeliveryPage = () => {
         toast({
           title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
           description: language === 'fa' ? 
-            `اطلاعات اشتراک از پنل ${panelType} بروزرسانی شد` : 
-            `Subscription data updated from ${panelType} panel`,
+            'اطلاعات اشتراک بروزرسانی شد' : 
+            'Subscription data updated',
         });
       } else {
         setPanelStatus('offline');
@@ -380,18 +381,6 @@ const DeliveryPage = () => {
     return <Badge className={`${config.color} text-white text-xs`}>{config.text}</Badge>;
   };
 
-  const getApiTypeBadge = () => {
-    if (!subscriptionData?.apiType) return null;
-    
-    const apiConfig = {
-      marzban: { color: 'bg-green-600', text: 'MARZBAN' },
-      marzneshin: { color: 'bg-purple-600', text: 'MARZNESHIN' }
-    };
-    
-    const config = apiConfig[subscriptionData.apiType];
-    return <Badge className={`${config.color} text-white text-xs ml-2`}>{config.text}</Badge>;
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
       <Navigation />
@@ -425,7 +414,6 @@ const DeliveryPage = () => {
                   <div className="flex items-center gap-2">
                     {getStatusBadge(subscriptionData.status)}
                     {getPanelStatusBadge()}
-                    {getApiTypeBadge()}
                     <Button
                       variant="outline"
                       size="sm"
@@ -474,16 +462,6 @@ const DeliveryPage = () => {
                         <p className="font-bold">
                           {(subscriptionData.used_traffic / 1073741824).toFixed(2)} GB
                         </p>
-                      </div>
-                    )}
-                    {subscriptionData.apiType && (
-                      <div className="col-span-2">
-                        <Label className="text-sm text-muted-foreground">
-                          {language === 'fa' ? 'نوع API' : 'API Type'}
-                        </Label>
-                        <div className="mt-1">
-                          {getApiTypeBadge()}
-                        </div>
                       </div>
                     )}
                   </div>

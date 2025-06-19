@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,7 +77,7 @@ const MarzbanSubscriptionForm = () => {
         });
       } else {
         const mappedPlans = data.map(plan => {
-          console.log('SUBSCRIPTION FORM: Processing plan:', { 
+          console.log('SUBSCRIPTION FORM: ✅ Processing plan:', { 
             plan_id: plan.plan_id, 
             api_type: plan.api_type,
             name_fa: plan.name_fa,
@@ -92,7 +93,7 @@ const MarzbanSubscriptionForm = () => {
             durationDays: plan.default_duration_days
           };
         });
-        console.log('SUBSCRIPTION FORM: Mapped plans with API types:', mappedPlans);
+        console.log('SUBSCRIPTION FORM: ✅ Mapped plans with API types:', mappedPlans);
         setPlans(mappedPlans);
       }
     };
@@ -211,7 +212,7 @@ const MarzbanSubscriptionForm = () => {
     
     console.log('=== SUBSCRIPTION FORM: Starting submission ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
-    console.log('SUBSCRIPTION FORM: Selected plan:', {
+    console.log('SUBSCRIPTION FORM: ⚠️ CRITICAL - Selected plan API type check:', {
       id: selectedPlan?.id,
       name: selectedPlan?.name,
       apiType: selectedPlan?.apiType,
@@ -237,9 +238,9 @@ const MarzbanSubscriptionForm = () => {
       return;
     }
 
-    // Validate API type
+    // CRITICAL: Validate API type exists and is correct
     if (!selectedPlan.apiType) {
-      console.error('SUBSCRIPTION FORM: Plan missing API type');
+      console.error('SUBSCRIPTION FORM: ❌ Plan missing API type');
       setError('Selected plan is missing API type configuration');
       toast({
         title: language === 'fa' ? 'خطا در پیکربندی پلن' : 'Plan Configuration Error',
@@ -248,6 +249,15 @@ const MarzbanSubscriptionForm = () => {
           'Selected plan is missing API configuration',
         variant: 'destructive',
       });
+      return;
+    }
+
+    // CRITICAL: Log the exact API type being used
+    console.log(`SUBSCRIPTION FORM: 🔥 USING API TYPE: "${selectedPlan.apiType}" for plan "${selectedPlan.name}"`);
+    
+    if (selectedPlan.apiType !== 'marzban' && selectedPlan.apiType !== 'marzneshin') {
+      console.error('SUBSCRIPTION FORM: ❌ Invalid API type:', selectedPlan.apiType);
+      setError(`Invalid API type: ${selectedPlan.apiType}`);
       return;
     }
 
@@ -335,11 +345,11 @@ const MarzbanSubscriptionForm = () => {
       });
 
       // STEP 2: Create VPN user using the CORRECT edge function based on plan API type
-      console.log(`SUBSCRIPTION: ⚠️ CRITICAL: Plan API type is "${selectedPlan.apiType}" - selecting correct edge function`);
+      console.log(`SUBSCRIPTION: 🔥🔥🔥 CRITICAL: Plan API type is "${selectedPlan.apiType}" - selecting correct edge function`);
       
       let vpnResponse;
       if (selectedPlan.apiType === 'marzban') {
-        console.log('SUBSCRIPTION: ✅ Using Marzban edge function for plan with marzban API type');
+        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Using Marzban edge function for Lite plan');
         const { data, error } = await supabase.functions.invoke('marzban-create-user', {
           body: {
             username: savedSubscription.username,
@@ -355,9 +365,9 @@ const MarzbanSubscriptionForm = () => {
         }
         
         vpnResponse = data;
-        console.log('SUBSCRIPTION: Marzban API response:', vpnResponse);
+        console.log('SUBSCRIPTION: ✅ Marzban API response:', vpnResponse);
       } else if (selectedPlan.apiType === 'marzneshin') {
-        console.log('SUBSCRIPTION: ✅ Using Marzneshin edge function for plan with marzneshin API type');
+        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Using Marzneshin edge function for Pro plan');
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
           body: {
             username: savedSubscription.username,
@@ -373,9 +383,9 @@ const MarzbanSubscriptionForm = () => {
         }
         
         vpnResponse = data;
-        console.log('SUBSCRIPTION: Marzneshin API response:', vpnResponse);
+        console.log('SUBSCRIPTION: ✅ Marzneshin API response:', vpnResponse);
       } else {
-        console.error('SUBSCRIPTION: ❌ Unknown API type:', selectedPlan.apiType);
+        console.error('SUBSCRIPTION: ❌❌❌ CRITICAL ERROR: Unknown API type:', selectedPlan.apiType);
         throw new Error(`Unknown API type: ${selectedPlan.apiType}`);
       }
 
@@ -394,7 +404,7 @@ const MarzbanSubscriptionForm = () => {
         throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
       }
 
-      console.log('SUBSCRIPTION: ✅ VPN user created successfully:', vpnResponse.data);
+      console.log(`SUBSCRIPTION: ✅✅✅ VPN user created successfully using ${selectedPlan.apiType}:`, vpnResponse.data);
 
       // STEP 3: Update subscription with VPN details
       const updateData = {
@@ -460,7 +470,7 @@ const MarzbanSubscriptionForm = () => {
         apiType: selectedPlan.apiType // Include API type for delivery page
       };
 
-      console.log(`SUBSCRIPTION: ✅ Process completed successfully using ${selectedPlan.apiType} API, result:`, subscriptionResult);
+      console.log(`SUBSCRIPTION: ✅✅✅ Process completed successfully using ${selectedPlan.apiType} API, result:`, subscriptionResult);
       
       // Store data for delivery page
       localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
@@ -518,7 +528,7 @@ const MarzbanSubscriptionForm = () => {
               />
             </div>
 
-            {/* Plan Selection with API Type Display */}
+            {/* Plan Selection - Removed API Type Display */}
             <div>
               <Label className="text-sm font-medium">
                 {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
@@ -547,18 +557,9 @@ const MarzbanSubscriptionForm = () => {
                         <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
                           {plan.pricePerGB.toLocaleString()} {language === 'fa' ? 'تومان/گیگ' : 'Toman/GB'}
                         </p>
-                        <div className="flex items-center justify-between mt-2">
-                          <p className="text-sm text-gray-500">
-                            {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
-                          </p>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            plan.apiType === 'marzban' 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200' 
-                              : 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-200'
-                          }`}>
-                            {plan.apiType.toUpperCase()}
-                          </span>
-                        </div>
+                        <p className="text-sm text-gray-500 mt-2">
+                          {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
+                        </p>
                       </CardContent>
                     </Card>
                   ))}
@@ -576,13 +577,13 @@ const MarzbanSubscriptionForm = () => {
                     </p>
                     {planPanels.map((panel, index) => (
                       <div key={index} className="text-sm text-green-700 dark:text-green-300">
-                        • {panel.panel_name} ({panel.panel_type}) {panel.is_primary && ' - Primary'}
+                        • {panel.panel_name} {panel.is_primary && ' - Primary'}
                       </div>
                     ))}
                     <p className="text-xs text-green-600 dark:text-green-400 mt-2">
                       {language === 'fa' ? 
-                        `این پلن از API ${selectedPlan.apiType} استفاده می‌کند و آماده استفاده است.` : 
-                        `This plan uses ${selectedPlan.apiType} API and is ready to use.`
+                        'این پلن آماده استفاده است.' : 
+                        'This plan is ready to use.'
                       }
                     </p>
                   </div>
