@@ -234,6 +234,9 @@ const MultiStepSubscriptionForm = () => {
 
   const stepInfo = getCurrentStepInfo();
 
+  // Check if we should show navigation buttons (only for step 2)
+  const showNavigationButtons = currentStep === 2;
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <Card className="bg-white dark:bg-gray-900 shadow-xl border-0">
@@ -297,7 +300,7 @@ const MultiStepSubscriptionForm = () => {
           </div>
 
           {/* Navigation Buttons - Only show for step 2 */}
-          {currentStep === 2 && (
+          {showNavigationButtons && (
             <div className="flex justify-between items-center pt-8 border-t border-gray-200 dark:border-gray-700">
               <Button
                 variant="outline"
