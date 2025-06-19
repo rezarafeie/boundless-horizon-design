@@ -62,6 +62,13 @@ export const useMultiStepForm = () => {
   const createSubscriptionRecord = async (): Promise<string | null> => {
     if (!formData.selectedPlan) {
       console.error('No plan selected');
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً ابتدا یک پلن انتخاب کنید' : 
+          'Please select a plan first',
+        variant: 'destructive'
+      });
       return null;
     }
 
@@ -75,12 +82,12 @@ export const useMultiStepForm = () => {
       
       const subscriptionData = {
         id: newSubscriptionId,
-        username: formData.username,
-        mobile: formData.mobile,
+        username: formData.username.trim(),
+        mobile: formData.mobile.trim(),
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        notes: formData.notes || '',
+        notes: formData.notes?.trim() || '',
         status: 'pending'
       };
 
@@ -92,18 +99,41 @@ export const useMultiStepForm = () => {
 
       if (error) {
         console.error('Failed to create subscription:', error);
-        throw error;
+        throw new Error(error.message || 'Database error occurred');
       }
 
       console.log('Subscription created with ID:', data.id);
+      
+      toast({
+        title: language === 'fa' ? 'موفق' : 'Success',
+        description: language === 'fa' ? 
+          'سفارش شما با موفقیت ثبت شد' : 
+          'Your order has been created successfully'
+      });
+      
       return data.id;
     } catch (error) {
       console.error('Error creating subscription:', error);
+      
+      let errorMessage = language === 'fa' ? 
+        'خطا در ایجاد سفارش. لطفاً دوباره تلاش کنید.' : 
+        'Failed to create order. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('duplicate') || error.message.includes('unique')) {
+          errorMessage = language === 'fa' ? 
+            'این نام کاربری قبلاً استفاده شده است. لطفاً نام دیگری انتخاب کنید.' :
+            'This username is already taken. Please choose a different one.';
+        } else if (error.message.includes('network') || error.message.includes('connection')) {
+          errorMessage = language === 'fa' ? 
+            'مشکل در اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید.' :
+            'Connection problem. Please check your internet connection.';
+        }
+      }
+      
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'خطا در ایجاد سفارش. لطفاً دوباره تلاش کنید.' : 
-          'Failed to create order. Please try again.',
+        description: errorMessage,
         variant: 'destructive'
       });
       return null;
@@ -113,32 +143,37 @@ export const useMultiStepForm = () => {
   };
 
   const handleNext = async () => {
-    if (!canProceedFromStep(currentStep)) return;
+    if (!canProceedFromStep(currentStep)) {
+      console.warn('Cannot proceed from current step:', currentStep);
+      return;
+    }
 
+    // Special handling for step 2 -> 3 transition (create subscription record)
     if (currentStep === 2) {
       const newSubscriptionId = await createSubscriptionRecord();
       if (!newSubscriptionId) {
+        console.error('Failed to create subscription record, cannot proceed');
         return;
       }
       setSubscriptionId(newSubscriptionId);
     }
 
-    const nextStep = (currentStep + 1) as StepNumber;
-    if (nextStep <= 4) {
-      setCurrentStep(nextStep);
-    }
+    const nextStep = Math.min(currentStep + 1, 4) as StepNumber;
+    console.log(`Moving from step ${currentStep} to step ${nextStep}`);
+    setCurrentStep(nextStep);
   };
 
   const handlePrevious = () => {
-    const prevStep = (currentStep - 1) as StepNumber;
-    if (prevStep >= 1) {
-      setCurrentStep(prevStep);
-    }
+    const prevStep = Math.max(currentStep - 1, 1) as StepNumber;
+    console.log(`Moving from step ${currentStep} to step ${prevStep}`);
+    setCurrentStep(prevStep);
   };
 
   const handlePaymentSuccess = (subscriptionUrl?: string) => {
+    console.log('Payment successful, creating subscription result');
+    
     const subscriptionResult: SubscriptionResponse = {
-      username: formData.username,
+      username: formData.username.trim(),
       subscription_url: subscriptionUrl || '',
       expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
       data_limit: formData.dataLimit
@@ -146,11 +181,30 @@ export const useMultiStepForm = () => {
     
     setResult(subscriptionResult);
     setCurrentStep(4);
+    
+    toast({
+      title: language === 'fa' ? 'تبریک!' : 'Congratulations!',
+      description: language === 'fa' ? 
+        'پرداخت شما با موفقیت انجام شد' : 
+        'Your payment was successful'
+    });
   };
 
   const calculateTotalPrice = (): number => {
-    if (!formData.selectedPlan) return 0;
-    return formData.selectedPlan.pricePerGB * formData.dataLimit;
+    if (!formData.selectedPlan) {
+      console.warn('No plan selected for price calculation');
+      return 0;
+    }
+    
+    const basePrice = formData.selectedPlan.pricePerGB * formData.dataLimit;
+    console.log('Calculated price:', {
+      pricePerGB: formData.selectedPlan.pricePerGB,
+      dataLimit: formData.dataLimit,
+      basePrice,
+      discount: appliedDiscount
+    });
+    
+    return basePrice;
   };
 
   return {
