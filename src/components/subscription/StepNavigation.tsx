@@ -26,7 +26,8 @@ const StepNavigation = ({
     return null;
   }
 
-  const isFirstStep = currentStep === 1;
+  // Check if we're on the first step (should be step 1, but since we only show on step 2, this is always false)
+  const isFirstStep = false;
 
   return (
     <div className="flex justify-between items-center pt-8 border-t border-gray-200 dark:border-gray-700">
