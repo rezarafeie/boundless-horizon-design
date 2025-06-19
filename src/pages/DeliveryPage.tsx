@@ -126,14 +126,18 @@ const DeliveryPage = () => {
         try {
           // Use the stored API type if available, otherwise determine from panel
           let targetApiType = data.apiType;
-          let panelType: string | null = null;
+          let panelType: 'marzban' | 'marzneshin' | null = null;
           
           if (targetApiType) {
             console.log(`DELIVERY: Using stored API type: ${targetApiType}`);
             panelType = targetApiType;
           } else {
             console.log('DELIVERY: No stored API type, determining from panel...');
-            panelType = await PanelApiService.determineSubscriptionPanelType(data.username);
+            const determinedType = await PanelApiService.determineSubscriptionPanelType(data.username);
+            // Type guard to ensure we have a valid API type
+            if (determinedType === 'marzban' || determinedType === 'marzneshin') {
+              panelType = determinedType;
+            }
           }
           
           if (panelType) {
@@ -150,7 +154,7 @@ const DeliveryPage = () => {
               data_limit: panelData.data_limit || data.data_limit,
               status: panelData.status || data.status,
               used_traffic: panelData.used_traffic || data.used_traffic || 0,
-              apiType: panelType as 'marzban' | 'marzneshin'
+              apiType: panelType
             };
             
             setSubscriptionData(mergedData);
@@ -246,7 +250,11 @@ const DeliveryPage = () => {
       
       if (!panelType) {
         console.log('DELIVERY: No stored API type, determining from panel...');
-        panelType = await PanelApiService.determineSubscriptionPanelType(subscriptionData.username);
+        const determinedType = await PanelApiService.determineSubscriptionPanelType(subscriptionData.username);
+        // Type guard to ensure we have a valid API type
+        if (determinedType === 'marzban' || determinedType === 'marzneshin') {
+          panelType = determinedType;
+        }
       }
       
       if (panelType) {
@@ -260,7 +268,7 @@ const DeliveryPage = () => {
           data_limit: panelData.data_limit || subscriptionData.data_limit,
           status: panelData.status || subscriptionData.status,
           used_traffic: panelData.used_traffic || subscriptionData.used_traffic || 0,
-          apiType: panelType as 'marzban' | 'marzneshin'
+          apiType: panelType
         };
         
         setSubscriptionData(updatedData);
