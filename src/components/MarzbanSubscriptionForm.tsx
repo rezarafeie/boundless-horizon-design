@@ -75,15 +75,24 @@ const MarzbanSubscriptionForm = () => {
           variant: 'destructive',
         });
       } else {
-        const mappedPlans = data.map(plan => ({
-          id: plan.id,
-          name: language === 'fa' ? plan.name_fa : plan.name_en,
-          description: language === 'fa' ? plan.description_fa || '' : plan.description_en || '',
-          pricePerGB: plan.price_per_gb,
-          apiType: plan.api_type as 'marzban' | 'marzneshin',
-          durationDays: plan.default_duration_days
-        }));
-        console.log('SUBSCRIPTION FORM: Mapped plans:', mappedPlans);
+        const mappedPlans = data.map(plan => {
+          console.log('SUBSCRIPTION FORM: Processing plan:', { 
+            plan_id: plan.plan_id, 
+            api_type: plan.api_type,
+            name_fa: plan.name_fa,
+            name_en: plan.name_en 
+          });
+          
+          return {
+            id: plan.id,
+            name: language === 'fa' ? plan.name_fa : plan.name_en,
+            description: language === 'fa' ? plan.description_fa || '' : plan.description_en || '',
+            pricePerGB: plan.price_per_gb,
+            apiType: plan.api_type as 'marzban' | 'marzneshin',
+            durationDays: plan.default_duration_days
+          };
+        });
+        console.log('SUBSCRIPTION FORM: Mapped plans with API types:', mappedPlans);
         setPlans(mappedPlans);
       }
     };
@@ -202,7 +211,12 @@ const MarzbanSubscriptionForm = () => {
     
     console.log('=== SUBSCRIPTION FORM: Starting submission ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
-    console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
+    console.log('SUBSCRIPTION FORM: Selected plan:', {
+      id: selectedPlan?.id,
+      name: selectedPlan?.name,
+      apiType: selectedPlan?.apiType,
+      pricePerGB: selectedPlan?.pricePerGB
+    });
     
     // Enhanced validation
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
@@ -320,12 +334,12 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // STEP 2: Create VPN user using edge functions
-      console.log(`SUBSCRIPTION: Creating VPN user via ${selectedPlan.apiType} edge function...`);
+      // STEP 2: Create VPN user using the CORRECT edge function based on plan API type
+      console.log(`SUBSCRIPTION: ⚠️ CRITICAL: Plan API type is "${selectedPlan.apiType}" - selecting correct edge function`);
       
       let vpnResponse;
       if (selectedPlan.apiType === 'marzban') {
-        console.log('SUBSCRIPTION: Using Marzban edge function');
+        console.log('SUBSCRIPTION: ✅ Using Marzban edge function for plan with marzban API type');
         const { data, error } = await supabase.functions.invoke('marzban-create-user', {
           body: {
             username: savedSubscription.username,
@@ -341,8 +355,9 @@ const MarzbanSubscriptionForm = () => {
         }
         
         vpnResponse = data;
-      } else {
-        console.log('SUBSCRIPTION: Using Marzneshin edge function');
+        console.log('SUBSCRIPTION: Marzban API response:', vpnResponse);
+      } else if (selectedPlan.apiType === 'marzneshin') {
+        console.log('SUBSCRIPTION: ✅ Using Marzneshin edge function for plan with marzneshin API type');
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
           body: {
             username: savedSubscription.username,
@@ -358,9 +373,11 @@ const MarzbanSubscriptionForm = () => {
         }
         
         vpnResponse = data;
+        console.log('SUBSCRIPTION: Marzneshin API response:', vpnResponse);
+      } else {
+        console.error('SUBSCRIPTION: ❌ Unknown API type:', selectedPlan.apiType);
+        throw new Error(`Unknown API type: ${selectedPlan.apiType}`);
       }
-
-      console.log('SUBSCRIPTION: VPN API response:', vpnResponse);
 
       if (!vpnResponse?.success) {
         console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse?.error);
@@ -432,17 +449,18 @@ const MarzbanSubscriptionForm = () => {
         }
       }
 
-      // STEP 5: Prepare data for delivery page
+      // STEP 5: Prepare data for delivery page with API type information
       const subscriptionResult = {
         username: vpnResponse.data.username,
         subscription_url: vpnResponse.data.subscription_url,
         expire: vpnResponse.data.expire || Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
         data_limit: vpnResponse.data.data_limit || formData.dataLimit * 1073741824,
         status: 'active',
-        used_traffic: 0
+        used_traffic: 0,
+        apiType: selectedPlan.apiType // Include API type for delivery page
       };
 
-      console.log(`SUBSCRIPTION: ✅ Process completed successfully, result:`, subscriptionResult);
+      console.log(`SUBSCRIPTION: ✅ Process completed successfully using ${selectedPlan.apiType} API, result:`, subscriptionResult);
       
       // Store data for delivery page
       localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
@@ -500,7 +518,7 @@ const MarzbanSubscriptionForm = () => {
               />
             </div>
 
-            {/* Plan Selection */}
+            {/* Plan Selection with API Type Display */}
             <div>
               <Label className="text-sm font-medium">
                 {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
@@ -529,9 +547,18 @@ const MarzbanSubscriptionForm = () => {
                         <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
                           {plan.pricePerGB.toLocaleString()} {language === 'fa' ? 'تومان/گیگ' : 'Toman/GB'}
                         </p>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {plan.apiType} - {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
-                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-sm text-gray-500">
+                            {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
+                          </p>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            plan.apiType === 'marzban' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200' 
+                              : 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-200'
+                          }`}>
+                            {plan.apiType.toUpperCase()}
+                          </span>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -554,8 +581,8 @@ const MarzbanSubscriptionForm = () => {
                     ))}
                     <p className="text-xs text-green-600 dark:text-green-400 mt-2">
                       {language === 'fa' ? 
-                        'این پلن آماده استفاده است و می‌توانید اشتراک خود را ایجاد کنید.' : 
-                        'This plan is ready to use and you can create your subscription.'
+                        `این پلن از API ${selectedPlan.apiType} استفاده می‌کند و آماده استفاده است.` : 
+                        `This plan uses ${selectedPlan.apiType} API and is ready to use.`
                       }
                     </p>
                   </div>

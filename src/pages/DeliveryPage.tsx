@@ -19,6 +19,7 @@ interface SubscriptionData {
   data_limit: number;
   status: string;
   used_traffic?: number;
+  apiType?: 'marzban' | 'marzneshin'; // Add API type tracking
 }
 
 const DeliveryPage = () => {
@@ -41,31 +42,31 @@ const DeliveryPage = () => {
         setError(null);
         setPanelStatus('checking');
 
-        console.log('DeliveryPage: Loading subscription data...');
-        console.log('Location state:', location.state);
-        console.log('URL search params:', Object.fromEntries(searchParams.entries()));
+        console.log('DELIVERY: Loading subscription data...');
+        console.log('DELIVERY: Location state:', location.state);
+        console.log('DELIVERY: URL search params:', Object.fromEntries(searchParams.entries()));
 
         // Check different sources for subscription data
         let data: SubscriptionData | null = null;
 
         // 1. From URL state (navigation from subscription form)
         if (location.state?.subscriptionData) {
-          console.log('Found subscription data in location state:', location.state.subscriptionData);
+          console.log('DELIVERY: Found subscription data in location state:', location.state.subscriptionData);
           data = location.state.subscriptionData;
         }
         // 2. From localStorage (fallback)
         else if (localStorage.getItem('deliverySubscriptionData')) {
           try {
             data = JSON.parse(localStorage.getItem('deliverySubscriptionData')!);
-            console.log('Found subscription data in localStorage:', data);
+            console.log('DELIVERY: Found subscription data in localStorage:', data);
           } catch (parseError) {
-            console.error('Failed to parse subscription data from localStorage:', parseError);
+            console.error('DELIVERY: Failed to parse subscription data from localStorage:', parseError);
           }
         }
         // 3. From URL parameter 'id' - fetch from database
         else if (searchParams.get('id')) {
           const subscriptionId = searchParams.get('id');
-          console.log('Fetching subscription from database with ID:', subscriptionId);
+          console.log('DELIVERY: Fetching subscription from database with ID:', subscriptionId);
           
           try {
             const { data: subscription, error: dbError } = await supabase
@@ -75,25 +76,39 @@ const DeliveryPage = () => {
               .single();
 
             if (dbError) {
-              console.error('Database fetch error:', dbError);
+              console.error('DELIVERY: Database fetch error:', dbError);
               throw new Error(`Database error: ${dbError.message}`);
             }
 
             if (subscription) {
+              // Try to determine API type from subscription notes or default fallback
+              let apiType: 'marzban' | 'marzneshin' = 'marzneshin'; // Default fallback
+              
+              if (subscription.notes) {
+                if (subscription.notes.includes('API: marzban')) {
+                  apiType = 'marzban';
+                } else if (subscription.notes.includes('API: marzneshin')) {
+                  apiType = 'marzneshin';
+                }
+              }
+              
+              console.log('DELIVERY: Determined API type from database subscription:', apiType);
+              
               data = {
                 username: subscription.username,
                 subscription_url: subscription.subscription_url,
                 expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
                 data_limit: subscription.data_limit_gb * 1073741824,
                 status: subscription.status || 'active',
-                used_traffic: 0
+                used_traffic: 0,
+                apiType: apiType
               };
-              console.log('Fetched subscription from database:', data);
+              console.log('DELIVERY: Fetched subscription from database:', data);
             } else {
               throw new Error('Subscription not found in database');
             }
           } catch (fetchError) {
-            console.error('Failed to fetch subscription from database:', fetchError);
+            console.error('DELIVERY: Failed to fetch subscription from database:', fetchError);
             throw new Error(`Could not load subscription: ${fetchError.message}`);
           }
         }
@@ -102,16 +117,29 @@ const DeliveryPage = () => {
           throw new Error('No subscription data found');
         }
 
-        console.log('Using subscription data:', data);
+        console.log('DELIVERY: Using subscription data with API type:', { 
+          username: data.username, 
+          apiType: data.apiType || 'unknown' 
+        });
 
         // Try to fetch fresh data from the panel if we have a username
         try {
-          const panelType = await PanelApiService.determineSubscriptionPanelType(data.username);
+          // Use the stored API type if available, otherwise determine from panel
+          let targetApiType = data.apiType;
+          let panelType: string | null = null;
+          
+          if (targetApiType) {
+            console.log(`DELIVERY: Using stored API type: ${targetApiType}`);
+            panelType = targetApiType;
+          } else {
+            console.log('DELIVERY: No stored API type, determining from panel...');
+            panelType = await PanelApiService.determineSubscriptionPanelType(data.username);
+          }
           
           if (panelType) {
-            console.log(`Found user in ${panelType} panel`);
+            console.log(`DELIVERY: Found user in ${panelType} panel`);
             
-            // Fetch fresh data from the panel
+            // Fetch fresh data from the correct panel
             const panelData = await PanelApiService.getSubscriptionFromPanel(data.username, panelType);
             
             // Merge panel data with existing data, preferring panel data for critical fields
@@ -121,7 +149,8 @@ const DeliveryPage = () => {
               expire: panelData.expire || data.expire,
               data_limit: panelData.data_limit || data.data_limit,
               status: panelData.status || data.status,
-              used_traffic: panelData.used_traffic || data.used_traffic || 0
+              used_traffic: panelData.used_traffic || data.used_traffic || 0,
+              apiType: panelType as 'marzban' | 'marzneshin'
             };
             
             setSubscriptionData(mergedData);
@@ -134,7 +163,7 @@ const DeliveryPage = () => {
               await generateQRCode(mergedData.subscription_url);
             }
           } else {
-            console.log('User not found in any panel, using fallback data');
+            console.log('DELIVERY: User not found in any panel, using fallback data');
             setSubscriptionData(data);
             setPanelStatus('offline');
             
@@ -143,7 +172,7 @@ const DeliveryPage = () => {
             }
           }
         } catch (panelError) {
-          console.error('Failed to fetch from panel, using fallback data:', panelError);
+          console.error('DELIVERY: Failed to fetch from panel, using fallback data:', panelError);
           setSubscriptionData(data);
           setPanelStatus('offline');
           
@@ -153,7 +182,7 @@ const DeliveryPage = () => {
         }
 
       } catch (error: any) {
-        console.error('Error loading subscription data:', error);
+        console.error('DELIVERY: Error loading subscription data:', error);
         setError(error.message || (language === 'fa' ? 'خطا در بارگذاری اطلاعات' : 'Error loading subscription data'));
         setPanelStatus('offline');
       } finally {
@@ -209,12 +238,19 @@ const DeliveryPage = () => {
 
     setIsRefreshing(true);
     try {
-      console.log('Refreshing subscription data from panel...');
+      console.log('DELIVERY: Refreshing subscription data from panel...');
+      console.log('DELIVERY: Current subscription API type:', subscriptionData.apiType);
       
-      // Determine panel type and fetch fresh data
-      const panelType = await PanelApiService.determineSubscriptionPanelType(subscriptionData.username);
+      // Use the stored API type if available, otherwise determine from panel
+      let panelType = subscriptionData.apiType;
+      
+      if (!panelType) {
+        console.log('DELIVERY: No stored API type, determining from panel...');
+        panelType = await PanelApiService.determineSubscriptionPanelType(subscriptionData.username);
+      }
       
       if (panelType) {
+        console.log(`DELIVERY: Refreshing from ${panelType} panel`);
         const panelData = await PanelApiService.getSubscriptionFromPanel(subscriptionData.username, panelType);
         
         const updatedData = {
@@ -223,7 +259,8 @@ const DeliveryPage = () => {
           expire: panelData.expire || subscriptionData.expire,
           data_limit: panelData.data_limit || subscriptionData.data_limit,
           status: panelData.status || subscriptionData.status,
-          used_traffic: panelData.used_traffic || subscriptionData.used_traffic || 0
+          used_traffic: panelData.used_traffic || subscriptionData.used_traffic || 0,
+          apiType: panelType as 'marzban' | 'marzneshin'
         };
         
         setSubscriptionData(updatedData);
@@ -237,8 +274,8 @@ const DeliveryPage = () => {
         toast({
           title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
           description: language === 'fa' ? 
-            'اطلاعات اشتراک از پنل بروزرسانی شد' : 
-            'Subscription data updated from panel',
+            `اطلاعات اشتراک از پنل ${panelType} بروزرسانی شد` : 
+            `Subscription data updated from ${panelType} panel`,
         });
       } else {
         setPanelStatus('offline');
@@ -249,7 +286,7 @@ const DeliveryPage = () => {
         });
       }
     } catch (error) {
-      console.error('Error refreshing subscription:', error);
+      console.error('DELIVERY: Error refreshing subscription:', error);
       setPanelStatus('offline');
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
@@ -335,6 +372,18 @@ const DeliveryPage = () => {
     return <Badge className={`${config.color} text-white text-xs`}>{config.text}</Badge>;
   };
 
+  const getApiTypeBadge = () => {
+    if (!subscriptionData?.apiType) return null;
+    
+    const apiConfig = {
+      marzban: { color: 'bg-green-600', text: 'MARZBAN' },
+      marzneshin: { color: 'bg-purple-600', text: 'MARZNESHIN' }
+    };
+    
+    const config = apiConfig[subscriptionData.apiType];
+    return <Badge className={`${config.color} text-white text-xs ml-2`}>{config.text}</Badge>;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
       <Navigation />
@@ -368,6 +417,7 @@ const DeliveryPage = () => {
                   <div className="flex items-center gap-2">
                     {getStatusBadge(subscriptionData.status)}
                     {getPanelStatusBadge()}
+                    {getApiTypeBadge()}
                     <Button
                       variant="outline"
                       size="sm"
@@ -416,6 +466,16 @@ const DeliveryPage = () => {
                         <p className="font-bold">
                           {(subscriptionData.used_traffic / 1073741824).toFixed(2)} GB
                         </p>
+                      </div>
+                    )}
+                    {subscriptionData.apiType && (
+                      <div className="col-span-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {language === 'fa' ? 'نوع API' : 'API Type'}
+                        </Label>
+                        <div className="mt-1">
+                          {getApiTypeBadge()}
+                        </div>
                       </div>
                     )}
                   </div>
