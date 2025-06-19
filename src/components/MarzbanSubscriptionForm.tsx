@@ -238,26 +238,17 @@ const MarzbanSubscriptionForm = () => {
       return;
     }
 
-    // CRITICAL: Validate API type exists and is correct
-    if (!selectedPlan.apiType) {
-      console.error('SUBSCRIPTION FORM: ❌ Plan missing API type');
-      setError('Selected plan is missing API type configuration');
+    // CRITICAL: Enhanced API type validation
+    if (!selectedPlan.apiType || (selectedPlan.apiType !== 'marzban' && selectedPlan.apiType !== 'marzneshin')) {
+      console.error('SUBSCRIPTION FORM: ❌ Invalid or missing API type:', selectedPlan.apiType);
+      setError(`Invalid API type: ${selectedPlan.apiType}. Expected 'marzban' or 'marzneshin'`);
       toast({
         title: language === 'fa' ? 'خطا در پیکربندی پلن' : 'Plan Configuration Error',
         description: language === 'fa' ? 
-          'پلن انتخابی فاقد تنظیمات API است' : 
-          'Selected plan is missing API configuration',
+          'پلن انتخابی فاقد تنظیمات API معتبر است' : 
+          'Selected plan has invalid API configuration',
         variant: 'destructive',
       });
-      return;
-    }
-
-    // CRITICAL: Log the exact API type being used
-    console.log(`SUBSCRIPTION FORM: 🔥 USING API TYPE: "${selectedPlan.apiType}" for plan "${selectedPlan.name}"`);
-    
-    if (selectedPlan.apiType !== 'marzban' && selectedPlan.apiType !== 'marzneshin') {
-      console.error('SUBSCRIPTION FORM: ❌ Invalid API type:', selectedPlan.apiType);
-      setError(`Invalid API type: ${selectedPlan.apiType}`);
       return;
     }
 
@@ -344,12 +335,37 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // STEP 2: Create VPN user using the CORRECT edge function based on plan API type
-      console.log(`SUBSCRIPTION: 🔥🔥🔥 CRITICAL: Plan API type is "${selectedPlan.apiType}" - selecting correct edge function`);
+      // STEP 2: ENHANCED API TYPE VALIDATION AND ROUTING
+      console.log(`SUBSCRIPTION: 🔥🔥🔥 PRE-CALL VALIDATION - Plan API type: "${selectedPlan.apiType}"`);
+      console.log(`SUBSCRIPTION: 🔥🔥🔥 Type check: selectedPlan.apiType === 'marzban' = ${selectedPlan.apiType === 'marzban'}`);
+      console.log(`SUBSCRIPTION: 🔥🔥🔥 Type check: selectedPlan.apiType === 'marzneshin' = ${selectedPlan.apiType === 'marzneshin'}`);
+      
+      // Double-check by fetching plan from database to verify API type
+      const { data: planVerification, error: planError } = await supabase
+        .from('subscription_plans')
+        .select('api_type, name_en, name_fa')
+        .eq('id', selectedPlan.id)
+        .single();
+      
+      if (planError) {
+        console.error('SUBSCRIPTION: Failed to verify plan API type:', planError);
+      } else {
+        console.log(`SUBSCRIPTION: 🔥🔥🔥 DATABASE VERIFICATION - Plan API type from DB: "${planVerification.api_type}"`);
+        if (planVerification.api_type !== selectedPlan.apiType) {
+          console.error(`SUBSCRIPTION: ❌ API TYPE MISMATCH! Frontend: ${selectedPlan.apiType}, Database: ${planVerification.api_type}`);
+          throw new Error(`API type mismatch detected. Frontend: ${selectedPlan.apiType}, Database: ${planVerification.api_type}`);
+        }
+      }
       
       let vpnResponse;
-      if (selectedPlan.apiType === 'marzban') {
-        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Using Marzban edge function for Lite plan');
+      const apiTypeToUse = selectedPlan.apiType;
+      
+      console.log(`SUBSCRIPTION: 🔥🔥🔥 ABOUT TO CALL EDGE FUNCTION - Using API type: "${apiTypeToUse}"`);
+      
+      if (apiTypeToUse === 'marzban') {
+        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Calling Marzban edge function');
+        console.log('SUBSCRIPTION: ✅✅✅ Edge function name: marzban-create-user');
+        
         const { data, error } = await supabase.functions.invoke('marzban-create-user', {
           body: {
             username: savedSubscription.username,
@@ -366,8 +382,10 @@ const MarzbanSubscriptionForm = () => {
         
         vpnResponse = data;
         console.log('SUBSCRIPTION: ✅ Marzban API response:', vpnResponse);
-      } else if (selectedPlan.apiType === 'marzneshin') {
-        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Using Marzneshin edge function for Pro plan');
+      } else if (apiTypeToUse === 'marzneshin') {
+        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Calling Marzneshin edge function');
+        console.log('SUBSCRIPTION: ✅✅✅ Edge function name: marzneshin-create-user');
+        
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
           body: {
             username: savedSubscription.username,
@@ -385,8 +403,8 @@ const MarzbanSubscriptionForm = () => {
         vpnResponse = data;
         console.log('SUBSCRIPTION: ✅ Marzneshin API response:', vpnResponse);
       } else {
-        console.error('SUBSCRIPTION: ❌❌❌ CRITICAL ERROR: Unknown API type:', selectedPlan.apiType);
-        throw new Error(`Unknown API type: ${selectedPlan.apiType}`);
+        console.error('SUBSCRIPTION: ❌❌❌ CRITICAL ERROR: Unhandled API type:', apiTypeToUse);
+        throw new Error(`Unhandled API type: ${apiTypeToUse}`);
       }
 
       if (!vpnResponse?.success) {
@@ -404,7 +422,7 @@ const MarzbanSubscriptionForm = () => {
         throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
       }
 
-      console.log(`SUBSCRIPTION: ✅✅✅ VPN user created successfully using ${selectedPlan.apiType}:`, vpnResponse.data);
+      console.log(`SUBSCRIPTION: ✅✅✅ VPN user created successfully using ${apiTypeToUse}:`, vpnResponse.data);
 
       // STEP 3: Update subscription with VPN details
       const updateData = {
@@ -467,10 +485,10 @@ const MarzbanSubscriptionForm = () => {
         data_limit: vpnResponse.data.data_limit || formData.dataLimit * 1073741824,
         status: 'active',
         used_traffic: 0,
-        apiType: selectedPlan.apiType // Include API type for delivery page
+        apiType: apiTypeToUse // Include API type for delivery page
       };
 
-      console.log(`SUBSCRIPTION: ✅✅✅ Process completed successfully using ${selectedPlan.apiType} API, result:`, subscriptionResult);
+      console.log(`SUBSCRIPTION: ✅✅✅ Process completed successfully using ${apiTypeToUse} API, result:`, subscriptionResult);
       
       // Store data for delivery page
       localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
@@ -528,7 +546,7 @@ const MarzbanSubscriptionForm = () => {
               />
             </div>
 
-            {/* Plan Selection - Removed API Type Display */}
+            {/* Plan Selection */}
             <div>
               <Label className="text-sm font-medium">
                 {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}

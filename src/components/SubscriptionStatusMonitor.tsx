@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -18,27 +18,47 @@ export const SubscriptionStatusMonitor = ({
   const { language } = useLanguage();
   const [status, setStatus] = useState<string>('pending');
   const [subscriptionUrl, setSubscriptionUrl] = useState<string>('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchStatus = async () => {
+    console.log('Fetching subscription status for ID:', subscriptionId);
+    const { data } = await supabase
+      .from('subscriptions')
+      .select('status, subscription_url, admin_decision')
+      .eq('id', subscriptionId)
+      .single();
+    
+    if (data) {
+      console.log('Subscription status data:', data);
+      setStatus(data.status);
+      if (data.subscription_url) {
+        setSubscriptionUrl(data.subscription_url);
+      }
+      
+      // Trigger callback for status updates
+      if (data.status === 'active' && data.subscription_url) {
+        onStatusUpdate('active', data.subscription_url);
+      } else if (data.admin_decision === 'rejected') {
+        onStatusUpdate('rejected');
+      }
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchStatus();
+    } catch (error) {
+      console.error('Manual refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     console.log('Setting up real-time subscription for:', subscriptionId);
     
     // Initial fetch
-    const fetchStatus = async () => {
-      const { data } = await supabase
-        .from('subscriptions')
-        .select('status, subscription_url, admin_decision')
-        .eq('id', subscriptionId)
-        .single();
-      
-      if (data) {
-        console.log('Initial status:', data);
-        setStatus(data.status);
-        if (data.subscription_url) {
-          setSubscriptionUrl(data.subscription_url);
-        }
-      }
-    };
-
     fetchStatus();
 
     // Set up real-time subscription
@@ -93,7 +113,7 @@ export const SubscriptionStatusMonitor = ({
           : '✅ Payment Approved! Your subscription is active';
       case 'rejected':
         return language === 'fa' 
-          ? '❌ پرداخت رد شد. لطفاً با پشتیبانی تماس بگیرید' 
+          ? '❌ پرداخت رد شد. لطفاً با پشتیبان تماس بگیرید' 
           : '❌ Payment Rejected. Please contact support';
       default:
         return language === 'fa' 
@@ -112,11 +132,23 @@ export const SubscriptionStatusMonitor = ({
           </h3>
           
           {status === 'pending' && (
-            <p className="text-sm text-muted-foreground">
-              {language === 'fa' 
-                ? 'پرداخت شما در حال بررسی است. لطفاً صبر کنید...' 
-                : 'Your payment is being reviewed. Please wait...'}
-            </p>
+            <>
+              <p className="text-sm text-muted-foreground">
+                {language === 'fa' 
+                  ? 'پرداخت شما در حال بررسی است. لطفاً صبر کنید...' 
+                  : 'Your payment is being reviewed. Please wait...'}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {language === 'fa' ? 'بررسی مجدد' : 'Check Status'}
+              </Button>
+            </>
           )}
 
           {status === 'active' && subscriptionUrl && (
