@@ -44,23 +44,35 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
       console.log('=== FREE TRIAL: Starting free trial creation ===');
       
       // Generate unique username for free trial
-      const username = `free_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      const username = `trial_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       
-      // Get the first available plan (preferably lite/marzban)
+      // Get the first available plan (preferably marzban for testing)
       const { data: plans, error: plansError } = await supabase
         .from('subscription_plans')
         .select('*')
         .eq('is_active', true)
         .eq('is_visible', true)
         .order('price_per_gb', { ascending: true })
-        .limit(1);
+        .limit(5); // Get more plans to choose from
 
       if (plansError || !plans || plans.length === 0) {
         throw new Error('No subscription plans available for free trial');
       }
 
-      const selectedPlan = plans[0];
-      console.log('FREE TRIAL: Using plan:', selectedPlan);
+      console.log('FREE TRIAL: Available plans:', plans.map(p => ({ 
+        id: p.id, 
+        name: p.name_en, 
+        api_type: p.api_type 
+      })));
+
+      // Try to find a Marzban plan first for testing, fallback to any plan
+      let selectedPlan = plans.find(p => p.api_type === 'marzban') || plans[0];
+      
+      console.log('FREE TRIAL: Selected plan for free trial:', {
+        id: selectedPlan.id,
+        name: selectedPlan.name_en,
+        api_type: selectedPlan.api_type
+      });
 
       // Create subscription record first
       const subscriptionData = {
@@ -70,7 +82,7 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
         price_toman: 0, // Free trial
         status: 'pending',
         username: username,
-        notes: `Free trial - Reason: ${formData.reason || 'N/A'}`,
+        notes: `Free trial - API: ${selectedPlan.api_type} - Reason: ${formData.reason || 'N/A'}`,
         marzban_user_created: false
       };
 
@@ -89,35 +101,73 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
 
       console.log('FREE TRIAL: Subscription saved:', subscription);
 
-      // Create VPN user using the appropriate edge function
-      const edgeFunctionName = selectedPlan.api_type === 'marzban' ? 
-        'marzban-create-user' : 'marzneshin-create-user';
+      // Create VPN user using the appropriate edge function with explicit routing
+      const apiType = selectedPlan.api_type;
+      console.log(`FREE TRIAL: Creating VPN user using API type: ${apiType}`);
       
-      console.log(`FREE TRIAL: Creating VPN user via ${edgeFunctionName}`);
-
-      const vpnUserRequest = {
-        username: username,
-        dataLimitGB: 2,
-        durationDays: 7,
-        notes: `Free trial - Mobile: ${formData.mobile}, Reason: ${formData.reason || 'N/A'}`
-      };
-
-      const { data: vpnResponse, error: vpnError } = await supabase.functions.invoke(
-        edgeFunctionName,
-        { body: vpnUserRequest }
-      );
-
-      if (vpnError) {
-        console.error('FREE TRIAL: VPN creation failed:', vpnError);
-        throw new Error(`VPN service error: ${vpnError.message}`);
+      let vpnResponse;
+      let edgeFunctionName;
+      
+      if (apiType === 'marzban') {
+        edgeFunctionName = 'marzban-create-user';
+        console.log(`FREE TRIAL: Using ${edgeFunctionName} for Marzban API`);
+        
+        const vpnUserRequest = {
+          username: username,
+          dataLimitGB: 2,
+          durationDays: 7,
+          notes: `Free trial - Mobile: ${formData.mobile}, Reason: ${formData.reason || 'N/A'}`
+        };
+        
+        console.log('FREE TRIAL: Marzban request payload:', vpnUserRequest);
+        
+        const { data, error: vpnError } = await supabase.functions.invoke(edgeFunctionName, {
+          body: vpnUserRequest
+        });
+        
+        if (vpnError) {
+          console.error('FREE TRIAL: Marzban VPN creation failed:', vpnError);
+          throw new Error(`Marzban service error: ${vpnError.message}`);
+        }
+        
+        vpnResponse = data;
+        
+      } else if (apiType === 'marzneshin') {
+        edgeFunctionName = 'marzneshin-create-user';
+        console.log(`FREE TRIAL: Using ${edgeFunctionName} for Marzneshin API`);
+        
+        const vpnUserRequest = {
+          username: username,
+          dataLimitGB: 2,
+          durationDays: 7,
+          notes: `Free trial - Mobile: ${formData.mobile}, Reason: ${formData.reason || 'N/A'}`
+        };
+        
+        console.log('FREE TRIAL: Marzneshin request payload:', vpnUserRequest);
+        
+        const { data, error: vpnError } = await supabase.functions.invoke(edgeFunctionName, {
+          body: vpnUserRequest
+        });
+        
+        if (vpnError) {
+          console.error('FREE TRIAL: Marzneshin VPN creation failed:', vpnError);
+          throw new Error(`Marzneshin service error: ${vpnError.message}`);
+        }
+        
+        vpnResponse = data;
+        
+      } else {
+        throw new Error(`Unsupported API type for free trial: ${apiType}`);
       }
+
+      console.log(`FREE TRIAL: VPN response from ${edgeFunctionName}:`, vpnResponse);
 
       if (!vpnResponse?.success) {
-        console.error('FREE TRIAL: VPN user creation failed:', vpnResponse?.error);
-        throw new Error(`Failed to create VPN user: ${vpnResponse?.error || 'Unknown error'}`);
+        console.error(`FREE TRIAL: VPN user creation failed using ${edgeFunctionName}:`, vpnResponse?.error);
+        throw new Error(`Failed to create VPN user using ${edgeFunctionName}: ${vpnResponse?.error || 'Unknown error'}`);
       }
 
-      console.log('FREE TRIAL: VPN user created successfully:', vpnResponse.data);
+      console.log(`FREE TRIAL: VPN user created successfully using ${edgeFunctionName}:`, vpnResponse.data);
 
       // Update subscription with VPN details
       const updateData = {

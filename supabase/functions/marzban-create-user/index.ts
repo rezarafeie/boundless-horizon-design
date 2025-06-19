@@ -47,9 +47,7 @@ async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: 
     baseUrlExists: !!baseUrl,
     usernameExists: !!adminUsername,
     passwordExists: !!adminPassword,
-    baseUrlValue: baseUrl || 'NOT_SET',
-    usernameLength: adminUsername?.length || 0,
-    passwordLength: adminPassword?.length || 0
+    baseUrlValue: baseUrl || 'NOT_SET'
   });
 
   if (!baseUrl || !adminUsername || !adminPassword) {
@@ -61,7 +59,6 @@ async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: 
     throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
   }
 
-  // Check for empty values
   if (baseUrl.trim() === '' || adminUsername.trim() === '' || adminPassword.trim() === '') {
     throw new Error('One or more environment variables are empty. Please check your secret values.');
   }
@@ -75,87 +72,54 @@ async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: 
 
 async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
   const authUrl = `${baseUrl}/api/admin/token`;
-  logStep('Attempting authentication with multiple methods', { url: authUrl });
+  logStep('Attempting authentication', { url: authUrl });
   
-  // Try different authentication methods
-  const authMethods = [
-    {
-      name: 'JSON',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    },
-    {
-      name: 'Form-data',
-      headers: {},
-      body: (() => {
-        const formData = new FormData();
-        formData.append('username', username);
-        formData.append('password', password);
-        return formData;
-      })()
-    },
-    {
-      name: 'URL-encoded',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: (() => {
-        const params = new URLSearchParams();
-        params.append('username', username);
-        params.append('password', password);
-        return params.toString();
-      })()
-    }
-  ];
+  const formData = new FormData();
+  formData.append('username', username);
+  formData.append('password', password);
 
-  for (const method of authMethods) {
-    try {
-      logStep(`Trying ${method.name} authentication`);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      
-      const tokenResponse = await fetch(authUrl, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          ...method.headers
-        },
-        body: method.body,
-        signal: controller.signal
-      });
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const tokenResponse = await fetch(authUrl, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
 
-      clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
 
-      logStep(`${method.name} auth response`, { 
-        status: tokenResponse.status, 
-        statusText: tokenResponse.statusText,
-        contentType: tokenResponse.headers.get('content-type')
-      });
+    logStep('Auth response', { 
+      status: tokenResponse.status, 
+      statusText: tokenResponse.statusText,
+      contentType: tokenResponse.headers.get('content-type')
+    });
 
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        if (tokenData.access_token) {
-          logStep(`${method.name} authentication successful`, { 
-            tokenType: tokenData.token_type || 'bearer',
-            tokenLength: tokenData.access_token.length 
-          });
-          return tokenData.access_token;
-        }
-      } else {
-        const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
-        logStep(`${method.name} auth failed`, { 
-          status: tokenResponse.status, 
-          error: errorText 
+    if (tokenResponse.ok) {
+      const tokenData = await tokenResponse.json();
+      if (tokenData.access_token) {
+        logStep('Authentication successful', { 
+          tokenType: tokenData.token_type || 'bearer',
+          tokenLength: tokenData.access_token.length 
         });
+        return tokenData.access_token;
       }
-    } catch (error) {
-      logError(`${method.name} authentication failed`, error);
-      if (error instanceof Error && error.name === 'AbortError') {
-        logStep(`${method.name} authentication timed out`);
-      }
+    } else {
+      const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
+      logStep('Auth failed', { 
+        status: tokenResponse.status, 
+        error: errorText 
+      });
+    }
+  } catch (error) {
+    logError('Authentication failed', error);
+    if (error instanceof Error && error.name === 'AbortError') {
+      logStep('Authentication timed out');
     }
   }
 
-  throw new Error('All authentication methods failed. Please verify your credentials.');
+  throw new Error('Authentication failed. Please verify your credentials and panel URL.');
 }
 
 async function createMarzbanUser(
@@ -172,19 +136,18 @@ async function createMarzbanUser(
   logStep('Starting user creation process', {
     username: userData.username,
     dataLimitGB: userData.dataLimitGB,
-    durationDays: userData.durationDays,
-    notesLength: userData.notes?.length || 0
+    durationDays: userData.durationDays
   });
   
   // Calculate expiration date
   const expireDate = new Date();
   expireDate.setDate(expireDate.getDate() + userData.durationDays);
-  const expireDateString = expireDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+  const expireDateString = expireDate.toISOString().split('T')[0];
   
   // Convert GB to bytes
   const dataLimitBytes = userData.dataLimitGB * 1073741824;
   
-  // Default inbounds - you may need to adjust based on your panel configuration
+  // Default inbounds
   const defaultInbounds = ["vmess", "vless", "trojan", "shadowsocks"];
   
   const userRequest: MarzbanUserRequest = {
@@ -197,135 +160,88 @@ async function createMarzbanUser(
     enabled: true
   };
   
-  logStep('Prepared user creation request', {
-    username: userRequest.username,
-    dataLimitBytes,
-    expireDate: expireDateString,
-    inbounds: userRequest.inbounds,
-    enabled: userRequest.enabled
-  });
+  logStep('Prepared user creation request', userRequest);
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-    
-    const response = await fetch(`${baseUrl}/api/users`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(userRequest),
-      signal: controller.signal
-    });
+  // Try multiple API endpoints/methods
+  const endpoints = [
+    { method: 'POST', url: `${baseUrl}/api/users` },
+    { method: 'PUT', url: `${baseUrl}/api/users` },
+    { method: 'POST', url: `${baseUrl}/api/user` },
+    { method: 'PUT', url: `${baseUrl}/api/user` }
+  ];
 
-    clearTimeout(timeoutId);
-
-    logStep('User creation API response', { 
-      status: response.status, 
-      statusText: response.statusText,
-      contentType: response.headers.get('content-type')
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(async () => {
-        const textError = await response.text().catch(() => 'Unable to read error response');
-        return { detail: textError };
-      });
+  for (const endpoint of endpoints) {
+    try {
+      logStep(`Trying ${endpoint.method} ${endpoint.url}`);
       
-      logError('User creation API failed', { 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(endpoint.url, {
+        method: endpoint.method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(userRequest),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      logStep(`${endpoint.method} ${endpoint.url} response`, { 
         status: response.status, 
         statusText: response.statusText,
-        errorData 
+        contentType: response.headers.get('content-type')
       });
-      
-      if (response.status === 409) {
-        throw new Error(`Username "${userData.username}" is already taken. Please choose a different username.`);
-      }
-      
-      if (response.status === 422 && errorData.detail) {
-        if (Array.isArray(errorData.detail)) {
-          const validationErrors = errorData.detail.map((err: any) => 
-            `${err.loc ? err.loc.join('.') : 'field'}: ${err.msg}`
-          ).join(', ');
-          throw new Error(`Validation error: ${validationErrors}`);
-        } else if (typeof errorData.detail === 'string') {
-          throw new Error(`Marzban API error: ${errorData.detail}`);
-        }
-      }
-      
-      throw new Error(`Failed to create user: HTTP ${response.status} - ${errorData.detail || response.statusText}`);
-    }
 
-    const result = await response.json();
-    logStep('User creation successful', {
-      username: result.username,
-      hasSubscriptionUrl: !!result.subscription_url,
-      expire: result.expire,
-      dataLimit: result.data_limit
-    });
-    
-    // Construct subscription URL
-    let subscriptionUrl = `${baseUrl}/sub/${userData.username}`;
-    
-    if (result.subscription_url) {
-      subscriptionUrl = result.subscription_url;
-      logStep('Using API provided subscription URL');
-    } else {
-      // Try to get user details for subscription URL
-      try {
-        const userDetailsResponse = await fetch(`${baseUrl}/api/users/${userData.username}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json'
-          }
+      if (response.ok) {
+        const result = await response.json();
+        logStep('User creation successful', {
+          username: result.username,
+          hasSubscriptionUrl: !!result.subscription_url
         });
         
-        if (userDetailsResponse.ok) {
-          const userDetails = await userDetailsResponse.json();
-          if (userDetails.subscription_url) {
-            subscriptionUrl = userDetails.subscription_url;
-            logStep('Found subscription URL in user details');
-          } else if (userDetails.sub_url) {
-            subscriptionUrl = userDetails.sub_url;
-            logStep('Found sub_url in user details');
-          }
-        }
-      } catch (error) {
-        logError('Could not fetch user details for subscription URL', error);
+        // Construct subscription URL
+        let subscriptionUrl = result.subscription_url || `${baseUrl}/sub/${userData.username}`;
+        
+        // Calculate expire timestamp
+        const expireTimestamp = Math.floor(expireDate.getTime() / 1000);
+        
+        const marzbanResponse: MarzbanUserResponse = {
+          username: result.username || userData.username,
+          subscription_url: subscriptionUrl,
+          expire: result.expire || expireTimestamp,
+          data_limit: result.data_limit || dataLimitBytes
+        };
+        
+        logStep('Final Marzban response prepared', marzbanResponse);
+        return marzbanResponse;
+      } else {
+        const errorData = await response.json().catch(async () => {
+          const textError = await response.text().catch(() => 'Unable to read error response');
+          return { detail: textError };
+        });
+        
+        logStep(`${endpoint.method} ${endpoint.url} failed`, { 
+          status: response.status, 
+          statusText: response.statusText,
+          errorData 
+        });
+
+        // Don't throw error yet, try next endpoint
+        continue;
       }
+    } catch (error) {
+      logError(`${endpoint.method} ${endpoint.url} error`, error);
+      // Continue to next endpoint
+      continue;
     }
-    
-    // Calculate expire timestamp
-    const expireTimestamp = Math.floor(expireDate.getTime() / 1000);
-    
-    const marzbanResponse: MarzbanUserResponse = {
-      username: result.username || userData.username,
-      subscription_url: subscriptionUrl,
-      expire: result.expire || expireTimestamp,
-      data_limit: result.data_limit || dataLimitBytes
-    };
-    
-    logStep('Final Marzban response prepared', {
-      username: marzbanResponse.username,
-      subscriptionUrl: marzbanResponse.subscription_url,
-      expire: new Date(marzbanResponse.expire * 1000).toISOString(),
-      dataLimitGB: Math.round(marzbanResponse.data_limit / 1073741824)
-    });
-    
-    return marzbanResponse;
-    
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      logError('User creation timeout', error);
-      throw new Error('Request timed out. Please try again.');
-    }
-    
-    logError('User creation failed', error);
-    throw error;
   }
+
+  // If we get here, all endpoints failed
+  throw new Error('All API endpoints failed. The Marzban panel may not support user creation via API or may be misconfigured.');
 }
 
 Deno.serve(async (req) => {
@@ -429,7 +345,6 @@ Deno.serve(async (req) => {
     if (error instanceof Error) {
       errorMessage = error.message;
       
-      // Set specific status codes for known error types
       if (error.message.includes('Missing required environment variables') || 
           error.message.includes('environment variables are empty')) {
         statusCode = 500;

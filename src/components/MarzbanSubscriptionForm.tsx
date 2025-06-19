@@ -268,15 +268,14 @@ const MarzbanSubscriptionForm = () => {
       return;
     }
 
-    // Enhanced API type validation
+    // Enhanced API type validation with explicit error throwing
     const validApiTypes = ['marzban', 'marzneshin'];
     if (!validApiTypes.includes(selectedPlan.apiType)) {
       console.error('🔥🔥🔥 INVALID API TYPE:', selectedPlan.apiType);
-      setError(`Invalid API type: ${selectedPlan.apiType}. Expected 'marzban' or 'marzneshin'`);
-      return;
+      throw new Error(`🔥🔥🔥 CRITICAL: Invalid API type: ${selectedPlan.apiType}. Expected 'marzban' or 'marzneshin'`);
     }
 
-    // Critical validation: Check if plan has panel configurations
+    // Validate panels are configured
     if (planPanels.length === 0) {
       console.error('SUBSCRIPTION FORM: No panels configured for this plan - blocking submission');
       setError(language === 'fa' ? 
@@ -359,25 +358,37 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // STEP 2: CRITICAL API ROUTING WITH EXPLICIT BLOCKS
+      // STEP 2: CRITICAL API ROUTING WITH EXPLICIT BLOCKS AND VALIDATION
       const apiTypeToUse = planVerification.api_type; // Use DB value for absolute certainty
       console.log(`🔥🔥🔥 FINAL API ROUTING DECISION: Using "${apiTypeToUse}" from database`);
       
+      // EXPLICIT VALIDATION BEFORE ROUTING
+      if (apiTypeToUse !== 'marzban' && apiTypeToUse !== 'marzneshin') {
+        console.error('🔥🔥🔥 CRITICAL ERROR: Invalid API type from database:', apiTypeToUse);
+        throw new Error(`🔥🔥🔥 CRITICAL: Invalid API type from database: ${apiTypeToUse}. Database corruption detected.`);
+      }
+      
       let vpnResponse;
+      let edgeFunctionName;
       
       // EXPLICIT CONDITIONAL BLOCKS - NO CHAINING
       if (apiTypeToUse === 'marzban') {
+        edgeFunctionName = 'marzban-create-user';
         console.log('🔥🔥🔥 ROUTING TO MARZBAN - Calling marzban-create-user edge function');
         console.log('🔥🔥🔥 Edge function: marzban-create-user');
         console.log('🔥🔥🔥 This should create a Marzban user, NOT Marzneshin');
         
+        const requestPayload = {
+          username: savedSubscription.username,
+          dataLimitGB: formData.dataLimit,
+          durationDays: formData.duration,
+          notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
+        };
+        
+        console.log('🔥🔥🔥 MARZBAN REQUEST PAYLOAD:', JSON.stringify(requestPayload, null, 2));
+        
         const { data, error } = await supabase.functions.invoke('marzban-create-user', {
-          body: {
-            username: savedSubscription.username,
-            dataLimitGB: formData.dataLimit,
-            durationDays: formData.duration,
-            notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
-          }
+          body: requestPayload
         });
         
         if (error) {
@@ -386,20 +397,25 @@ const MarzbanSubscriptionForm = () => {
         }
         
         vpnResponse = data;
-        console.log('🔥🔥🔥 MARZBAN API RESPONSE:', vpnResponse);
+        console.log('🔥🔥🔥 MARZBAN API RESPONSE:', JSON.stringify(vpnResponse, null, 2));
         
       } else if (apiTypeToUse === 'marzneshin') {
+        edgeFunctionName = 'marzneshin-create-user';
         console.log('🔥🔥🔥 ROUTING TO MARZNESHIN - Calling marzneshin-create-user edge function');
         console.log('🔥🔥🔥 Edge function: marzneshin-create-user');
         console.log('🔥🔥🔥 This should create a Marzneshin user, NOT Marzban');
         
+        const requestPayload = {
+          username: savedSubscription.username,
+          dataLimitGB: formData.dataLimit,
+          durationDays: formData.duration,
+          notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
+        };
+        
+        console.log('🔥🔥🔥 MARZNESHIN REQUEST PAYLOAD:', JSON.stringify(requestPayload, null, 2));
+        
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
-          body: {
-            username: savedSubscription.username,
-            dataLimitGB: formData.dataLimit,
-            durationDays: formData.duration,
-            notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
-          }
+          body: requestPayload
         });
         
         if (error) {
@@ -408,37 +424,45 @@ const MarzbanSubscriptionForm = () => {
         }
         
         vpnResponse = data;
-        console.log('🔥🔥🔥 MARZNESHIN API RESPONSE:', vpnResponse);
+        console.log('🔥🔥🔥 MARZNESHIN API RESPONSE:', JSON.stringify(vpnResponse, null, 2));
         
       } else {
-        console.error('🔥🔥🔥 CRITICAL ERROR: Unhandled API type:', apiTypeToUse);
-        console.error('🔥🔥🔥 This should never happen - throwing error');
-        throw new Error(`🔥🔥🔥 CRITICAL: Unhandled API type: ${apiTypeToUse}. Valid types are: marzban, marzneshin`);
+        // This should never execute due to validation above, but adding for completeness
+        console.error('🔥🔥🔥 CRITICAL ERROR: Unhandled API type in routing logic:', apiTypeToUse);
+        throw new Error(`🔥🔥🔥 CRITICAL: Unhandled API type in routing logic: ${apiTypeToUse}. This should never happen.`);
       }
 
+      // STEP 3: Validate VPN response
+      console.log('🔥🔥🔥 VPN Response validation:', {
+        hasResponse: !!vpnResponse,
+        responseSuccess: vpnResponse?.success,
+        responseError: vpnResponse?.error,
+        responseData: vpnResponse?.data
+      });
+
       if (!vpnResponse?.success) {
-        console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse?.error);
+        console.error(`SUBSCRIPTION: VPN user creation failed using ${edgeFunctionName}:`, vpnResponse?.error);
         
         // Update subscription status to failed
         await supabase
           .from('subscriptions')
           .update({ 
             status: 'failed',
-            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResponse?.error}`
+            notes: `${subscriptionData.notes} - VPN creation failed using ${edgeFunctionName}: ${vpnResponse?.error}`
           })
           .eq('id', savedSubscription.id);
         
-        throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
+        throw new Error(`Failed to create VPN user using ${edgeFunctionName}: ${vpnResponse?.error}`);
       }
 
-      console.log(`SUBSCRIPTION: ✅✅✅ VPN user created successfully using ${apiTypeToUse}:`, vpnResponse.data);
+      console.log(`SUBSCRIPTION: ✅✅✅ VPN user created successfully using ${edgeFunctionName}:`, vpnResponse.data);
 
-      // STEP 3: Update subscription with VPN details
+      // STEP 4: Update subscription with VPN details
       const updateData = {
         subscription_url: vpnResponse.data.subscription_url,
         status: 'active',
         marzban_user_created: true,
-        expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire).toISOString() : null
+        expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire * 1000).toISOString() : null
       };
 
       console.log('SUBSCRIPTION: Updating subscription with VPN details:', updateData);
@@ -454,37 +478,6 @@ const MarzbanSubscriptionForm = () => {
       }
 
       console.log('SUBSCRIPTION: ✅ Successfully updated subscription with VPN details');
-
-      // STEP 4: Log discount usage if applicable
-      if (discountUsed && discountUsed.code) {
-        console.log('SUBSCRIPTION: Logging discount usage');
-        
-        const { data: discountRecord } = await supabase
-          .from('discount_codes')
-          .select('id, current_usage_count')
-          .eq('code', discountUsed.code)
-          .single();
-
-        if (discountRecord) {
-          await supabase
-            .from('discount_usage_logs')
-            .insert({
-              discount_code_id: discountRecord.id,
-              subscription_id: savedSubscription.id,
-              discount_amount: discountAmount,
-              user_mobile: formData.mobile
-            });
-
-          await supabase
-            .from('discount_codes')
-            .update({ 
-              current_usage_count: discountRecord.current_usage_count + 1
-            })
-            .eq('id', discountRecord.id);
-
-          console.log('SUBSCRIPTION: ✅ Discount usage logged successfully');
-        }
-      }
 
       // STEP 5: Check if this is a lite plan and handle differently
       const isLitePlan = selectedPlan.id.toLowerCase().includes('lite') || 
