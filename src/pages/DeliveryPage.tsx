@@ -41,27 +41,19 @@ const DeliveryPage = () => {
         setError(null);
         setPanelStatus('checking');
 
+        console.log('DeliveryPage: Loading subscription data...');
+        console.log('Location state:', location.state);
+        console.log('URL search params:', Object.fromEntries(searchParams.entries()));
+
         // Check different sources for subscription data
         let data: SubscriptionData | null = null;
 
-        // 1. From URL state (navigation)
+        // 1. From URL state (navigation from subscription form)
         if (location.state?.subscriptionData) {
           console.log('Found subscription data in location state:', location.state.subscriptionData);
           data = location.state.subscriptionData;
         }
-        
-        // 2. From URL parameters (redirect from payment gateways)
-        else if (searchParams.get('subscriptionData')) {
-          try {
-            const encodedData = searchParams.get('subscriptionData');
-            data = JSON.parse(decodeURIComponent(encodedData!));
-            console.log('Decoded subscription data from URL:', data);
-          } catch (parseError) {
-            console.error('Failed to parse subscription data from URL:', parseError);
-          }
-        }
-        
-        // 3. From localStorage (fallback)
+        // 2. From localStorage (fallback)
         else if (localStorage.getItem('deliverySubscriptionData')) {
           try {
             data = JSON.parse(localStorage.getItem('deliverySubscriptionData')!);
@@ -70,86 +62,79 @@ const DeliveryPage = () => {
             console.error('Failed to parse subscription data from localStorage:', parseError);
           }
         }
-
-        // 4. Handle payment method specific parameters
-        const paymentMethod = searchParams.get('payment');
-        const subscriptionId = searchParams.get('subscriptionId');
-        const orderId = searchParams.get('orderId');
-
-        if ((paymentMethod === 'zarinpal' || paymentMethod === 'crypto') && (subscriptionId || orderId)) {
-          console.log('Handling payment callback:', { paymentMethod, subscriptionId, orderId });
+        // 3. From URL parameter 'id' - fetch from database
+        else if (searchParams.get('id')) {
+          const subscriptionId = searchParams.get('id');
+          console.log('Fetching subscription from database with ID:', subscriptionId);
           
-          // For payment callbacks, try to fetch subscription from database
-          const id = subscriptionId || orderId;
-          if (id) {
-            try {
-              const { data: subscription, error } = await supabase
-                .from('subscriptions')
-                .select('*')
-                .eq('id', id)
-                .single();
+          try {
+            const { data: subscription, error: dbError } = await supabase
+              .from('subscriptions')
+              .select('*')
+              .eq('id', subscriptionId)
+              .single();
 
-              if (subscription && !error) {
-                data = {
-                  username: subscription.username,
-                  subscription_url: subscription.subscription_url,
-                  expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
-                  data_limit: subscription.data_limit_gb * 1073741824,
-                  status: subscription.status || 'active',
-                  used_traffic: 0
-                };
-                console.log('Fetched subscription from database:', data);
-              }
-            } catch (fetchError) {
-              console.error('Failed to fetch subscription from database:', fetchError);
+            if (dbError) {
+              console.error('Database fetch error:', dbError);
+              throw new Error(`Database error: ${dbError.message}`);
             }
+
+            if (subscription) {
+              data = {
+                username: subscription.username,
+                subscription_url: subscription.subscription_url,
+                expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
+                data_limit: subscription.data_limit_gb * 1073741824,
+                status: subscription.status || 'active',
+                used_traffic: 0
+              };
+              console.log('Fetched subscription from database:', data);
+            } else {
+              throw new Error('Subscription not found in database');
+            }
+          } catch (fetchError) {
+            console.error('Failed to fetch subscription from database:', fetchError);
+            throw new Error(`Could not load subscription: ${fetchError.message}`);
           }
         }
 
-        if (data?.username) {
-          // Now fetch fresh data from the panel
-          console.log('Fetching fresh subscription data from panel for:', data.username);
+        if (!data || !data.username) {
+          throw new Error('No subscription data found');
+        }
+
+        console.log('Using subscription data:', data);
+
+        // Try to fetch fresh data from the panel if we have a username
+        try {
+          const panelType = await PanelApiService.determineSubscriptionPanelType(data.username);
           
-          try {
-            // Determine which panel this user belongs to
-            const panelType = await PanelApiService.determineSubscriptionPanelType(data.username);
+          if (panelType) {
+            console.log(`Found user in ${panelType} panel`);
             
-            if (panelType) {
-              console.log(`Found user in ${panelType} panel`);
-              
-              // Fetch fresh data from the panel
-              const panelData = await PanelApiService.getSubscriptionFromPanel(data.username, panelType);
-              
-              // Merge panel data with existing data, preferring panel data for critical fields
-              const mergedData = {
-                ...data,
-                subscription_url: panelData.subscription_url || data.subscription_url,
-                expire: panelData.expire || data.expire,
-                data_limit: panelData.data_limit || data.data_limit,
-                status: panelData.status || data.status,
-                used_traffic: panelData.used_traffic || data.used_traffic || 0
-              };
-              
-              setSubscriptionData(mergedData);
-              setPanelStatus('online');
-              
-              // Store updated data in localStorage
-              localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
-              
-              if (mergedData.subscription_url) {
-                await generateQRCode(mergedData.subscription_url);
-              }
-            } else {
-              console.log('User not found in any panel, using database data');
-              setSubscriptionData(data);
-              setPanelStatus('offline');
-              
-              if (data.subscription_url) {
-                await generateQRCode(data.subscription_url);
-              }
+            // Fetch fresh data from the panel
+            const panelData = await PanelApiService.getSubscriptionFromPanel(data.username, panelType);
+            
+            // Merge panel data with existing data, preferring panel data for critical fields
+            const mergedData = {
+              ...data,
+              subscription_url: panelData.subscription_url || data.subscription_url,
+              expire: panelData.expire || data.expire,
+              data_limit: panelData.data_limit || data.data_limit,
+              status: panelData.status || data.status,
+              used_traffic: panelData.used_traffic || data.used_traffic || 0
+            };
+            
+            setSubscriptionData(mergedData);
+            setPanelStatus('online');
+            
+            // Store updated data in localStorage
+            localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
+            
+            if (mergedData.subscription_url) {
+              await generateQRCode(mergedData.subscription_url);
             }
-          } catch (panelError) {
-            console.error('Failed to fetch from panel, using fallback data:', panelError);
+          } else {
+            console.log('User not found in any panel, using fallback data');
             setSubscriptionData(data);
             setPanelStatus('offline');
             
@@ -157,12 +142,19 @@ const DeliveryPage = () => {
               await generateQRCode(data.subscription_url);
             }
           }
-        } else {
-          setError(language === 'fa' ? 'اطلاعات اشتراک یافت نشد' : 'No subscription data found');
+        } catch (panelError) {
+          console.error('Failed to fetch from panel, using fallback data:', panelError);
+          setSubscriptionData(data);
+          setPanelStatus('offline');
+          
+          if (data.subscription_url) {
+            await generateQRCode(data.subscription_url);
+          }
         }
-      } catch (error) {
+
+      } catch (error: any) {
         console.error('Error loading subscription data:', error);
-        setError(language === 'fa' ? 'خطا در بارگذاری اطلاعات' : 'Error loading subscription data');
+        setError(error.message || (language === 'fa' ? 'خطا در بارگذاری اطلاعات' : 'Error loading subscription data'));
         setPanelStatus('offline');
       } finally {
         setIsLoading(false);
@@ -279,7 +271,7 @@ const DeliveryPage = () => {
               <div className="text-center space-y-4">
                 <Loader className="w-12 h-12 animate-spin mx-auto text-blue-600" />
                 <h2 className="text-xl font-semibold">
-                  {language === 'fa' ? 'در حال ساخت دسترسی شبکه بدون مرز...' : 'Loading...'}
+                  {language === 'fa' ? 'در حال بارگذاری اطلاعات اشتراک...' : 'Loading subscription data...'}
                 </h2>
               </div>
             </CardContent>
@@ -302,7 +294,9 @@ const DeliveryPage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-muted-foreground">{error}</p>
+              <p className="text-muted-foreground">
+                {error || (language === 'fa' ? 'اطلاعات اشتراک یافت نشد' : 'Subscription data not found')}
+              </p>
               <div className="flex gap-2">
                 <Button onClick={() => navigate('/subscription')} variant="outline" className="flex-1">
                   {language === 'fa' ? 'اشتراک جدید' : 'New Subscription'}

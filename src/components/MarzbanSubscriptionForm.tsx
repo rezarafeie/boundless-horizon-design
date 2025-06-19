@@ -203,8 +203,6 @@ const MarzbanSubscriptionForm = () => {
     console.log('=== SUBSCRIPTION FORM: Starting submission ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
     console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
-    console.log('SUBSCRIPTION FORM: Selected plan API type:', selectedPlan?.apiType);
-    console.log('SUBSCRIPTION FORM: Plan panels:', planPanels);
     
     // Enhanced validation
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
@@ -262,7 +260,6 @@ const MarzbanSubscriptionForm = () => {
 
     try {
       console.log('=== SUBSCRIPTION: Starting subscription creation process ===');
-      console.log(`SUBSCRIPTION: Will use ${selectedPlan.apiType} edge function for plan: ${selectedPlan.name}`);
       
       // Calculate final price with discount
       let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
@@ -304,14 +301,8 @@ const MarzbanSubscriptionForm = () => {
         .single();
 
       if (saveError) {
-        console.error('SUBSCRIPTION: Database save failed:', {
-          error: saveError,
-          message: saveError.message,
-          details: saveError.details,
-          hint: saveError.hint,
-          code: saveError.code
-        });
-        throw new Error(`Failed to save subscription to database: ${saveError.message}. Details: ${saveError.details || 'None'}`);
+        console.error('SUBSCRIPTION: Database save failed:', saveError);
+        throw new Error(`Failed to save subscription to database: ${saveError.message}`);
       }
 
       if (!savedSubscription) {
@@ -329,7 +320,7 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // STEP 2: Create VPN user using edge functions consistently
+      // STEP 2: Create VPN user using edge functions
       console.log(`SUBSCRIPTION: Creating VPN user via ${selectedPlan.apiType} edge function...`);
       
       let vpnResponse;
@@ -375,15 +366,13 @@ const MarzbanSubscriptionForm = () => {
         console.error('SUBSCRIPTION: VPN user creation failed:', vpnResponse?.error);
         
         // Update subscription status to failed
-        const failedUpdateResult = await supabase
+        await supabase
           .from('subscriptions')
           .update({ 
             status: 'failed',
             notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResponse?.error}`
           })
           .eq('id', savedSubscription.id);
-        
-        console.log('SUBSCRIPTION: Updated subscription status to failed:', failedUpdateResult);
         
         throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
       }
@@ -395,7 +384,7 @@ const MarzbanSubscriptionForm = () => {
         subscription_url: vpnResponse.data.subscription_url,
         status: 'active',
         marzban_user_created: true,
-        expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire * 1000).toISOString() : null
+        expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire).toISOString() : null
       };
 
       console.log('SUBSCRIPTION: Updating subscription with VPN details:', updateData);
@@ -407,7 +396,7 @@ const MarzbanSubscriptionForm = () => {
 
       if (updateError) {
         console.error('SUBSCRIPTION: Failed to update subscription with VPN details:', updateError);
-        throw new Error(`Failed to update subscription with VPN details: ${updateError.message}`);
+        // Don't throw error here as VPN user was created successfully
       }
 
       console.log('SUBSCRIPTION: ✅ Successfully updated subscription with VPN details');
@@ -443,33 +432,28 @@ const MarzbanSubscriptionForm = () => {
         }
       }
 
-      // STEP 5: Set success result with complete data
-      const successResult = {
+      // STEP 5: Prepare data for delivery page
+      const subscriptionResult = {
         username: vpnResponse.data.username,
         subscription_url: vpnResponse.data.subscription_url,
-        expire: vpnResponse.data.expire,
-        data_limit: vpnResponse.data.data_limit,
-        planName: selectedPlan.name,
-        subscriptionId: savedSubscription.id,
-        apiType: selectedPlan.apiType
+        expire: vpnResponse.data.expire || Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
+        data_limit: vpnResponse.data.data_limit || formData.dataLimit * 1073741824,
+        status: 'active',
+        used_traffic: 0
       };
 
-      console.log(`SUBSCRIPTION: ✅ Process completed successfully using ${selectedPlan.apiType} edge function, result:`, successResult);
+      console.log(`SUBSCRIPTION: ✅ Process completed successfully, result:`, subscriptionResult);
       
       // Store data for delivery page
-      localStorage.setItem('deliverySubscriptionData', JSON.stringify(successResult));
+      localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
       
       // Navigate to delivery page with data
       navigate('/delivery', { 
-        state: { subscriptionData: successResult }
+        state: { subscriptionData: subscriptionResult }
       });
 
     } catch (error: any) {
-      console.error('SUBSCRIPTION: ❌ Process failed with error:', {
-        error,
-        message: error.message,
-        stack: error.stack
-      });
+      console.error('SUBSCRIPTION: ❌ Process failed with error:', error);
       
       setError(error.message || 'An unexpected error occurred');
       
