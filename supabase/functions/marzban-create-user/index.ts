@@ -47,7 +47,9 @@ async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: 
     baseUrlExists: !!baseUrl,
     usernameExists: !!adminUsername,
     passwordExists: !!adminPassword,
-    baseUrlValue: baseUrl || 'NOT_SET'
+    baseUrlValue: baseUrl || 'NOT_SET',
+    usernameLength: adminUsername?.length || 0,
+    passwordLength: adminPassword?.length || 0
   });
 
   if (!baseUrl || !adminUsername || !adminPassword) {
@@ -59,70 +61,101 @@ async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: 
     throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
   }
 
+  // Check for empty values
+  if (baseUrl.trim() === '' || adminUsername.trim() === '' || adminPassword.trim() === '') {
+    throw new Error('One or more environment variables are empty. Please check your secret values.');
+  }
+
   return {
     baseUrl: baseUrl.replace(/\/+$/, ''),
-    adminUsername,
-    adminPassword
+    adminUsername: adminUsername.trim(),
+    adminPassword: adminPassword.trim()
   };
 }
 
 async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
   const authUrl = `${baseUrl}/api/admin/token`;
-  logStep('Attempting authentication', { url: authUrl });
+  logStep('Attempting authentication with multiple methods', { url: authUrl });
   
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const tokenResponse = await fetch(authUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        username: username,
-        password: password
-      }),
-      signal: controller.signal
-    });
+  // Try different authentication methods
+  const authMethods = [
+    {
+      name: 'JSON',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    },
+    {
+      name: 'Form-data',
+      headers: {},
+      body: (() => {
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
+        return formData;
+      })()
+    },
+    {
+      name: 'URL-encoded',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: (() => {
+        const params = new URLSearchParams();
+        params.append('username', username);
+        params.append('password', password);
+        return params.toString();
+      })()
+    }
+  ];
 
-    clearTimeout(timeoutId);
-
-    logStep('Auth response received', { 
-      status: tokenResponse.status, 
-      statusText: tokenResponse.statusText,
-      contentType: tokenResponse.headers.get('content-type')
-    });
-
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
-      logStep('Auth failed', { 
-        status: tokenResponse.status, 
-        error: errorText 
+  for (const method of authMethods) {
+    try {
+      logStep(`Trying ${method.name} authentication`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      const tokenResponse = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          ...method.headers
+        },
+        body: method.body,
+        signal: controller.signal
       });
-      throw new Error(`Authentication failed: ${tokenResponse.status} ${errorText}`);
-    }
 
-    const tokenData = await tokenResponse.json();
-    if (!tokenData.access_token) {
-      logStep('Token data missing access_token', { tokenData });
-      throw new Error('Authentication response missing access token');
-    }
+      clearTimeout(timeoutId);
 
-    logStep('Authentication successful', { 
-      tokenType: tokenData.token_type || 'bearer',
-      tokenLength: tokenData.access_token.length 
-    });
-    
-    return tokenData.access_token;
-  } catch (error) {
-    logError('Authentication failed', error);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Authentication request timed out');
+      logStep(`${method.name} auth response`, { 
+        status: tokenResponse.status, 
+        statusText: tokenResponse.statusText,
+        contentType: tokenResponse.headers.get('content-type')
+      });
+
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        if (tokenData.access_token) {
+          logStep(`${method.name} authentication successful`, { 
+            tokenType: tokenData.token_type || 'bearer',
+            tokenLength: tokenData.access_token.length 
+          });
+          return tokenData.access_token;
+        }
+      } else {
+        const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
+        logStep(`${method.name} auth failed`, { 
+          status: tokenResponse.status, 
+          error: errorText 
+        });
+      }
+    } catch (error) {
+      logError(`${method.name} authentication failed`, error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        logStep(`${method.name} authentication timed out`);
+      }
     }
-    throw error;
   }
+
+  throw new Error('All authentication methods failed. Please verify your credentials.');
 }
 
 async function createMarzbanUser(
@@ -397,7 +430,8 @@ Deno.serve(async (req) => {
       errorMessage = error.message;
       
       // Set specific status codes for known error types
-      if (error.message.includes('Missing required environment variables')) {
+      if (error.message.includes('Missing required environment variables') || 
+          error.message.includes('environment variables are empty')) {
         statusCode = 500;
       } else if (error.message.includes('already taken')) {
         statusCode = 409;
@@ -405,7 +439,8 @@ Deno.serve(async (req) => {
         statusCode = 422;
       } else if (error.message.includes('timeout')) {
         statusCode = 503;
-      } else if (error.message.includes('Authentication failed')) {
+      } else if (error.message.includes('authentication') || 
+                 error.message.includes('Authentication')) {
         statusCode = 502;
       }
     }

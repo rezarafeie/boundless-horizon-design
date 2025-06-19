@@ -25,7 +25,7 @@ async function testMarzbanConnection(): Promise<{ success: boolean; message: str
   try {
     logStep('Starting Marzban connection test');
     
-    // Check environment variables
+    // Check environment variables with detailed logging
     const baseUrl = Deno.env.get('MARZBAN_BASE_URL');
     const adminUsername = Deno.env.get('MARZBAN_ADMIN_USERNAME');
     const adminPassword = Deno.env.get('MARZBAN_ADMIN_PASSWORD');
@@ -34,7 +34,9 @@ async function testMarzbanConnection(): Promise<{ success: boolean; message: str
       baseUrlExists: !!baseUrl,
       usernameExists: !!adminUsername,
       passwordExists: !!adminPassword,
-      baseUrl: baseUrl || 'NOT_SET'
+      baseUrl: baseUrl || 'NOT_SET',
+      usernameLength: adminUsername?.length || 0,
+      passwordLength: adminPassword?.length || 0
     });
 
     if (!baseUrl || !adminUsername || !adminPassword) {
@@ -44,6 +46,11 @@ async function testMarzbanConnection(): Promise<{ success: boolean; message: str
       if (!adminPassword) missingVars.push('MARZBAN_ADMIN_PASSWORD');
       
       throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    }
+
+    // Check for empty values
+    if (baseUrl.trim() === '' || adminUsername.trim() === '' || adminPassword.trim() === '') {
+      throw new Error('One or more environment variables are empty. Please check your secret values.');
     }
 
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
@@ -101,12 +108,19 @@ async function testMarzbanConnection(): Promise<{ success: boolean; message: str
       };
     }
 
-    // Test authentication with the correct endpoint and format
-    logStep('Testing authentication with correct API format');
+    // Test authentication with multiple approaches
+    logStep('Testing authentication with multiple approaches');
     
+    const authResults = [];
+    
+    // Approach 1: JSON format
     try {
       const authUrl = `${cleanBaseUrl}/api/admin/token`;
-      logStep('Attempting authentication', { url: authUrl });
+      logStep('Attempting JSON authentication', { 
+        url: authUrl,
+        username: adminUsername,
+        passwordMasked: '*'.repeat(adminPassword.length)
+      });
       
       const authController = new AbortController();
       const authTimeoutId = setTimeout(() => authController.abort(), 15000);
@@ -127,107 +141,245 @@ async function testMarzbanConnection(): Promise<{ success: boolean; message: str
 
       clearTimeout(authTimeoutId);
 
-      logStep('Auth response', { 
+      logStep('JSON Auth response', { 
         status: tokenResponse.status, 
         statusText: tokenResponse.statusText,
         contentType: tokenResponse.headers.get('content-type')
       });
 
-      if (!tokenResponse.ok) {
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        if (tokenData.access_token) {
+          logStep('JSON Authentication successful', { 
+            tokenType: tokenData.token_type || 'bearer',
+            tokenLength: tokenData.access_token.length 
+          });
+          
+          authResults.push({
+            method: 'JSON',
+            success: true,
+            token: tokenData.access_token
+          });
+        }
+      } else {
         const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
-        logStep('Authentication failed', { 
-          status: tokenResponse.status, 
-          error: errorText 
+        authResults.push({
+          method: 'JSON',
+          success: false,
+          status: tokenResponse.status,
+          error: errorText
         });
-        
-        return {
-          success: false,
-          message: `Authentication failed (${tokenResponse.status}). Please verify your admin credentials.`,
-          details: {
-            errorType: 'AuthenticationError',
-            status: tokenResponse.status,
-            error: errorText,
-            troubleshooting: [
-              'Verify MARZBAN_ADMIN_USERNAME is correct (should be "bnets")',
-              'Verify MARZBAN_ADMIN_PASSWORD is correct',
-              'Check if the admin user exists in Marzban',
-              'Ensure the admin user has proper permissions'
-            ],
-            timestamp: new Date().toISOString()
-          }
-        };
       }
-
-      const tokenData = await tokenResponse.json();
-      if (!tokenData.access_token) {
-        logStep('Authentication response missing token', { tokenData });
-        return {
-          success: false,
-          message: 'Authentication succeeded but no token received. Please check panel configuration.',
-          details: {
-            errorType: 'TokenError',
-            response: tokenData,
-            timestamp: new Date().toISOString()
-          }
-        };
-      }
-
-      logStep('Authentication successful', { 
-        tokenType: tokenData.token_type || 'bearer',
-        tokenLength: tokenData.access_token.length 
+    } catch (error) {
+      logError('JSON Authentication failed', error);
+      authResults.push({
+        method: 'JSON',
+        success: false,
+        error: error.message
       });
+    }
 
-      // Test API access with the token
-      logStep('Testing API access with token');
+    // Approach 2: Form data format
+    try {
+      const authUrl = `${cleanBaseUrl}/api/admin/token`;
+      logStep('Attempting form-data authentication', { url: authUrl });
       
-      const apiUrl = `${cleanBaseUrl}/api/users`;
-      logStep('Testing users API endpoint', { url: apiUrl });
+      const formData = new FormData();
+      formData.append('username', adminUsername);
+      formData.append('password', adminPassword);
       
-      const apiController = new AbortController();
-      const apiTimeoutId = setTimeout(() => apiController.abort(), 10000);
+      const authController = new AbortController();
+      const authTimeoutId = setTimeout(() => authController.abort(), 15000);
       
-      const apiResponse = await fetch(apiUrl, {
-        method: 'GET',
+      const tokenResponse = await fetch(authUrl, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
           'Accept': 'application/json',
           'User-Agent': 'Supabase-Edge-Function/1.0'
         },
-        signal: apiController.signal
+        body: formData,
+        signal: authController.signal
       });
 
-      clearTimeout(apiTimeoutId);
+      clearTimeout(authTimeoutId);
 
-      logStep('API test result', { 
-        status: apiResponse.status,
-        statusText: apiResponse.statusText
+      logStep('Form-data Auth response', { 
+        status: tokenResponse.status, 
+        statusText: tokenResponse.statusText,
+        contentType: tokenResponse.headers.get('content-type')
       });
 
-      const apiWorking = apiResponse.ok;
-
-      return {
-        success: true,
-        message: `Marzban connection test successful! Panel is reachable, authentication works${apiWorking ? ', and API is accessible' : ' (API access needs verification)'}.`,
-        details: {
-          panelUrl: cleanBaseUrl,
-          connectivityWorking: true,
-          authenticationWorking: true,
-          apiAccessible: apiWorking,
-          authEndpoint: '/api/admin/token',
-          usersEndpoint: '/api/users',
-          timestamp: new Date().toISOString()
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        if (tokenData.access_token) {
+          logStep('Form-data Authentication successful', { 
+            tokenType: tokenData.token_type || 'bearer',
+            tokenLength: tokenData.access_token.length 
+          });
+          
+          authResults.push({
+            method: 'Form-data',
+            success: true,
+            token: tokenData.access_token
+          });
         }
-      };
-
+      } else {
+        const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
+        authResults.push({
+          method: 'Form-data',
+          success: false,
+          status: tokenResponse.status,
+          error: errorText
+        });
+      }
     } catch (error) {
-      logError('Authentication test failed', error);
+      logError('Form-data Authentication failed', error);
+      authResults.push({
+        method: 'Form-data',
+        success: false,
+        error: error.message
+      });
+    }
+
+    // Approach 3: URL-encoded format
+    try {
+      const authUrl = `${cleanBaseUrl}/api/admin/token`;
+      logStep('Attempting URL-encoded authentication', { url: authUrl });
       
+      const params = new URLSearchParams();
+      params.append('username', adminUsername);
+      params.append('password', adminPassword);
+      
+      const authController = new AbortController();
+      const authTimeoutId = setTimeout(() => authController.abort(), 15000);
+      
+      const tokenResponse = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'User-Agent': 'Supabase-Edge-Function/1.0'
+        },
+        body: params.toString(),
+        signal: authController.signal
+      });
+
+      clearTimeout(authTimeoutId);
+
+      logStep('URL-encoded Auth response', { 
+        status: tokenResponse.status, 
+        statusText: tokenResponse.statusText,
+        contentType: tokenResponse.headers.get('content-type')
+      });
+
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        if (tokenData.access_token) {
+          logStep('URL-encoded Authentication successful', { 
+            tokenType: tokenData.token_type || 'bearer',
+            tokenLength: tokenData.access_token.length 
+          });
+          
+          authResults.push({
+            method: 'URL-encoded',
+            success: true,
+            token: tokenData.access_token
+          });
+        }
+      } else {
+        const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
+        authResults.push({
+          method: 'URL-encoded',
+          success: false,
+          status: tokenResponse.status,
+          error: errorText
+        });
+      }
+    } catch (error) {
+      logError('URL-encoded Authentication failed', error);
+      authResults.push({
+        method: 'URL-encoded',
+        success: false,
+        error: error.message
+      });
+    }
+
+    logStep('All authentication attempts completed', { authResults });
+
+    // Check if any authentication method succeeded
+    const successfulAuth = authResults.find(result => result.success);
+    
+    if (successfulAuth) {
+      // Test API access with the successful token
+      logStep('Testing API access with successful token', { method: successfulAuth.method });
+      
+      try {
+        const apiUrl = `${cleanBaseUrl}/api/users`;
+        const apiController = new AbortController();
+        const apiTimeoutId = setTimeout(() => apiController.abort(), 10000);
+        
+        const apiResponse = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${successfulAuth.token}`,
+            'Accept': 'application/json',
+            'User-Agent': 'Supabase-Edge-Function/1.0'
+          },
+          signal: apiController.signal
+        });
+
+        clearTimeout(apiTimeoutId);
+
+        logStep('API test result', { 
+          status: apiResponse.status,
+          statusText: apiResponse.statusText
+        });
+
+        const apiWorking = apiResponse.ok;
+
+        return {
+          success: true,
+          message: `Marzban connection test successful! Authentication worked with ${successfulAuth.method} format${apiWorking ? ' and API is accessible' : ' (API access needs verification)'}.`,
+          details: {
+            panelUrl: cleanBaseUrl,
+            connectivityWorking: true,
+            successfulAuthMethod: successfulAuth.method,
+            apiAccessible: apiWorking,
+            authResults: authResults,
+            timestamp: new Date().toISOString()
+          }
+        };
+      } catch (error) {
+        logError('API test failed', error);
+        return {
+          success: true,
+          message: `Authentication successful with ${successfulAuth.method} format, but API test failed.`,
+          details: {
+            panelUrl: cleanBaseUrl,
+            connectivityWorking: true,
+            successfulAuthMethod: successfulAuth.method,
+            apiAccessible: false,
+            authResults: authResults,
+            apiError: error.message,
+            timestamp: new Date().toISOString()
+          }
+        };
+      }
+    } else {
+      // All authentication methods failed
       return {
         success: false,
-        message: `Authentication test failed: ${error.message}`,
+        message: 'All authentication methods failed. Please verify your admin credentials.',
         details: {
-          errorType: 'AuthTestError',
-          error: error.message,
+          errorType: 'AuthenticationError',
+          authResults: authResults,
+          troubleshooting: [
+            'Verify MARZBAN_ADMIN_USERNAME is correct (should be "bnets")',
+            'Verify MARZBAN_ADMIN_PASSWORD is correct (should be "reza1234")',
+            'Check if the admin user exists in Marzban',
+            'Ensure the admin user has proper permissions',
+            'Try accessing the panel manually to verify credentials'
+          ],
           timestamp: new Date().toISOString()
         }
       };
