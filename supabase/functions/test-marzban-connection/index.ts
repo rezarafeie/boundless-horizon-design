@@ -48,111 +48,231 @@ async function testMarzbanConnection(): Promise<{ success: boolean; message: str
 
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
     
-    // Test panel health
-    logStep('Testing panel health', { url: `${cleanBaseUrl}/docs` });
+    // Test basic connectivity first
+    logStep('Testing basic connectivity', { url: cleanBaseUrl });
     
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const connectivityTests = [
+      `${cleanBaseUrl}/docs`,
+      `${cleanBaseUrl}/api/docs`,
+      `${cleanBaseUrl}`,
+      `${cleanBaseUrl}/health`,
+      `${cleanBaseUrl}/api/health`
+    ];
     
-    const healthResponse = await fetch(`${cleanBaseUrl}/docs`, {
-      method: 'GET',
-      headers: { 'Accept': 'text/html' },
-      signal: controller.signal
-    });
+    let connectivitySuccess = false;
+    let connectivityError = null;
     
-    clearTimeout(timeoutId);
+    for (const testUrl of connectivityTests) {
+      try {
+        logStep('Testing connectivity to', { url: testUrl });
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const response = await fetch(testUrl, {
+          method: 'GET',
+          headers: { 
+            'Accept': 'text/html,application/json',
+            'User-Agent': 'Supabase-Edge-Function/1.0'
+          },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        logStep('Connectivity test result', { 
+          url: testUrl,
+          status: response.status, 
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        
+        if (response.status < 500) { // Any non-server-error response indicates connectivity
+          connectivitySuccess = true;
+          break;
+        }
+        
+      } catch (error) {
+        logError(`Connectivity test failed for ${testUrl}`, error);
+        connectivityError = error;
+      }
+    }
     
-    const isHealthy = healthResponse.ok || healthResponse.status === 404;
-    logStep('Panel health result', { 
-      status: healthResponse.status, 
-      statusText: healthResponse.statusText,
-      isHealthy
-    });
-    
-    if (!isHealthy) {
-      throw new Error(`Panel is not reachable. Status: ${healthResponse.status} ${healthResponse.statusText}`);
+    if (!connectivitySuccess) {
+      return {
+        success: false,
+        message: `Cannot connect to Marzban panel at ${cleanBaseUrl}. Please verify the URL is correct and the panel is accessible.`,
+        details: {
+          errorType: 'ConnectivityError',
+          testedUrls: connectivityTests,
+          lastError: connectivityError?.message || 'Connection failed',
+          troubleshooting: [
+            'Verify the panel URL is correct',
+            'Check if the panel is running and accessible',
+            'Ensure the panel allows external connections',
+            'Check firewall and security settings'
+          ],
+          timestamp: new Date().toISOString()
+        }
+      };
     }
 
     // Test authentication
     logStep('Testing authentication');
     
-    const authController = new AbortController();
-    const authTimeoutId = setTimeout(() => authController.abort(), 15000);
+    const authEndpoints = [
+      '/api/admin/token',
+      '/api/admin/auth',
+      '/admin/token',
+      '/token'
+    ];
     
-    const tokenResponse = await fetch(`${cleanBaseUrl}/api/admin/token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
-      body: new URLSearchParams({
-        username: adminUsername,
-        password: adminPassword,
-        grant_type: 'password'
-      }),
-      signal: authController.signal
-    });
+    let authSuccess = false;
+    let accessToken = null;
+    let authError = null;
+    
+    for (const endpoint of authEndpoints) {
+      try {
+        const authUrl = `${cleanBaseUrl}${endpoint}`;
+        logStep('Attempting authentication', { url: authUrl, endpoint });
+        
+        const authController = new AbortController();
+        const authTimeoutId = setTimeout(() => authController.abort(), 15000);
+        
+        const tokenResponse = await fetch(authUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+            'User-Agent': 'Supabase-Edge-Function/1.0'
+          },
+          body: new URLSearchParams({
+            username: adminUsername,
+            password: adminPassword,
+            grant_type: 'password'
+          }),
+          signal: authController.signal
+        });
 
-    clearTimeout(authTimeoutId);
+        clearTimeout(authTimeoutId);
 
-    logStep('Auth response', { 
-      status: tokenResponse.status, 
-      statusText: tokenResponse.statusText,
-      contentType: tokenResponse.headers.get('content-type')
-    });
+        logStep('Auth response', { 
+          endpoint,
+          status: tokenResponse.status, 
+          statusText: tokenResponse.statusText,
+          contentType: tokenResponse.headers.get('content-type')
+        });
 
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
-      throw new Error(`Authentication failed: ${tokenResponse.status} ${errorText}`);
+        if (tokenResponse.ok) {
+          const tokenData = await tokenResponse.json();
+          if (tokenData.access_token) {
+            logStep('Authentication successful', { 
+              endpoint, 
+              tokenType: tokenData.token_type || 'bearer',
+              tokenLength: tokenData.access_token.length 
+            });
+            authSuccess = true;
+            accessToken = tokenData.access_token;
+            break;
+          }
+        } else {
+          const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
+          logStep('Auth endpoint failed', { 
+            endpoint, 
+            status: tokenResponse.status, 
+            error: errorText 
+          });
+          authError = `${endpoint}: ${tokenResponse.status} ${errorText}`;
+        }
+      } catch (error) {
+        logError(`Auth endpoint error at ${endpoint}`, error);
+        authError = error instanceof Error ? error.message : String(error);
+      }
     }
 
-    const tokenData = await tokenResponse.json();
-    
-    if (!tokenData.access_token) {
-      throw new Error('No access token received from authentication');
+    if (!authSuccess) {
+      return {
+        success: false,
+        message: `Authentication failed. Please verify your admin credentials are correct.`,
+        details: {
+          errorType: 'AuthenticationError',
+          testedEndpoints: authEndpoints,
+          lastError: authError || 'Authentication failed',
+          troubleshooting: [
+            'Verify MARZBAN_ADMIN_USERNAME is correct',
+            'Verify MARZBAN_ADMIN_PASSWORD is correct',
+            'Check if the admin user exists in Marzban',
+            'Ensure the admin user has proper permissions'
+          ],
+          timestamp: new Date().toISOString()
+        }
+      };
     }
-    
-    logStep('Authentication successful', { 
-      tokenType: tokenData.token_type || 'bearer',
-      tokenLength: tokenData.access_token.length 
-    });
 
     // Test API access with the token
     logStep('Testing API access with token');
     
-    const apiController = new AbortController();
-    const apiTimeoutId = setTimeout(() => apiController.abort(), 10000);
+    const apiEndpoints = [
+      '/api/admin',
+      '/api/user',
+      '/api/users',
+      '/admin',
+      '/users'
+    ];
     
-    const apiResponse = await fetch(`${cleanBaseUrl}/api/admin`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${tokenData.access_token}`,
-        'Accept': 'application/json'
-      },
-      signal: apiController.signal
-    });
+    let apiSuccess = false;
+    let apiError = null;
+    
+    for (const endpoint of apiEndpoints) {
+      try {
+        const apiUrl = `${cleanBaseUrl}${endpoint}`;
+        logStep('Testing API endpoint', { url: apiUrl });
+        
+        const apiController = new AbortController();
+        const apiTimeoutId = setTimeout(() => apiController.abort(), 10000);
+        
+        const apiResponse = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+            'User-Agent': 'Supabase-Edge-Function/1.0'
+          },
+          signal: apiController.signal
+        });
 
-    clearTimeout(apiTimeoutId);
+        clearTimeout(apiTimeoutId);
 
-    logStep('API access result', { 
-      status: apiResponse.status,
-      statusText: apiResponse.statusText
-    });
+        logStep('API test result', { 
+          endpoint,
+          status: apiResponse.status,
+          statusText: apiResponse.statusText
+        });
 
-    if (apiResponse.ok) {
-      const adminData = await apiResponse.json();
-      logStep('API access successful', { 
-        adminUser: adminData.username || 'unknown'
-      });
+        if (apiResponse.ok) {
+          apiSuccess = true;
+          break;
+        }
+        
+      } catch (error) {
+        logError(`API endpoint error at ${endpoint}`, error);
+        apiError = error instanceof Error ? error.message : String(error);
+      }
     }
 
     return {
       success: true,
-      message: 'Marzban connection test successful! Panel is reachable and authentication works.',
+      message: `Marzban connection test successful! Panel is reachable, authentication works${apiSuccess ? ', and API is accessible' : ' (API access could not be verified)'}.`,
       details: {
         panelUrl: cleanBaseUrl,
+        connectivityWorking: true,
         authenticationWorking: true,
-        apiAccessible: apiResponse.ok,
+        apiAccessible: apiSuccess,
+        testedEndpoints: {
+          connectivity: connectivityTests,
+          authentication: authEndpoints,
+          api: apiEndpoints
+        },
         timestamp: new Date().toISOString()
       }
     };
@@ -162,7 +282,7 @@ async function testMarzbanConnection(): Promise<{ success: boolean; message: str
     
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Unknown error occurred',
+      message: error instanceof Error ? error.message : 'Unknown error occurred during connection test',
       details: {
         errorType: error?.name || 'UnknownError',
         timestamp: new Date().toISOString()
