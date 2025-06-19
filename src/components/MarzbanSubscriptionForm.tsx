@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { AlertCircle, Loader2, Zap } from 'lucide-react';
+import { AlertCircle, Loader2, Zap, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import SubscriptionSuccess from './SubscriptionSuccess';
@@ -54,6 +54,8 @@ const MarzbanSubscriptionForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
+  const [showLiteSuccess, setShowLiteSuccess] = useState(false);
+  const [liteSuccessData, setLiteSuccessData] = useState<any>(null);
 
   useEffect(() => {
     const fetchPlans = async () => {
@@ -484,7 +486,17 @@ const MarzbanSubscriptionForm = () => {
         }
       }
 
-      // STEP 5: Prepare data for delivery page with API type information
+      // STEP 5: Check if this is a lite plan and handle differently
+      const isLitePlan = selectedPlan.id.toLowerCase().includes('lite') || 
+                        planVerification.plan_id?.toLowerCase().includes('lite');
+      
+      console.log('SUBSCRIPTION: Plan type check:', { 
+        selectedPlanId: selectedPlan.id, 
+        planVerificationId: planVerification.plan_id,
+        isLitePlan 
+      });
+
+      // Prepare data for result display
       const subscriptionResult = {
         username: vpnResponse.data.username,
         subscription_url: vpnResponse.data.subscription_url,
@@ -492,18 +504,26 @@ const MarzbanSubscriptionForm = () => {
         data_limit: vpnResponse.data.data_limit || formData.dataLimit * 1073741824,
         status: 'active',
         used_traffic: 0,
-        apiType: apiTypeToUse // Include API type for delivery page
+        apiType: apiTypeToUse,
+        planName: selectedPlan.name,
+        dataLimitGB: formData.dataLimit,
+        durationDays: formData.duration
       };
 
-      console.log(`SUBSCRIPTION: ✅✅✅ Process completed successfully using ${apiTypeToUse} API, result:`, subscriptionResult);
-      
-      // Store data for delivery page
-      localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
-      
-      // Navigate to delivery page with data
-      navigate('/delivery', { 
-        state: { subscriptionData: subscriptionResult }
-      });
+      if (isLitePlan) {
+        console.log('SUBSCRIPTION: ✅ Lite plan detected - showing success component instead of redirecting');
+        setLiteSuccessData(subscriptionResult);
+        setShowLiteSuccess(true);
+      } else {
+        console.log('SUBSCRIPTION: ✅ Pro plan detected - redirecting to delivery page');
+        // Store data for delivery page
+        localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
+        
+        // Navigate to delivery page with data
+        navigate('/delivery', { 
+          state: { subscriptionData: subscriptionResult }
+        });
+      }
 
     } catch (error: any) {
       console.error('SUBSCRIPTION: ❌ Process failed with error:', error);
@@ -522,6 +542,85 @@ const MarzbanSubscriptionForm = () => {
   
   if (result) {
     return <SubscriptionSuccess result={result} />;
+  }
+
+  // Show lite success component if applicable
+  if (showLiteSuccess && liteSuccessData) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardContent className="p-6 text-center">
+          <div className="flex flex-col items-center space-y-4">
+            <CheckCircle className="w-16 h-16 text-green-600" />
+            <h2 className="text-2xl font-bold text-green-800 dark:text-green-200">
+              {language === 'fa' ? '🎉 اشتراک شما آماده است!' : '🎉 Your Subscription is Ready!'}
+            </h2>
+            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg w-full">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="font-medium">{language === 'fa' ? 'نام کاربری:' : 'Username:'}</span>
+                  <span className="font-mono">{liteSuccessData.username}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">{language === 'fa' ? 'حجم:' : 'Data:'}</span>
+                  <span>{liteSuccessData.dataLimitGB} GB</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">{language === 'fa' ? 'مدت:' : 'Duration:'}</span>
+                  <span>{liteSuccessData.durationDays} {language === 'fa' ? 'روز' : 'days'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">{language === 'fa' ? 'نوع API:' : 'API Type:'}</span>
+                  <span className="capitalize">{liteSuccessData.apiType}</span>
+                </div>
+              </div>
+            </div>
+            <div className="w-full">
+              <Label className="text-sm font-medium">
+                {language === 'fa' ? 'لینک اشتراک:' : 'Subscription URL:'}
+              </Label>
+              <div className="mt-1 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <code className="text-xs break-all text-blue-800 dark:text-blue-200">
+                  {liteSuccessData.subscription_url}
+                </code>
+              </div>
+            </div>
+            <div className="flex gap-3 w-full">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(liteSuccessData.subscription_url);
+                  toast({
+                    title: language === 'fa' ? 'کپی شد!' : 'Copied!',
+                    description: language === 'fa' ? 'لینک اشتراک کپی شد' : 'Subscription URL copied to clipboard',
+                  });
+                }}
+                className="flex-1"
+              >
+                {language === 'fa' ? 'کپی لینک' : 'Copy URL'}
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowLiteSuccess(false);
+                  setLiteSuccessData(null);
+                  // Reset form
+                  setFormData({
+                    mobile: '',
+                    dataLimit: 0,
+                    duration: 0,
+                  });
+                  setSelectedPlan(null);
+                  setDiscountCode('');
+                  setDiscountUsed(null);
+                }}
+                className="flex-1"
+              >
+                {language === 'fa' ? 'اشتراک جدید' : 'New Subscription'}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

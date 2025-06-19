@@ -2,9 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, RefreshCw, Copy } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface SubscriptionStatusMonitorProps {
   subscriptionId: string;
@@ -16,23 +17,44 @@ export const SubscriptionStatusMonitor = ({
   onStatusUpdate 
 }: SubscriptionStatusMonitorProps) => {
   const { language } = useLanguage();
+  const { toast } = useToast();
   const [status, setStatus] = useState<string>('pending');
   const [subscriptionUrl, setSubscriptionUrl] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [planInfo, setPlanInfo] = useState<any>(null);
+  const [subscriptionDetails, setSubscriptionDetails] = useState<any>(null);
 
   const fetchStatus = async () => {
     console.log('Fetching subscription status for ID:', subscriptionId);
     const { data } = await supabase
       .from('subscriptions')
-      .select('status, subscription_url, admin_decision')
+      .select(`
+        status, 
+        subscription_url, 
+        admin_decision,
+        username,
+        data_limit_gb,
+        duration_days,
+        notes
+      `)
       .eq('id', subscriptionId)
       .single();
     
     if (data) {
       console.log('Subscription status data:', data);
       setStatus(data.status);
+      setSubscriptionDetails(data);
+      
       if (data.subscription_url) {
         setSubscriptionUrl(data.subscription_url);
+      }
+      
+      // Extract plan information from notes if available
+      if (data.notes) {
+        const planMatch = data.notes.match(/Plan: ([^,]+)/);
+        if (planMatch) {
+          setPlanInfo({ name: planMatch[1] });
+        }
       }
       
       // Trigger callback for status updates
@@ -50,10 +72,29 @@ export const SubscriptionStatusMonitor = ({
     try {
       await fetchStatus();
       console.log('Manual refresh completed successfully');
+      toast({
+        title: language === 'fa' ? 'وضعیت به‌روزرسانی شد' : 'Status Updated',
+        description: language === 'fa' ? 'وضعیت اشتراک با موفقیت بررسی شد' : 'Subscription status checked successfully',
+      });
     } catch (error) {
       console.error('Manual refresh failed:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'خطا در بررسی وضعیت' : 'Failed to check status',
+        variant: 'destructive',
+      });
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const copySubscriptionUrl = () => {
+    if (subscriptionUrl) {
+      navigator.clipboard.writeText(subscriptionUrl);
+      toast({
+        title: language === 'fa' ? 'کپی شد!' : 'Copied!',
+        description: language === 'fa' ? 'لینک اشتراک کپی شد' : 'Subscription URL copied to clipboard',
+      });
     }
   };
 
@@ -124,6 +165,10 @@ export const SubscriptionStatusMonitor = ({
     }
   };
 
+  // Check if this is a lite plan based on plan info or subscription details
+  const isLitePlan = planInfo?.name?.toLowerCase().includes('lite') || 
+                    subscriptionDetails?.notes?.toLowerCase().includes('lite');
+
   return (
     <Card className="w-full">
       <CardContent className="p-6 text-center">
@@ -162,12 +207,55 @@ export const SubscriptionStatusMonitor = ({
                   ? 'اشتراک شما آماده است!' 
                   : 'Your subscription is ready!'}
               </p>
-              <Button 
-                onClick={() => window.location.href = `/delivery?id=${subscriptionId}`}
-                className="w-full"
-              >
-                {language === 'fa' ? 'مشاهده جزئیات اشتراک' : 'View Subscription Details'}
-              </Button>
+              
+              {/* Show subscription details for lite plans */}
+              {isLitePlan && subscriptionDetails && (
+                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg w-full">
+                  <div className="space-y-2 text-sm text-left">
+                    <div className="flex justify-between">
+                      <span className="font-medium">{language === 'fa' ? 'نام کاربری:' : 'Username:'}</span>
+                      <span className="font-mono">{subscriptionDetails.username}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">{language === 'fa' ? 'حجم:' : 'Data:'}</span>
+                      <span>{subscriptionDetails.data_limit_gb} GB</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">{language === 'fa' ? 'مدت:' : 'Duration:'}</span>
+                      <span>{subscriptionDetails.duration_days} {language === 'fa' ? 'روز' : 'days'}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-sm font-medium mb-1">
+                      {language === 'fa' ? 'لینک اشتراک:' : 'Subscription URL:'}
+                    </div>
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs break-all">
+                      {subscriptionUrl}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex gap-2 w-full">
+                <Button
+                  variant="outline"
+                  onClick={copySubscriptionUrl}
+                  className="flex items-center gap-2 flex-1"
+                >
+                  <Copy className="w-4 h-4" />
+                  {language === 'fa' ? 'کپی لینک' : 'Copy URL'}
+                </Button>
+                
+                {/* Only show delivery button for non-lite plans */}
+                {!isLitePlan && (
+                  <Button 
+                    onClick={() => window.location.href = `/delivery?id=${subscriptionId}`}
+                    className="flex-1"
+                  >
+                    {language === 'fa' ? 'مشاهده جزئیات اشتراک' : 'View Subscription Details'}
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </div>
