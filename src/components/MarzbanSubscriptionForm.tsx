@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -212,12 +211,6 @@ const MarzbanSubscriptionForm = () => {
     
     console.log('=== SUBSCRIPTION FORM: Starting submission ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
-    console.log('SUBSCRIPTION FORM: ⚠️ CRITICAL - Selected plan API type check:', {
-      id: selectedPlan?.id,
-      name: selectedPlan?.name,
-      apiType: selectedPlan?.apiType,
-      pricePerGB: selectedPlan?.pricePerGB
-    });
     
     // Enhanced validation
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
@@ -238,17 +231,46 @@ const MarzbanSubscriptionForm = () => {
       return;
     }
 
-    // CRITICAL: Enhanced API type validation
-    if (!selectedPlan.apiType || (selectedPlan.apiType !== 'marzban' && selectedPlan.apiType !== 'marzneshin')) {
-      console.error('SUBSCRIPTION FORM: ❌ Invalid or missing API type:', selectedPlan.apiType);
+    // CRITICAL: Pre-execution API type validation and debugging
+    console.log('🔥🔥🔥 CRITICAL DEBUG: Pre-execution API type check');
+    console.log('🔥🔥🔥 Selected Plan Object:', JSON.stringify(selectedPlan, null, 2));
+    console.log('🔥🔥🔥 Selected Plan API Type:', selectedPlan.apiType);
+    console.log('🔥🔥🔥 typeof selectedPlan.apiType:', typeof selectedPlan.apiType);
+    console.log('🔥🔥🔥 selectedPlan.apiType === "marzban":', selectedPlan.apiType === 'marzban');
+    console.log('🔥🔥🔥 selectedPlan.apiType === "marzneshin":', selectedPlan.apiType === 'marzneshin');
+
+    // Double-check by fetching plan from database
+    console.log('🔥🔥🔥 DOUBLE-CHECK: Fetching plan from database for verification');
+    const { data: planVerification, error: planError } = await supabase
+      .from('subscription_plans')
+      .select('api_type, name_en, name_fa, plan_id')
+      .eq('id', selectedPlan.id)
+      .single();
+    
+    if (planError) {
+      console.error('🔥🔥🔥 CRITICAL ERROR: Failed to verify plan API type:', planError);
+      setError('Failed to verify plan configuration. Please try again.');
+      return;
+    }
+
+    console.log('🔥🔥🔥 DATABASE VERIFICATION Result:', JSON.stringify(planVerification, null, 2));
+    console.log('🔥🔥🔥 DB API Type:', planVerification.api_type);
+    console.log('🔥🔥🔥 Frontend API Type:', selectedPlan.apiType);
+    
+    // Validate API type consistency
+    if (planVerification.api_type !== selectedPlan.apiType) {
+      console.error('🔥🔥🔥 CRITICAL ERROR: API type mismatch detected!');
+      console.error('🔥🔥🔥 Database says:', planVerification.api_type);
+      console.error('🔥🔥🔥 Frontend says:', selectedPlan.apiType);
+      setError(`API type mismatch detected. Please refresh and try again.`);
+      return;
+    }
+
+    // Enhanced API type validation
+    const validApiTypes = ['marzban', 'marzneshin'];
+    if (!validApiTypes.includes(selectedPlan.apiType)) {
+      console.error('🔥🔥🔥 INVALID API TYPE:', selectedPlan.apiType);
       setError(`Invalid API type: ${selectedPlan.apiType}. Expected 'marzban' or 'marzneshin'`);
-      toast({
-        title: language === 'fa' ? 'خطا در پیکربندی پلن' : 'Plan Configuration Error',
-        description: language === 'fa' ? 
-          'پلن انتخابی فاقد تنظیمات API معتبر است' : 
-          'Selected plan has invalid API configuration',
-        variant: 'destructive',
-      });
       return;
     }
 
@@ -335,36 +357,17 @@ const MarzbanSubscriptionForm = () => {
           'Your subscription has been saved to database. Creating VPN user...',
       });
 
-      // STEP 2: ENHANCED API TYPE VALIDATION AND ROUTING
-      console.log(`SUBSCRIPTION: 🔥🔥🔥 PRE-CALL VALIDATION - Plan API type: "${selectedPlan.apiType}"`);
-      console.log(`SUBSCRIPTION: 🔥🔥🔥 Type check: selectedPlan.apiType === 'marzban' = ${selectedPlan.apiType === 'marzban'}`);
-      console.log(`SUBSCRIPTION: 🔥🔥🔥 Type check: selectedPlan.apiType === 'marzneshin' = ${selectedPlan.apiType === 'marzneshin'}`);
-      
-      // Double-check by fetching plan from database to verify API type
-      const { data: planVerification, error: planError } = await supabase
-        .from('subscription_plans')
-        .select('api_type, name_en, name_fa')
-        .eq('id', selectedPlan.id)
-        .single();
-      
-      if (planError) {
-        console.error('SUBSCRIPTION: Failed to verify plan API type:', planError);
-      } else {
-        console.log(`SUBSCRIPTION: 🔥🔥🔥 DATABASE VERIFICATION - Plan API type from DB: "${planVerification.api_type}"`);
-        if (planVerification.api_type !== selectedPlan.apiType) {
-          console.error(`SUBSCRIPTION: ❌ API TYPE MISMATCH! Frontend: ${selectedPlan.apiType}, Database: ${planVerification.api_type}`);
-          throw new Error(`API type mismatch detected. Frontend: ${selectedPlan.apiType}, Database: ${planVerification.api_type}`);
-        }
-      }
+      // STEP 2: CRITICAL API ROUTING WITH EXPLICIT BLOCKS
+      const apiTypeToUse = planVerification.api_type; // Use DB value for absolute certainty
+      console.log(`🔥🔥🔥 FINAL API ROUTING DECISION: Using "${apiTypeToUse}" from database`);
       
       let vpnResponse;
-      const apiTypeToUse = selectedPlan.apiType;
       
-      console.log(`SUBSCRIPTION: 🔥🔥🔥 ABOUT TO CALL EDGE FUNCTION - Using API type: "${apiTypeToUse}"`);
-      
+      // EXPLICIT CONDITIONAL BLOCKS - NO CHAINING
       if (apiTypeToUse === 'marzban') {
-        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Calling Marzban edge function');
-        console.log('SUBSCRIPTION: ✅✅✅ Edge function name: marzban-create-user');
+        console.log('🔥🔥🔥 ROUTING TO MARZBAN - Calling marzban-create-user edge function');
+        console.log('🔥🔥🔥 Edge function: marzban-create-user');
+        console.log('🔥🔥🔥 This should create a Marzban user, NOT Marzneshin');
         
         const { data, error } = await supabase.functions.invoke('marzban-create-user', {
           body: {
@@ -376,15 +379,17 @@ const MarzbanSubscriptionForm = () => {
         });
         
         if (error) {
-          console.error('SUBSCRIPTION: Marzban edge function error:', error);
+          console.error('🔥🔥🔥 MARZBAN EDGE FUNCTION ERROR:', error);
           throw new Error(`Marzban service error: ${error.message}`);
         }
         
         vpnResponse = data;
-        console.log('SUBSCRIPTION: ✅ Marzban API response:', vpnResponse);
+        console.log('🔥🔥🔥 MARZBAN API RESPONSE:', vpnResponse);
+        
       } else if (apiTypeToUse === 'marzneshin') {
-        console.log('SUBSCRIPTION: ✅✅✅ CONFIRMED: Calling Marzneshin edge function');
-        console.log('SUBSCRIPTION: ✅✅✅ Edge function name: marzneshin-create-user');
+        console.log('🔥🔥🔥 ROUTING TO MARZNESHIN - Calling marzneshin-create-user edge function');
+        console.log('🔥🔥🔥 Edge function: marzneshin-create-user');
+        console.log('🔥🔥🔥 This should create a Marzneshin user, NOT Marzban');
         
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
           body: {
@@ -396,15 +401,17 @@ const MarzbanSubscriptionForm = () => {
         });
         
         if (error) {
-          console.error('SUBSCRIPTION: Marzneshin edge function error:', error);
+          console.error('🔥🔥🔥 MARZNESHIN EDGE FUNCTION ERROR:', error);
           throw new Error(`Marzneshin service error: ${error.message}`);
         }
         
         vpnResponse = data;
-        console.log('SUBSCRIPTION: ✅ Marzneshin API response:', vpnResponse);
+        console.log('🔥🔥🔥 MARZNESHIN API RESPONSE:', vpnResponse);
+        
       } else {
-        console.error('SUBSCRIPTION: ❌❌❌ CRITICAL ERROR: Unhandled API type:', apiTypeToUse);
-        throw new Error(`Unhandled API type: ${apiTypeToUse}`);
+        console.error('🔥🔥🔥 CRITICAL ERROR: Unhandled API type:', apiTypeToUse);
+        console.error('🔥🔥🔥 This should never happen - throwing error');
+        throw new Error(`🔥🔥🔥 CRITICAL: Unhandled API type: ${apiTypeToUse}. Valid types are: marzban, marzneshin`);
       }
 
       if (!vpnResponse?.success) {
@@ -578,6 +585,15 @@ const MarzbanSubscriptionForm = () => {
                         <p className="text-sm text-gray-500 mt-2">
                           {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
                         </p>
+                        <div className="mt-2">
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            plan.apiType === 'marzban' 
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                              : 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400'
+                          }`}>
+                            {plan.apiType === 'marzban' ? 'Marzban API' : 'Marzneshin API'}
+                          </span>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -624,7 +640,7 @@ const MarzbanSubscriptionForm = () => {
             {/* Data Limit */}
             <div>
               <Label htmlFor="dataLimit" className="text-sm font-medium">
-                {language === 'fa' ? 'حجم (گیگابایت)' : 'Data Volume (GB)'}
+                {language === 'fa' ? 'حجم (گ) *' : 'Data Volume (GB) *'}
               </Label>
               <Select value={formData.dataLimit?.toString()} onValueChange={(value) => 
                 setFormData(prev => ({ ...prev, dataLimit: parseInt(value) }))}>
@@ -644,7 +660,7 @@ const MarzbanSubscriptionForm = () => {
             {/* Duration */}
             <div>
               <Label htmlFor="duration" className="text-sm font-medium">
-                {language === 'fa' ? 'مدت زمان (روز)' : 'Duration (Days)'}
+                {language === 'fa' ? 'مدت زمان (روز) *' : 'Duration (Days) *'}
               </Label>
               <Select value={formData.duration?.toString()} onValueChange={(value) => 
                 setFormData(prev => ({ ...prev, duration: parseInt(value) }))}>

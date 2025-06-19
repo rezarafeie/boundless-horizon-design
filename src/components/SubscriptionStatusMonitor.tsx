@@ -45,9 +45,11 @@ export const SubscriptionStatusMonitor = ({
   };
 
   const handleManualRefresh = async () => {
+    console.log('Manual refresh initiated for subscription:', subscriptionId);
     setIsRefreshing(true);
     try {
       await fetchStatus();
+      console.log('Manual refresh completed successfully');
     } catch (error) {
       console.error('Manual refresh failed:', error);
     } finally {
@@ -138,16 +140,18 @@ export const SubscriptionStatusMonitor = ({
                   ? 'پرداخت شما در حال بررسی است. لطفاً صبر کنید...' 
                   : 'Your payment is being reviewed. Please wait...'}
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleManualRefresh}
-                disabled={isRefreshing}
-                className="flex items-center gap-2"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                {language === 'fa' ? 'بررسی مجدد' : 'Check Status'}
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleManualRefresh}
+                  disabled={isRefreshing}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {language === 'fa' ? 'بررسی وضعیت' : 'Check Status'}
+                </Button>
+              </div>
             </>
           )}
 
