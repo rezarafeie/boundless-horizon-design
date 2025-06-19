@@ -9,8 +9,11 @@ const corsHeaders = {
 interface MarzbanUserRequest {
   username: string;
   data_limit: number;
-  expire_duration: number;
+  expire_strategy: string;
+  expire_date: string;
+  inbounds: string[];
   note: string;
+  enabled: boolean;
 }
 
 interface MarzbanUserResponse {
@@ -18,13 +21,6 @@ interface MarzbanUserResponse {
   subscription_url: string;
   expire: number;
   data_limit: number;
-}
-
-interface MarzbanInbound {
-  tag: string;
-  protocol: string;
-  port: number;
-  settings: any;
 }
 
 const logStep = (step: string, details?: any) => {
@@ -51,7 +47,7 @@ async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: 
     baseUrlExists: !!baseUrl,
     usernameExists: !!adminUsername,
     passwordExists: !!adminPassword,
-    baseUrlValue: baseUrl ? baseUrl.replace(/\/+$/, '') : 'NOT_SET'
+    baseUrlValue: baseUrl || 'NOT_SET'
   });
 
   if (!baseUrl || !adminUsername || !adminPassword) {
@@ -70,187 +66,63 @@ async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: 
   };
 }
 
-async function testPanelHealth(baseUrl: string): Promise<boolean> {
+async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
+  const authUrl = `${baseUrl}/api/admin/token`;
+  logStep('Attempting authentication', { url: authUrl });
+  
   try {
-    logStep('Testing panel connectivity', { url: baseUrl });
-    
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     
-    const response = await fetch(`${baseUrl}/docs`, {
-      method: 'GET',
-      headers: { 'Accept': 'text/html' },
+    const tokenResponse = await fetch(authUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        username: username,
+        password: password
+      }),
       signal: controller.signal
     });
-    
+
     clearTimeout(timeoutId);
-    
-    const isHealthy = response.ok || response.status === 404;
-    logStep('Panel health check result', { 
-      status: response.status, 
-      statusText: response.statusText,
-      isHealthy
+
+    logStep('Auth response received', { 
+      status: tokenResponse.status, 
+      statusText: tokenResponse.statusText,
+      contentType: tokenResponse.headers.get('content-type')
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
+      logStep('Auth failed', { 
+        status: tokenResponse.status, 
+        error: errorText 
+      });
+      throw new Error(`Authentication failed: ${tokenResponse.status} ${errorText}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    if (!tokenData.access_token) {
+      logStep('Token data missing access_token', { tokenData });
+      throw new Error('Authentication response missing access token');
+    }
+
+    logStep('Authentication successful', { 
+      tokenType: tokenData.token_type || 'bearer',
+      tokenLength: tokenData.access_token.length 
     });
     
-    return isHealthy;
+    return tokenData.access_token;
   } catch (error) {
-    logError('Panel health check failed', error);
-    return false;
-  }
-}
-
-async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
-  const authEndpoints = [
-    '/api/admin/token',
-    '/api/admin/auth', 
-    '/admin/token',
-    '/token'
-  ];
-  
-  let lastError: Error | null = null;
-  
-  for (const endpoint of authEndpoints) {
-    try {
-      const authUrl = `${baseUrl}${endpoint}`;
-      logStep('Attempting authentication', { url: authUrl, endpoint });
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-      
-      const tokenResponse = await fetch(authUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: new URLSearchParams({
-          username: username,
-          password: password,
-          grant_type: 'password'
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      logStep('Auth response received', { 
-        endpoint,
-        status: tokenResponse.status, 
-        statusText: tokenResponse.statusText,
-        contentType: tokenResponse.headers.get('content-type')
-      });
-
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        if (tokenData.access_token) {
-          logStep('Authentication successful', { 
-            endpoint, 
-            tokenType: tokenData.token_type || 'bearer',
-            tokenLength: tokenData.access_token.length 
-          });
-          return tokenData.access_token;
-        } else {
-          logStep('Token data missing access_token', { endpoint, tokenData });
-        }
-      } else {
-        const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
-        logStep('Auth endpoint failed', { 
-          endpoint, 
-          status: tokenResponse.status, 
-          statusText: tokenResponse.statusText,
-          error: errorText 
-        });
-        lastError = new Error(`Auth failed at ${endpoint}: ${tokenResponse.status} ${errorText}`);
-      }
-    } catch (error) {
-      logError(`Auth endpoint error at ${endpoint}`, error);
-      lastError = error instanceof Error ? error : new Error(String(error));
+    logError('Authentication failed', error);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Authentication request timed out');
     }
+    throw error;
   }
-  
-  throw new Error(`Authentication failed on all endpoints. Last error: ${lastError?.message || 'Unknown error'}`);
-}
-
-async function fetchAvailableInbounds(baseUrl: string, token: string): Promise<MarzbanInbound[]> {
-  logStep('Fetching available inbounds');
-  
-  const inboundEndpoints = [
-    '/api/inbounds',
-    '/api/inbound',
-    '/inbounds',
-    '/inbound'
-  ];
-  
-  for (const endpoint of inboundEndpoints) {
-    try {
-      const url = `${baseUrl}${endpoint}`;
-      logStep('Trying inbound endpoint', { url });
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        },
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      logStep('Inbound endpoint response', { 
-        endpoint, 
-        status: response.status,
-        contentType: response.headers.get('content-type')
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        logStep('Inbound data received', { 
-          endpoint, 
-          dataType: typeof data, 
-          isArray: Array.isArray(data),
-          keys: Object.keys(data || {})
-        });
-        
-        let inbounds = [];
-        if (Array.isArray(data)) {
-          inbounds = data;
-        } else if (data.inbounds && Array.isArray(data.inbounds)) {
-          inbounds = data.inbounds;
-        } else if (data.data && Array.isArray(data.data)) {
-          inbounds = data.data;
-        } else if (data.items && Array.isArray(data.items)) {
-          inbounds = data.items;
-        }
-        
-        if (inbounds.length > 0) {
-          logStep('Found valid inbounds', { 
-            count: inbounds.length, 
-            tags: inbounds.map(i => i.tag || i.name || 'unnamed').slice(0, 5)
-          });
-          return inbounds;
-        } else {
-          logStep('No inbounds found in response', { endpoint, data });
-        }
-      } else {
-        const errorText = await response.text().catch(() => 'Unable to read error');
-        logStep('Inbound endpoint failed', { endpoint, status: response.status, error: errorText });
-      }
-    } catch (error) {
-      logError(`Inbound endpoint error at ${endpoint}`, error);
-    }
-  }
-  
-  logStep('No inbounds found, using default VMESS configuration');
-  return [{
-    tag: 'vmess-inbound',
-    protocol: 'vmess',
-    port: 443,
-    settings: {}
-  }];
 }
 
 async function createMarzbanUser(
@@ -271,56 +143,40 @@ async function createMarzbanUser(
     notesLength: userData.notes?.length || 0
   });
   
-  // Fetch available inbounds first
-  const inbounds = await fetchAvailableInbounds(baseUrl, token);
+  // Calculate expiration date
+  const expireDate = new Date();
+  expireDate.setDate(expireDate.getDate() + userData.durationDays);
+  const expireDateString = expireDate.toISOString().split('T')[0]; // YYYY-MM-DD format
   
-  // Create proxy configuration from available inbounds
-  const proxies: Record<string, any> = {};
+  // Convert GB to bytes
+  const dataLimitBytes = userData.dataLimitGB * 1073741824;
   
-  if (inbounds.length > 0) {
-    const primaryInbound = inbounds[0];
-    const protocol = primaryInbound.protocol || 'vmess';
-    
-    proxies[protocol] = {
-      id: crypto.randomUUID(),
-      flow: protocol === 'vless' ? '' : undefined
-    };
-    
-    logStep('Created proxy configuration', { protocol, uuid: proxies[protocol].id });
-  } else {
-    proxies.vmess = {
-      id: crypto.randomUUID()
-    };
-    logStep('Using default VMESS proxy configuration', { uuid: proxies.vmess.id });
-  }
+  // Default inbounds - you may need to adjust based on your panel configuration
+  const defaultInbounds = ["vmess", "vless", "trojan", "shadowsocks"];
   
-  // Calculate expiration timestamp
-  const expirationTimestamp = Math.floor(Date.now() / 1000) + (userData.durationDays * 24 * 60 * 60);
-  const dataLimitBytes = userData.dataLimitGB * 1073741824; // Convert GB to bytes
-  
-  const userRequest = {
+  const userRequest: MarzbanUserRequest = {
     username: userData.username,
-    proxies: proxies,
     data_limit: dataLimitBytes,
-    expire: expirationTimestamp,
-    data_limit_reset_strategy: "no_reset",
-    status: "active",
-    note: `Purchased via bnets.co - ${userData.notes || 'No additional notes'}`
+    expire_strategy: "fixed_date",
+    expire_date: expireDateString,
+    inbounds: defaultInbounds,
+    note: `Purchased via bnets.co - ${userData.notes || 'No additional notes'}`,
+    enabled: true
   };
   
   logStep('Prepared user creation request', {
     username: userRequest.username,
     dataLimitBytes,
-    expire: new Date(expirationTimestamp * 1000).toISOString(),
-    proxiesCount: Object.keys(proxies).length,
-    status: userRequest.status
+    expireDate: expireDateString,
+    inbounds: userRequest.inbounds,
+    enabled: userRequest.enabled
   });
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     
-    const response = await fetch(`${baseUrl}/api/user`, {
+    const response = await fetch(`${baseUrl}/api/users`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -386,7 +242,7 @@ async function createMarzbanUser(
     } else {
       // Try to get user details for subscription URL
       try {
-        const userDetailsResponse = await fetch(`${baseUrl}/api/user/${userData.username}`, {
+        const userDetailsResponse = await fetch(`${baseUrl}/api/users/${userData.username}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -409,10 +265,13 @@ async function createMarzbanUser(
       }
     }
     
+    // Calculate expire timestamp
+    const expireTimestamp = Math.floor(expireDate.getTime() / 1000);
+    
     const marzbanResponse: MarzbanUserResponse = {
       username: result.username || userData.username,
       subscription_url: subscriptionUrl,
-      expire: result.expire || expirationTimestamp,
+      expire: result.expire || expireTimestamp,
       data_limit: result.data_limit || dataLimitBytes
     };
     
@@ -497,22 +356,6 @@ Deno.serve(async (req) => {
     // Validate and get environment variables
     const { baseUrl, adminUsername, adminPassword } = await validateEnvironment();
     
-    // Test panel health
-    const isPanelHealthy = await testPanelHealth(baseUrl);
-    if (!isPanelHealthy) {
-      logStep('Panel health check failed - service unavailable');
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Marzban panel is currently unreachable. Please try again later or contact support.' 
-        }),
-        { 
-          status: 503, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
     // Get authentication token
     const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
     
@@ -560,7 +403,7 @@ Deno.serve(async (req) => {
         statusCode = 409;
       } else if (error.message.includes('Validation error')) {
         statusCode = 422;
-      } else if (error.message.includes('unreachable') || error.message.includes('timeout')) {
+      } else if (error.message.includes('timeout')) {
         statusCode = 503;
       } else if (error.message.includes('Authentication failed')) {
         statusCode = 502;
