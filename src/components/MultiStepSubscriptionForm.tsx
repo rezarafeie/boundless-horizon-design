@@ -36,10 +36,12 @@ const STEPS = [
   { id: 4, name: 'success', icon: CheckCircle, titleFa: 'تکمیل', titleEn: 'Complete' },
 ];
 
+type StepNumber = 1 | 2 | 3 | 4;
+
 const MultiStepSubscriptionForm = () => {
   const { language } = useLanguage();
   const { toast } = useToast();
-  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [currentStep, setCurrentStep] = useState<StepNumber>(1);
   const [formData, setFormData] = useState<FormData>({
     username: '',
     dataLimit: 10,
@@ -68,7 +70,7 @@ const MultiStepSubscriptionForm = () => {
     }
   }, [formData.selectedPlan, currentStep]);
 
-  const canProceedFromStep = (step: number): boolean => {
+  const canProceedFromStep = (step: StepNumber): boolean => {
     switch (step) {
       case 1:
         return !!formData.selectedPlan;
@@ -155,14 +157,14 @@ const MultiStepSubscriptionForm = () => {
       setSubscriptionId(newSubscriptionId);
     }
 
-    const nextStep = currentStep + 1;
+    const nextStep = (currentStep + 1) as StepNumber;
     if (nextStep <= 4) {
       setCurrentStep(nextStep);
     }
   };
 
   const handlePrevious = () => {
-    const prevStep = currentStep - 1;
+    const prevStep = (currentStep - 1) as StepNumber;
     if (prevStep >= 1) {
       setCurrentStep(prevStep);
     }
@@ -189,49 +191,41 @@ const MultiStepSubscriptionForm = () => {
   const progressPercentage = ((currentStep - 1) / (STEPS.length - 1)) * 100;
 
   const renderStepContent = () => {
-    // Store currentStep in a variable to avoid literal type issues
-    const step = currentStep;
-    
-    if (step === 1) {
-      return (
-        <div className="space-y-6">
-          <PlanSelector
-            selectedPlan={formData.selectedPlan}
-            onPlanSelect={(plan) => updateFormData('selectedPlan', plan)}
-            dataLimit={formData.dataLimit}
+    switch (currentStep) {
+      case 1:
+        return (
+          <div className="space-y-6">
+            <PlanSelector
+              selectedPlan={formData.selectedPlan}
+              onPlanSelect={(plan) => updateFormData('selectedPlan', plan)}
+              dataLimit={formData.dataLimit}
+            />
+          </div>
+        );
+      case 2:
+        return (
+          <UserInfoStep
+            formData={formData}
+            onUpdate={updateFormData}
+            appliedDiscount={appliedDiscount}
           />
-        </div>
-      );
+        );
+      case 3:
+        return (
+          <PaymentStep
+            amount={calculateTotalPrice()}
+            subscriptionId={subscriptionId}
+            onSuccess={handlePaymentSuccess}
+            onBack={handlePrevious}
+          />
+        );
+      case 4:
+        return result ? (
+          <SubscriptionSuccess result={result} />
+        ) : null;
+      default:
+        return null;
     }
-    
-    if (step === 2) {
-      return (
-        <UserInfoStep
-          formData={formData}
-          onUpdate={updateFormData}
-          appliedDiscount={appliedDiscount}
-        />
-      );
-    }
-    
-    if (step === 3) {
-      return (
-        <PaymentStep
-          amount={calculateTotalPrice()}
-          subscriptionId={subscriptionId}
-          onSuccess={handlePaymentSuccess}
-          onBack={handlePrevious}
-        />
-      );
-    }
-    
-    if (step === 4) {
-      return result ? (
-        <SubscriptionSuccess result={result} />
-      ) : null;
-    }
-    
-    return null;
   };
 
   const getCurrentStepInfo = () => {
