@@ -224,6 +224,44 @@ export type Database = {
         }
         Relationships: []
       }
+      panel_test_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          panel_id: string
+          response_time_ms: number | null
+          test_details: Json | null
+          test_result: boolean
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          panel_id: string
+          response_time_ms?: number | null
+          test_details?: Json | null
+          test_result: boolean
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          panel_id?: string
+          response_time_ms?: number | null
+          test_details?: Json | null
+          test_result?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "panel_test_logs_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "panel_servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_logs: {
         Row: {
           created_at: string

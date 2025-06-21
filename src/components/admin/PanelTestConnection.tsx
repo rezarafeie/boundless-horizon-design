@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, TestTube } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { TestDebugLog } from './TestDebugLog';
 
@@ -49,6 +49,7 @@ interface TestResult {
     subscriptionUrl?: string;
     error?: string;
   };
+  responseTime?: number;
   detailedLogs: DetailedLog[];
   timestamp: string;
 }
@@ -60,10 +61,11 @@ interface PanelTestConnectionProps {
 
 export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnectionProps) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [testResults, setTestResults] = useState<TestResult[]>([]);
+  const [currentTestResult, setCurrentTestResult] = useState<TestResult | null>(null);
 
   const testConnection = async () => {
     setIsLoading(true);
+    setCurrentTestResult(null);
     
     try {
       console.log('Testing panel connection:', panel.id);
@@ -79,8 +81,8 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
 
       console.log('Test connection result:', data);
       
-      // Add the new test result to the beginning of the array
-      setTestResults(prev => [data, ...prev]);
+      // Set the current test result for immediate display
+      setCurrentTestResult(data);
       
       if (onTestComplete) {
         onTestComplete(data);
@@ -108,14 +110,10 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
         ],
         timestamp: new Date().toISOString()
       };
-      setTestResults(prev => [errorResult, ...prev]);
+      setCurrentTestResult(errorResult);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const clearResults = () => {
-    setTestResults([]);
   };
 
   const getStatusIcon = (success: boolean) => {
@@ -128,41 +126,26 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
     return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
   };
 
-  const latestResult = testResults[0];
-
   return (
     <div className="space-y-4">
       {/* Test Controls */}
-      <div className="flex gap-2">
-        <Button 
-          onClick={testConnection} 
-          disabled={isLoading}
-          className="flex-1"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Testing Connection...
-            </>
-          ) : (
-            <>
-              <TestTube className="w-4 h-4 mr-2" />
-              Test Panel Connection
-            </>
-          )}
-        </Button>
-        
-        {testResults.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={clearResults}
-            className="flex-shrink-0"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
+      <Button 
+        onClick={testConnection} 
+        disabled={isLoading}
+        className="w-full"
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Testing Connection...
+          </>
+        ) : (
+          <>
+            <TestTube className="w-4 h-4 mr-2" />
+            Test Panel Connection
+          </>
         )}
-      </div>
+      </Button>
 
       {/* Current Test Status */}
       {isLoading && (
@@ -179,47 +162,48 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
         </Card>
       )}
 
-      {/* Test Results History */}
-      {testResults.map((testResult, index) => (
-        <Card key={`${testResult.timestamp}-${index}`} className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+      {/* Current Test Result */}
+      {currentTestResult && (
+        <Card className={`${currentTestResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              {getStatusIcon(testResult.success)}
+              {getStatusIcon(currentTestResult.success)}
               Connection Test Results
-              {getStatusBadge(testResult.success)}
-              {index === 0 && (
-                <Badge variant="outline" className="text-xs">Latest</Badge>
-              )}
+              {getStatusBadge(currentTestResult.success)}
+              <Badge variant="outline" className="text-xs">Latest</Badge>
             </CardTitle>
             <CardDescription>
-              Test completed at {new Date(testResult.timestamp).toLocaleString()}
+              Test completed at {new Date(currentTestResult.timestamp).toLocaleString()}
+              {currentTestResult.responseTime && (
+                <span className="ml-2">• Response time: {currentTestResult.responseTime}ms</span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
               <h4 className="font-medium flex items-center gap-2">
-                {getStatusIcon(testResult.authentication.success)}
+                {getStatusIcon(currentTestResult.authentication.success)}
                 Authentication Test
               </h4>
               <div className="text-sm text-gray-600 ml-6">
-                {testResult.authentication.success ? (
+                {currentTestResult.authentication.success ? (
                   <div>
                     <p>✅ Successfully authenticated with panel</p>
-                    {testResult.authentication.tokenReceived && (
+                    {currentTestResult.authentication.tokenReceived && (
                       <p>✅ Access token received</p>
                     )}
-                    {testResult.authentication.tokenType && (
-                      <p>Token type: {testResult.authentication.tokenType}</p>
+                    {currentTestResult.authentication.tokenType && (
+                      <p>Token type: {currentTestResult.authentication.tokenType}</p>
                     )}
-                    {testResult.authentication.isSudo !== undefined && (
-                      <p>Sudo privileges: {testResult.authentication.isSudo ? 'Yes' : 'No'}</p>
+                    {currentTestResult.authentication.isSudo !== undefined && (
+                      <p>Sudo privileges: {currentTestResult.authentication.isSudo ? 'Yes' : 'No'}</p>
                     )}
                   </div>
                 ) : (
                   <div>
                     <p>❌ Authentication failed</p>
-                    {testResult.authentication.error && (
-                      <p className="text-red-600">Error: {testResult.authentication.error}</p>
+                    {currentTestResult.authentication.error && (
+                      <p className="text-red-600">Error: {currentTestResult.authentication.error}</p>
                     )}
                   </div>
                 )}
@@ -228,25 +212,25 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
 
             <div>
               <h4 className="font-medium flex items-center gap-2">
-                {getStatusIcon(testResult.userCreation.success)}
+                {getStatusIcon(currentTestResult.userCreation.success)}
                 User Creation Test
               </h4>
               <div className="text-sm text-gray-600 ml-6">
-                {testResult.userCreation.success ? (
+                {currentTestResult.userCreation.success ? (
                   <div>
                     <p>✅ Successfully created and deleted test user</p>
-                    {testResult.userCreation.username && (
-                      <p>Test username: {testResult.userCreation.username}</p>
+                    {currentTestResult.userCreation.username && (
+                      <p>Test username: {currentTestResult.userCreation.username}</p>
                     )}
-                    {testResult.userCreation.subscriptionUrl && (
+                    {currentTestResult.userCreation.subscriptionUrl && (
                       <p>✅ Subscription URL generated</p>
                     )}
                   </div>
                 ) : (
                   <div>
                     <p>❌ User creation failed</p>
-                    {testResult.userCreation.error && (
-                      <p className="text-red-600">Error: {testResult.userCreation.error}</p>
+                    {currentTestResult.userCreation.error && (
+                      <p className="text-red-600">Error: {currentTestResult.userCreation.error}</p>
                     )}
                   </div>
                 )}
@@ -256,19 +240,19 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
             <div className="pt-2 border-t">
               <h4 className="font-medium">Panel Information</h4>
               <div className="text-sm text-gray-600">
-                <p>Name: {testResult.panel.name}</p>
-                <p>Type: {testResult.panel.type}</p>
-                <p>URL: {testResult.panel.url}</p>
+                <p>Name: {currentTestResult.panel.name}</p>
+                <p>Type: {currentTestResult.panel.type}</p>
+                <p>URL: {currentTestResult.panel.url}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-      ))}
+      )}
 
-      {/* Always show debug logs for the latest test */}
-      {latestResult && latestResult.detailedLogs && latestResult.detailedLogs.length > 0 && (
+      {/* Always show debug logs for the current test */}
+      {currentTestResult && currentTestResult.detailedLogs && currentTestResult.detailedLogs.length > 0 && (
         <TestDebugLog
-          logs={latestResult.detailedLogs}
+          logs={currentTestResult.detailedLogs}
           title="Panel Connection Debug Logs"
           isVisible={true}
         />

@@ -26,6 +26,7 @@ Deno.serve(async (req) => {
   }
 
   const detailedLogs: DetailedLog[] = [];
+  const startTime = Date.now();
   
   const addLog = (step: string, status: 'success' | 'error' | 'info', message: string, details?: any) => {
     const logEntry = {
@@ -222,7 +223,7 @@ Deno.serve(async (req) => {
       addLog('Authentication', 'info', 'Testing Marzneshin authentication');
       
       try {
-        // Test Marzneshin authentication
+        // Test Marzneshin authentication  
         const authPayload = {
           username: panel.username,
           password: panel.password,
@@ -362,6 +363,9 @@ Deno.serve(async (req) => {
       }
     }
 
+    const endTime = Date.now();
+    const responseTime = endTime - startTime;
+
     // Update panel health status
     const healthStatus = authResult.success && testUserResult.success ? 'online' : 'offline';
     addLog('Database Update', 'info', `Updating panel health status to: ${healthStatus}`);
@@ -376,8 +380,34 @@ Deno.serve(async (req) => {
 
     addLog('Database Update', 'success', 'Panel health status updated successfully');
 
+    // Save test log to database
+    const testSuccess = authResult.success && testUserResult.success;
+    const errorMessage = !testSuccess ? (authResult.error || testUserResult.error || 'Unknown error') : null;
+
+    addLog('Test Log Save', 'info', 'Saving test results to database');
+
+    const { error: logError } = await supabase
+      .from('panel_test_logs')
+      .insert({
+        panel_id: panelId,
+        test_result: testSuccess,
+        response_time_ms: responseTime,
+        error_message: errorMessage,
+        test_details: {
+          authentication: authResult,
+          userCreation: testUserResult,
+          logs: detailedLogs
+        }
+      });
+
+    if (logError) {
+      addLog('Test Log Save', 'error', `Failed to save test log: ${logError.message}`, { logError });
+    } else {
+      addLog('Test Log Save', 'success', 'Test log saved successfully');
+    }
+
     const result = {
-      success: authResult.success && testUserResult.success,
+      success: testSuccess,
       panel: {
         id: panel.id,
         name: panel.name,
@@ -386,6 +416,7 @@ Deno.serve(async (req) => {
       },
       authentication: authResult,
       userCreation: testUserResult,
+      responseTime,
       detailedLogs,
       timestamp: new Date().toISOString()
     };
@@ -398,16 +429,43 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
+    const endTime = Date.now();
+    const responseTime = endTime - startTime;
+
     addLog('Test Failure', 'error', 'Panel connection test failed', {
       error: error.message,
       stack: error.stack
     });
 
     console.error('[TEST-PANEL-CONNECTION] Error:', error);
+
+    // Try to save error log to database
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      
+      const { panelId } = await req.json().catch(() => ({}));
+      
+      if (panelId) {
+        await supabase
+          .from('panel_test_logs')
+          .insert({
+            panel_id: panelId,
+            test_result: false,
+            response_time_ms: responseTime,
+            error_message: error.message,
+            test_details: { logs: detailedLogs }
+          });
+      }
+    } catch (saveError) {
+      console.error('[TEST-PANEL-CONNECTION] Failed to save error log:', saveError);
+    }
     
     return new Response(JSON.stringify({
       success: false,
       error: error.message,
+      responseTime,
       detailedLogs,
       timestamp: new Date().toISOString()
     }), {
