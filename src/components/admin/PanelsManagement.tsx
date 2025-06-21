@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -61,7 +60,15 @@ export const PanelsManagement = () => {
         return;
       }
 
-      setPanels(data || []);
+      // Cast the data to match our Panel interface
+      const typedPanels: Panel[] = (data || []).map(panel => ({
+        ...panel,
+        type: panel.type as 'marzban' | 'marzneshin',
+        health_status: panel.health_status as 'online' | 'offline' | 'unknown',
+        default_inbounds: panel.default_inbounds || []
+      }));
+
+      setPanels(typedPanels);
     } catch (error) {
       console.error('Failed to fetch panels:', error);
     } finally {
