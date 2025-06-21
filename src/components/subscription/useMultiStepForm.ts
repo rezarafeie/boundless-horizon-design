@@ -5,30 +5,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
-import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
-import { PanelUserCreationService } from '@/services/panelUserCreationService';
-
-interface PlanWithPanels {
-  id: string;
-  plan_id: string;
-  name_en: string;
-  name_fa: string;
-  description_en?: string;
-  description_fa?: string;
-  price_per_gb: number;
-  default_data_limit_gb: number;
-  default_duration_days: number;
-  api_type: string;
-  plan_panel_mappings: Array<{
-    panel_id: string;
-    is_primary: boolean;
-    panel_servers: {
-      id: string;
-      name: string;
-      type: string;
-    };
-  }>;
-}
+import { DiscountCode } from '@/types/subscription';
+import { PlanService, PlanWithPanels } from '@/services/planService';
 
 export const useMultiStepForm = () => {
   const { language } = useLanguage();
@@ -50,41 +28,20 @@ export const useMultiStepForm = () => {
   const [isCreatingSubscription, setIsCreatingSubscription] = useState(false);
   const [availablePlans, setAvailablePlans] = useState<PlanWithPanels[]>([]);
 
-  // Load available plans on component mount
+  // Load available plans on component mount using PlanService
   useEffect(() => {
     loadAvailablePlans();
   }, []);
 
   const loadAvailablePlans = async () => {
     try {
-      console.log('MULTI STEP FORM: Loading available plans from database');
+      console.log('MULTI STEP FORM: Loading available plans from PlanService');
       
-      const { data: plans, error } = await supabase
-        .from('subscription_plans')
-        .select(`
-          *,
-          plan_panel_mappings!inner(
-            panel_id,
-            is_primary,
-            panel_servers!inner(
-              id,
-              name,
-              type
-            )
-          )
-        `)
-        .eq('is_active', true)
-        .eq('is_visible', true);
-
-      if (error) {
-        console.error('MULTI STEP FORM: Error loading plans:', error);
-        throw error;
-      }
-
-      console.log('MULTI STEP FORM: Available plans loaded:', plans?.length || 0);
-      setAvailablePlans(plans || []);
+      const plans = await PlanService.getAvailablePlans();
+      console.log('MULTI STEP FORM: Available plans loaded:', plans.length);
+      setAvailablePlans(plans);
       
-      if (!plans || plans.length === 0) {
+      if (plans.length === 0) {
         toast({
           title: language === 'fa' ? 'هیچ پلنی موجود نیست' : 'No Plans Available',
           description: language === 'fa' ? 
@@ -112,7 +69,7 @@ export const useMultiStepForm = () => {
 
   // Auto-advance from plan selection step when plan is selected
   useEffect(() => {
-    if (currentStep === 1 && formData.selectedPlan && (formData.selectedPlan.id || formData.selectedPlan.plan_id)) {
+    if (currentStep === 1 && formData.selectedPlan && formData.selectedPlan.id) {
       console.log('MULTI STEP FORM: Auto-advancing to step 2 with selected plan:', formData.selectedPlan);
       const timer = setTimeout(() => {
         setCurrentStep(2);
@@ -124,7 +81,7 @@ export const useMultiStepForm = () => {
   const canProceedFromStep = (step: StepNumber): boolean => {
     switch (step) {
       case 1:
-        const hasValidPlan = !!(formData.selectedPlan && (formData.selectedPlan.id || formData.selectedPlan.plan_id));
+        const hasValidPlan = !!(formData.selectedPlan && formData.selectedPlan.id);
         console.log('MULTI STEP FORM: Can proceed from step 1:', hasValidPlan, formData.selectedPlan);
         return hasValidPlan;
       case 2:
@@ -161,6 +118,18 @@ export const useMultiStepForm = () => {
       return null;
     }
 
+    // Validate that the plan has available panels
+    if (formData.selectedPlan.panels.length === 0) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'این پلن در حال حاضر در دسترس نیست. لطفاً پلن دیگری انتخاب کنید.' : 
+          'This plan is currently not available. Please choose another plan.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
     // Validate required fields
     if (!formData.username?.trim() || !formData.mobile?.trim()) {
       toast({
@@ -173,18 +142,13 @@ export const useMultiStepForm = () => {
       return null;
     }
 
-    // Get plan configuration from the loaded plans
-    const planConfig = availablePlans.find(p => 
-      p.id === formData.selectedPlan?.id || 
-      p.plan_id === formData.selectedPlan?.plan_id
-    );
-    
-    console.log('MULTI STEP FORM: Plan config found:', planConfig);
+    const primaryPanel = PlanService.getPrimaryPanel(formData.selectedPlan);
+    console.log('MULTI STEP FORM: Plan config found with panel:', primaryPanel?.name);
 
     setIsCreatingSubscription(true);
     
     try {
-      console.log('MULTI STEP FORM: Creating subscription record with plan:', formData.selectedPlan);
+      console.log('MULTI STEP FORM: Creating subscription record with dynamic plan:', formData.selectedPlan);
       
       const totalPrice = calculateTotalPrice();
       
@@ -199,7 +163,8 @@ export const useMultiStepForm = () => {
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`,
+        plan_id: formData.selectedPlan.id, // Use the UUID from the selected plan
+        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id}), Panel: ${primaryPanel?.name}`,
         status: 'pending' as const
       };
 
@@ -219,34 +184,44 @@ export const useMultiStepForm = () => {
 
       console.log('MULTI STEP FORM: Subscription created with ID:', data.id);
 
-      // If price is 0, create VPN user immediately using new centralized service
+      // If price is 0, create VPN user immediately using PlanService
       if (totalPrice === 0) {
         try {
-          console.log('MULTI STEP FORM: Creating VPN user for free subscription using centralized service');
+          console.log('MULTI STEP FORM: Creating VPN user for free subscription using PlanService');
           
-          // Get the plan ID for the centralized service - FIXED to use UUID
-          const selectedPlanId = formData.selectedPlan.id || formData.selectedPlan.plan_id;
-          
-          const vpnResult = await PanelUserCreationService.createPaidSubscription(
-            uniqueUsername,
-            selectedPlanId,  // Use UUID directly
-            formData.dataLimit,
-            formData.duration,
-            data.id,
-            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`
+          const vpnResult = await PlanService.createSubscription(
+            formData.selectedPlan.id,
+            {
+              username: uniqueUsername,
+              mobile: formData.mobile,
+              dataLimitGB: formData.dataLimit,
+              durationDays: formData.duration,
+              notes: `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name_en}`
+            }
           );
           
           console.log('MULTI STEP FORM: VPN creation response:', vpnResult);
           
-          if (vpnResult.success && vpnResult.data) {
+          if (vpnResult) {
             console.log('MULTI STEP FORM: Free subscription completed successfully');
+            
+            // Update subscription with VPN details
+            await supabase
+              .from('subscriptions')
+              .update({
+                status: 'active',
+                subscription_url: vpnResult.subscription_url,
+                expire_at: vpnResult.expire,
+                marzban_user_created: true
+              })
+              .eq('id', data.id);
             
             // Set result to skip payment step
             const subscriptionResult: SubscriptionResponse = {
-              username: vpnResult.data.username,
-              subscription_url: vpnResult.data.subscription_url,
-              expire: vpnResult.data.expire,
-              data_limit: vpnResult.data.data_limit
+              username: vpnResult.username,
+              subscription_url: vpnResult.subscription_url,
+              expire: vpnResult.expire,
+              data_limit: vpnResult.data_limit
             };
             
             setResult(subscriptionResult);
@@ -258,14 +233,14 @@ export const useMultiStepForm = () => {
                 'Free subscription created successfully'
             });
             
-            // Navigate directly to delivery page for free subscriptions - FIXED to use correct path
+            // Navigate directly to delivery page for free subscriptions
             setTimeout(() => {
               navigate(`/delivery?id=${data.id}`);
             }, 1500);
             
             return data.id;
           } else {
-            console.warn('MULTI STEP FORM: VPN user creation failed:', vpnResult.error);
+            console.warn('MULTI STEP FORM: VPN user creation failed');
             
             toast({
               title: language === 'fa' ? 'خطای جزئی' : 'Partial Error',
@@ -373,7 +348,10 @@ export const useMultiStepForm = () => {
     setCurrentStep(nextStep);
   };
 
-  const handlePrevious = () => {
+  const handlePrevious = ()
+
+
+ => {
     if (currentStep > 1) {
       const prevStep = Math.max(currentStep - 1, 1) as StepNumber;
       console.log(`MULTI STEP FORM: Moving from step ${currentStep} to step ${prevStep}`);
@@ -391,7 +369,7 @@ export const useMultiStepForm = () => {
         'Your payment was successful. Your VPN is being created...'
     });
 
-    // Redirect directly to delivery page - FIXED to use correct path
+    // Redirect directly to delivery page
     navigate(`/delivery?id=${subscriptionId}`);
   };
 
@@ -401,8 +379,8 @@ export const useMultiStepForm = () => {
       return 0;
     }
     
-    // Use the selected plan's price per GB - prioritize the new format
-    const pricePerGB = formData.selectedPlan.price_per_gb || formData.selectedPlan.pricePerGB || 0;
+    // Use the selected plan's price per GB
+    const pricePerGB = formData.selectedPlan.price_per_gb || 0;
     const basePrice = pricePerGB * formData.dataLimit;
     const discountAmount = appliedDiscount ? 
       (basePrice * appliedDiscount.percentage) / 100 : 0;

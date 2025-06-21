@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { PanelUserCreationService } from '@/services/panelUserCreationService';
+import { PlanService } from '@/services/planService';
 import { supabase } from '@/integrations/supabase/client';
 
 interface SubscriptionData {
@@ -26,19 +26,29 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
     setIsSubmitting(true);
     
     try {
-      console.log('SUBSCRIPTION_SUBMIT: Starting FIXED submission with plan:', data.selectedPlan?.name);
+      console.log('SUBSCRIPTION_SUBMIT: Starting submission with dynamic plan system:', data.selectedPlan?.name_en);
       
       // Validate that we have the required plan data
-      if (!data.selectedPlan?.id && !data.selectedPlan?.plan_id) {
+      if (!data.selectedPlan?.id) {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get the plan ID - FIXED to use UUID, not text field
-      const selectedPlanId = data.selectedPlan.id || data.selectedPlan.plan_id;
-      console.log('SUBSCRIPTION_SUBMIT: Using FIXED plan ID:', selectedPlanId);
+      // Validate that the plan has available panels
+      if (!data.selectedPlan.panels || data.selectedPlan.panels.length === 0) {
+        throw new Error('This plan is currently not available. Please choose another plan.');
+      }
+
+      // Check panel health
+      const primaryPanel = PlanService.getPrimaryPanel(data.selectedPlan);
+      if (primaryPanel?.health_status === 'offline') {
+        throw new Error('The selected plan\'s server is currently offline. Please try again later or choose another plan.');
+      }
+
+      const selectedPlanId = data.selectedPlan.id;
+      console.log('SUBSCRIPTION_SUBMIT: Using plan ID:', selectedPlanId);
 
       // Calculate price
-      const basePrice = data.dataLimit * (data.selectedPlan.price_per_gb || data.selectedPlan.pricePerGB || 0);
+      const basePrice = data.dataLimit * (data.selectedPlan.price_per_gb || 0);
       const discountAmount = data.appliedDiscount ? 
         (basePrice * data.appliedDiscount.percentage) / 100 : 0;
       const finalPrice = Math.max(0, basePrice - discountAmount);
@@ -48,7 +58,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       const uniqueUsername = data.username.includes('_') ? 
         data.username : `${data.username}_${timestamp}`;
       
-      // Insert subscription into database
+      // Insert subscription into database with plan_id
       const subscriptionData = {
         username: uniqueUsername,
         mobile: data.mobile,
@@ -57,10 +67,11 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         price_toman: finalPrice,
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
-        notes: `Plan: ${data.selectedPlan.name || data.selectedPlan.name_en}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        plan_id: selectedPlanId, // Use the plan UUID
+        notes: `Plan: ${data.selectedPlan.name_en} (${data.selectedPlan.plan_id}), Panel: ${primaryPanel?.name}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
-      console.log('SUBSCRIPTION_SUBMIT: Inserting FIXED subscription to database:', subscriptionData);
+      console.log('SUBSCRIPTION_SUBMIT: Inserting subscription to database:', subscriptionData);
       
       const { data: subscription, error: insertError } = await supabase
         .from('subscriptions')
@@ -75,32 +86,44 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       
       console.log('SUBSCRIPTION_SUBMIT: Subscription inserted successfully:', subscription);
       
-      // If price is 0, create VPN user immediately using FIXED centralized service
+      // If price is 0, create VPN user immediately using PlanService
       if (finalPrice === 0) {
         try {
-          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using FIXED centralized service');
+          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using PlanService');
           
-          // Use the UUID directly, not the plan_id text field
-          const result = await PanelUserCreationService.createPaidSubscription(
-            uniqueUsername,
-            selectedPlanId,  // This should be the UUID
-            data.dataLimit,
-            data.duration,
-            subscription.id,
-            `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name || data.selectedPlan.name_en}`
+          const result = await PlanService.createSubscription(
+            selectedPlanId,
+            {
+              username: uniqueUsername,
+              mobile: data.mobile,
+              dataLimitGB: data.dataLimit,
+              durationDays: data.duration,
+              notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name_en}`
+            }
           );
           
-          console.log('SUBSCRIPTION_SUBMIT: FIXED VPN creation response:', result);
+          console.log('SUBSCRIPTION_SUBMIT: VPN creation response:', result);
           
-          if (result.success && result.data) {
-            console.log('SUBSCRIPTION_SUBMIT: FIXED free subscription completed successfully');
+          if (result) {
+            console.log('SUBSCRIPTION_SUBMIT: Free subscription completed successfully');
+            
+            // Update subscription with VPN details
+            await supabase
+              .from('subscriptions')
+              .update({
+                status: 'active',
+                subscription_url: result.subscription_url,
+                expire_at: result.expire,
+                marzban_user_created: true
+              })
+              .eq('id', subscription.id);
             
             toast({
               title: 'Success',
               description: 'Free subscription created successfully!',
             });
           } else {
-            console.warn('SUBSCRIPTION_SUBMIT: VPN user creation failed:', result.error);
+            console.warn('SUBSCRIPTION_SUBMIT: VPN user creation failed');
             
             toast({
               title: 'Partial Success',
@@ -131,7 +154,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       return subscription.id;
       
     } catch (error) {
-      console.error('SUBSCRIPTION_SUBMIT: FIXED submission error:', error);
+      console.error('SUBSCRIPTION_SUBMIT: Submission error:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to create subscription',

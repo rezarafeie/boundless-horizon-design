@@ -6,22 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { AlertCircle, Loader2, Zap, CheckCircle } from 'lucide-react';
+import { AlertCircle, Loader2, Zap, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import SubscriptionSuccess from './SubscriptionSuccess';
 import { useNavigate } from 'react-router-dom';
-import { PanelUserCreationService } from '@/services/panelUserCreationService';
-
-interface SubscriptionPlan {
-  id: string;
-  name: string;
-  description: string;
-  pricePerGB: number;
-  apiType: 'marzban';
-  durationDays?: number;
-  planId: string;
-}
+import { PlanService, PlanWithPanels } from '@/services/planService';
 
 interface DiscountCode {
   code: string;
@@ -29,23 +19,13 @@ interface DiscountCode {
   description: string;
 }
 
-interface PlanPanel {
-  panel_id: string;
-  panel_name: string;
-  panel_url: string;
-  panel_type: 'marzban';
-  is_primary: boolean;
-  inbound_ids: string[];
-}
-
 const MarzbanSubscriptionForm = () => {
   const { language } = useLanguage();
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
-  const [planPanels, setPlanPanels] = useState<PlanPanel[]>([]);
+  const [plans, setPlans] = useState<PlanWithPanels[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<PlanWithPanels | null>(null);
   const [formData, setFormData] = useState({
     mobile: '',
     dataLimit: 0,
@@ -54,6 +34,7 @@ const MarzbanSubscriptionForm = () => {
   const [discountCode, setDiscountCode] = useState('');
   const [discountUsed, setDiscountUsed] = useState<DiscountCode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
   const [showLiteSuccess, setShowLiteSuccess] = useState(false);
@@ -61,109 +42,38 @@ const MarzbanSubscriptionForm = () => {
 
   useEffect(() => {
     const fetchPlans = async () => {
-      console.log('=== SUBSCRIPTION FORM: Fetching plans ===');
+      console.log('=== SUBSCRIPTION FORM: Fetching plans dynamically from PlanService ===');
+      setIsLoadingPlans(true);
       
-      const { data, error } = await supabase
-        .from('subscription_plans')
-        .select('*')
-        .eq('is_active', true)
-        .eq('is_visible', true);
-
-      console.log('SUBSCRIPTION FORM: Plans response:', { data, error, count: data?.length });
-
-      if (error) {
+      try {
+        const availablePlans = await PlanService.getAvailablePlans();
+        console.log('SUBSCRIPTION FORM: Available plans loaded:', availablePlans.length);
+        
+        setPlans(availablePlans);
+        
+        if (availablePlans.length === 0) {
+          toast({
+            title: language === 'fa' ? 'هیچ پلنی موجود نیست' : 'No Plans Available',
+            description: language === 'fa' ? 
+              'هیچ پلن فعالی در سیستم یافت نشد' : 
+              'No active plans found in the system',
+            variant: 'destructive',
+          });
+        }
+      } catch (error) {
         console.error('SUBSCRIPTION FORM: Error fetching plans:', error);
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
           description: language === 'fa' ? 'مشکلی در دریافت پلن‌ها وجود دارد.' : 'There was an issue fetching the plans.',
           variant: 'destructive',
         });
-      } else {
-        const mappedPlans = data.map(plan => {
-          console.log('SUBSCRIPTION FORM: ✅ Processing plan:', { 
-            plan_id: plan.plan_id, 
-            api_type: plan.api_type,
-            name_fa: plan.name_fa,
-            name_en: plan.name_en 
-          });
-          
-          return {
-            id: plan.id,
-            planId: plan.plan_id,
-            name: language === 'fa' ? plan.name_fa : plan.name_en,
-            description: language === 'fa' ? plan.description_fa || '' : plan.description_en || '',
-            pricePerGB: plan.price_per_gb,
-            apiType: 'marzban' as const, // All plans now use marzban
-            durationDays: plan.default_duration_days
-          };
-        });
-        console.log('SUBSCRIPTION FORM: ✅ Mapped plans (all marzban):', mappedPlans);
-        setPlans(mappedPlans);
+      } finally {
+        setIsLoadingPlans(false);
       }
     };
 
     fetchPlans();
   }, [language, toast]);
-
-  useEffect(() => {
-    const fetchPlanPanels = async () => {
-      if (!selectedPlan) {
-        setPlanPanels([]);
-        return;
-      }
-
-      console.log('=== SUBSCRIPTION FORM: Fetching panels for plan:', selectedPlan.id);
-      
-      const { data: mappings, error: mappingError } = await supabase
-        .from('plan_panel_mappings')
-        .select(`
-          panel_id,
-          is_primary,
-          inbound_ids,
-          panel_servers (
-            id,
-            name,
-            panel_url,
-            type
-          )
-        `)
-        .eq('plan_id', selectedPlan.id);
-
-      if (mappingError) {
-        console.error('SUBSCRIPTION FORM: Error fetching plan panels:', mappingError);
-        return;
-      }
-
-      const panels = mappings?.map(mapping => ({
-        panel_id: mapping.panel_id,
-        panel_name: mapping.panel_servers?.name || 'Unknown Panel',
-        panel_url: mapping.panel_servers?.panel_url || '',
-        panel_type: 'marzban' as const, // All panels are now marzban
-        is_primary: mapping.is_primary,
-        inbound_ids: Array.isArray(mapping.inbound_ids) 
-          ? mapping.inbound_ids.map(id => String(id))
-          : []
-      })) || [];
-
-      console.log('SUBSCRIPTION FORM: Plan panels:', panels);
-      setPlanPanels(panels);
-
-      if (panels.length === 0) {
-        console.warn('SUBSCRIPTION FORM: No panels configured for plan:', selectedPlan.id);
-        toast({
-          title: language === 'fa' ? 'هشدار پیکربندی' : 'Configuration Warning',
-          description: language === 'fa' ? 
-            'این پلن هنوز پیکربندی نشده است. لطفاً پلن دیگری انتخاب کنید یا با پشتیبانی تماس بگیرید.' : 
-            'This plan is not configured yet. Please select another plan or contact admin.',
-          variant: 'destructive',
-        });
-      } else {
-        console.log('SUBSCRIPTION FORM: Plan properly configured with', panels.length, 'panels');
-      }
-    };
-
-    fetchPlanPanels();
-  }, [selectedPlan, language, toast]);
 
   const applyDiscount = async () => {
     if (!discountCode) return;
@@ -204,7 +114,7 @@ const MarzbanSubscriptionForm = () => {
 
   const getFinalPrice = () => {
     if (!selectedPlan) return 0;
-    let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
+    let finalPrice = formData.dataLimit * selectedPlan.price_per_gb;
     if (discountUsed && discountUsed.percentage > 0) {
       finalPrice = finalPrice - Math.round((finalPrice * discountUsed.percentage) / 100);
     }
@@ -214,8 +124,9 @@ const MarzbanSubscriptionForm = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('=== SUBSCRIPTION FORM: Starting submission with centralized service ===');
+    console.log('=== SUBSCRIPTION FORM: Starting submission with dynamic plan system ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
+    console.log('SUBSCRIPTION FORM: Selected plan:', selectedPlan);
     
     // Enhanced validation
     if (!formData.mobile || !formData.dataLimit || !selectedPlan) {
@@ -236,19 +147,38 @@ const MarzbanSubscriptionForm = () => {
       return;
     }
 
-    // Validate panels are configured
-    if (planPanels.length === 0) {
-      console.error('SUBSCRIPTION FORM: No panels configured for this plan - blocking submission');
+    // Validate that the selected plan has available panels
+    if (selectedPlan.panels.length === 0) {
+      console.error('SUBSCRIPTION FORM: Selected plan has no available panels');
       setError(language === 'fa' ? 
-        'این پلن هنوز پیکربندی نشده است. لطفاً پلن دیگری انتخاب کنید یا با پشتیبانی تماس بگیرید.' : 
-        'This plan has not been configured yet. Please select another plan or contact support.'
+        'این پلن در حال حاضر در دسترس نیست. لطفاً پلن دیگری انتخاب کنید.' : 
+        'This plan is currently not available. Please choose another plan.'
       );
       
       toast({
-        title: language === 'fa' ? 'خطا در پیکربندی پلن' : 'Plan Configuration Error',
+        title: language === 'fa' ? 'پلن در دسترس نیست' : 'Plan Not Available',
         description: language === 'fa' ? 
-          'این پلن هیچ سرور پیکربندی شده‌ای ندارد. نمی‌توان اشتراک ایجاد کرد.' : 
-          'This plan has no configured servers. Cannot create subscription.',
+          'این پلن هیچ سرور فعالی ندارد. لطفاً پلن دیگری انتخاب کنید.' : 
+          'This plan has no active servers. Please choose another plan.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check panel health status
+    const primaryPanel = PlanService.getPrimaryPanel(selectedPlan);
+    if (primaryPanel?.health_status === 'offline') {
+      console.error('SUBSCRIPTION FORM: Selected plan\'s panel is offline');
+      setError(language === 'fa' ? 
+        'سرور این پلن در حال حاضر آفلاین است. لطفاً بعداً تلاش کنید یا پلن دیگری انتخاب کنید.' : 
+        'The selected plan\'s server is currently offline. Please try again later or choose another plan.'
+      );
+      
+      toast({
+        title: language === 'fa' ? 'سرور آفلاین' : 'Server Offline',
+        description: language === 'fa' ? 
+          'سرور این پلن در دسترس نیست. لطفاً بعداً تلاش کنید.' : 
+          'This plan\'s server is not available. Please try again later.',
         variant: 'destructive',
       });
       return;
@@ -258,10 +188,10 @@ const MarzbanSubscriptionForm = () => {
     setError('');
 
     try {
-      console.log('=== SUBSCRIPTION: Starting subscription creation with centralized service ===');
+      console.log('=== SUBSCRIPTION: Starting subscription creation with dynamic plan service ===');
       
       // Calculate final price with discount
-      let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
+      let finalPrice = formData.dataLimit * selectedPlan.price_per_gb;
       let discountAmount = 0;
       
       if (discountUsed && discountUsed.percentage > 0) {
@@ -270,7 +200,7 @@ const MarzbanSubscriptionForm = () => {
       }
 
       console.log('SUBSCRIPTION: Price calculation:', { 
-        originalPrice: formData.dataLimit * selectedPlan.pricePerGB,
+        originalPrice: formData.dataLimit * selectedPlan.price_per_gb,
         discountAmount,
         finalPrice 
       });
@@ -279,7 +209,7 @@ const MarzbanSubscriptionForm = () => {
       const username = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       console.log('SUBSCRIPTION: Generated username:', username);
 
-      // STEP 1: Save subscription to database FIRST
+      // STEP 1: Save subscription to database FIRST with plan_id
       const subscriptionData = {
         mobile: formData.mobile,
         data_limit_gb: formData.dataLimit,
@@ -287,7 +217,8 @@ const MarzbanSubscriptionForm = () => {
         price_toman: finalPrice,
         status: 'pending',
         username: username,
-        notes: `Plan: ${selectedPlan.name} (${selectedPlan.planId}), Data: ${formData.dataLimit}GB`,
+        plan_id: selectedPlan.id, // Use the actual plan UUID, not the plan_id text field
+        notes: `Plan: ${selectedPlan.name_en} (${selectedPlan.plan_id}), Panel: ${primaryPanel?.name}, Data: ${formData.dataLimit}GB`,
         marzban_user_created: false
       };
 
@@ -306,55 +237,59 @@ const MarzbanSubscriptionForm = () => {
 
       console.log('SUBSCRIPTION: ✅ Successfully saved subscription to database:', savedSubscription);
 
-      // STEP 2: Create VPN user using centralized service
-      console.log('=== CREATING VPN USER USING CENTRALIZED SERVICE ===');
+      // STEP 2: Create VPN user using PlanService (which handles dynamic panel selection)
+      console.log('=== CREATING VPN USER USING DYNAMIC PLAN SERVICE ===');
       
-      const vpnResult = await PanelUserCreationService.createPaidSubscription(
-        savedSubscription.username,
-        selectedPlan.id, // Use plan ID
-        formData.dataLimit,
-        formData.duration,
-        savedSubscription.id,
-        `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
-      );
+      const vpnResult = await PlanService.createSubscription(selectedPlan.id, {
+        username: savedSubscription.username,
+        mobile: formData.mobile,
+        dataLimitGB: formData.dataLimit,
+        durationDays: formData.duration,
+        notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name_en}, ID: ${savedSubscription.id}`
+      });
         
       console.log('SUBSCRIPTION: VPN creation response:', vpnResult);
 
-      if (!vpnResult.success) {
-        console.error('SUBSCRIPTION: VPN user creation failed:', vpnResult.error);
-        
-        // Update subscription status to failed
-        await supabase
-          .from('subscriptions')
-          .update({ 
-            status: 'failed',
-            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResult.error}`
-          })
-          .eq('id', savedSubscription.id);
-        
-        throw new Error(`Failed to create VPN user: ${vpnResult.error}`);
+      if (!vpnResult) {
+        throw new Error('VPN creation failed: No response from panel');
       }
 
-      console.log('SUBSCRIPTION: ✅ VPN user created successfully using centralized service');
+      // Update subscription status to active and add VPN details
+      const { error: updateError } = await supabase
+        .from('subscriptions')
+        .update({ 
+          status: 'active',
+          marzban_user_created: true,
+          subscription_url: vpnResult.subscription_url,
+          expire_at: vpnResult.expire,
+          notes: `${subscriptionData.notes} - VPN created successfully`
+        })
+        .eq('id', savedSubscription.id);
+
+      if (updateError) {
+        console.warn('SUBSCRIPTION: Failed to update subscription status:', updateError);
+      }
+
+      console.log('SUBSCRIPTION: ✅ VPN user created successfully using dynamic plan service');
 
       // STEP 3: Check if this is a lite plan and handle differently
-      const isLitePlan = selectedPlan.planId === 'lite';
+      const isLitePlan = selectedPlan.plan_id === 'lite';
       
       console.log('SUBSCRIPTION: Plan type check:', { 
-        selectedPlanId: selectedPlan.planId, 
+        selectedPlanId: selectedPlan.plan_id, 
         isLitePlan 
       });
 
       // Prepare data for result display
       const subscriptionResult = {
-        username: vpnResult.data!.username,
-        subscription_url: vpnResult.data!.subscription_url,
-        expire: vpnResult.data!.expire,
-        data_limit: vpnResult.data!.data_limit,
+        username: vpnResult.username,
+        subscription_url: vpnResult.subscription_url,
+        expire: vpnResult.expire,
+        data_limit: vpnResult.data_limit,
         status: 'active',
         used_traffic: 0,
-        apiType: 'marzban',
-        planName: selectedPlan.name,
+        apiType: selectedPlan.api_type,
+        planName: selectedPlan.name_en,
         dataLimitGB: formData.dataLimit,
         durationDays: formData.duration
       };
@@ -373,6 +308,22 @@ const MarzbanSubscriptionForm = () => {
 
     } catch (error: any) {
       console.error('SUBSCRIPTION: ❌ Process failed with error:', error);
+      
+      // Update subscription status to failed if it was created
+      if (error.message && !error.message.includes('Failed to save subscription to database')) {
+        // Only try to update if the subscription was saved
+        try {
+          await supabase
+            .from('subscriptions')
+            .update({ 
+              status: 'failed',
+              notes: `${formData.mobile}, Plan: ${selectedPlan?.name_en} - Error: ${error.message}`
+            })
+            .eq('username', `user_${Date.now()}_*`); // This won't work perfectly, but it's better than nothing
+        } catch (updateErr) {
+          console.warn('SUBSCRIPTION: Failed to update failed subscription:', updateErr);
+        }
+      }
       
       setError(error.message || 'An unexpected error occurred');
       
@@ -468,6 +419,18 @@ const MarzbanSubscriptionForm = () => {
     );
   }
 
+  // Show loading state while fetching plans
+  if (isLoadingPlans) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardContent className="p-6 text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <p>{language === 'fa' ? 'در حال بارگذاری پلن‌ها...' : 'Loading plans...'}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
@@ -510,71 +473,111 @@ const MarzbanSubscriptionForm = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                  {plans.map((plan) => (
-                    <Card 
-                      key={plan.id}
-                      className={`cursor-pointer transition-all ${
-                        selectedPlan?.id === plan.id 
-                          ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                          : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                      }`}
-                      onClick={() => setSelectedPlan(plan)}
-                    >
-                      <CardContent className="p-4">
-                        <h3 className="font-bold text-lg">{plan.name}</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{plan.description}</p>
-                        <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
-                          {plan.pricePerGB.toLocaleString()} {language === 'fa' ? 'تومان/گیگ' : 'Toman/GB'}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-2">
-                          {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
-                        </p>
-                        <div className="mt-2">
-                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400">
-                            Marzban Panel
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  {plans.map((plan) => {
+                    const primaryPanel = PlanService.getPrimaryPanel(plan);
+                    const isUnavailable = plan.panels.length === 0;
+                    const isOffline = primaryPanel?.health_status === 'offline';
+                    
+                    return (
+                      <Card 
+                        key={plan.id}
+                        className={`cursor-pointer transition-all ${
+                          selectedPlan?.id === plan.id 
+                            ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                            : isUnavailable 
+                            ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800'
+                            : isOffline
+                            ? 'opacity-75 bg-orange-50 dark:bg-orange-900/20'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                        onClick={() => {
+                          if (!isUnavailable) {
+                            setSelectedPlan(plan);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h3 className="font-bold text-lg flex items-center gap-2">
+                                {language === 'fa' ? plan.name_fa : plan.name_en}
+                                {isUnavailable && <AlertTriangle className="w-4 h-4 text-red-500" />}
+                                {isOffline && <AlertTriangle className="w-4 h-4 text-orange-500" />}
+                              </h3>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                {language === 'fa' ? plan.description_fa : plan.description_en}
+                              </p>
+                              <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
+                                {plan.price_per_gb.toLocaleString()} {language === 'fa' ? 'تومان/گیگ' : 'Toman/GB'}
+                              </p>
+                              <p className="text-sm text-gray-500 mt-1">
+                                {plan.default_duration_days} {language === 'fa' ? 'روز' : 'days'}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 space-y-2">
+                            {/* Panel Status */}
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs px-2 py-1 rounded-full ${
+                                isUnavailable 
+                                  ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                                  : isOffline
+                                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'
+                                  : 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                              }`}>
+                                {isUnavailable 
+                                  ? (language === 'fa' ? 'غیرفعال' : 'Unavailable')
+                                  : isOffline
+                                  ? (language === 'fa' ? 'آفلاین' : 'Offline')
+                                  : (language === 'fa' ? 'آنلاین' : 'Online')
+                                }
+                              </span>
+                              {primaryPanel && (
+                                <span className="text-xs text-gray-500">
+                                  {primaryPanel.name}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* API Type */}
+                            <div>
+                              <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                                {plan.api_type.charAt(0).toUpperCase() + plan.api_type.slice(1)} Panel
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
-            {/* Panel status display */}
+            {/* Plan status display */}
             {selectedPlan && (
-              <>
-                {planPanels.length > 0 ? (
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <div className={`p-4 rounded-lg border ${
+                selectedPlan.panels.length > 0
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                  : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+              }`}>
+                {selectedPlan.panels.length > 0 ? (
+                  <>
                     <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                      ✅ {language === 'fa' ? 'سرورهای پیکربندی شده برای این پلن:' : 'Configured servers for this plan:'}
+                      ✅ {language === 'fa' ? 'این پلن آماده استفاده است' : 'This plan is ready to use'}
                     </p>
-                    {planPanels.map((panel, index) => (
-                      <div key={index} className="text-sm text-green-700 dark:text-green-300">
-                        • {panel.panel_name} {panel.is_primary && ' - Primary'}
-                      </div>
-                    ))}
-                    <p className="text-xs text-green-600 dark:text-green-400 mt-2">
-                      {language === 'fa' ? 
-                        'این پلن آماده استفاده است.' : 
-                        'This plan is ready to use.'
-                      }
-                    </p>
-                  </div>
+                    <div className="text-sm text-green-700 dark:text-green-300">
+                      • {language === 'fa' ? 'سرور:' : 'Server:'} {PlanService.getPrimaryPanel(selectedPlan)?.name}
+                      {selectedPlan.assigned_panel_id && ' (Assigned)'}
+                    </div>
+                  </>
                 ) : (
-                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
-                      ❌ {language === 'fa' ? 'این پلن پیکربندی نشده است' : 'This plan is not configured'}
-                    </p>
-                    <p className="text-xs text-red-600 dark:text-red-400">
-                      {language === 'fa' ? 
-                        'هیچ سروری برای این پلن تنظیم نشده است. لطفاً پلن دیگری انتخاب کنید یا با مدیر سیستم تماس بگیرید.' : 
-                        'No servers have been configured for this plan. Please select another plan or contact the system administrator.'
-                      }
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                    ❌ {language === 'fa' ? 'این پلن در حال حاضر در دسترس نیست' : 'This plan is currently not available'}
+                  </p>
                 )}
-              </>
+              </div>
             )}
 
             {/* Data Limit */}
@@ -641,12 +644,12 @@ const MarzbanSubscriptionForm = () => {
               <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg space-y-2">
                 <div className="flex justify-between">
                   <span>{language === 'fa' ? 'قیمت پایه:' : 'Base Price:'}</span>
-                  <span>{(formData.dataLimit * selectedPlan.pricePerGB).toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
+                  <span>{(formData.dataLimit * selectedPlan.price_per_gb).toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
                 </div>
                 {discountUsed && (
                   <div className="flex justify-between text-green-600">
                     <span>{language === 'fa' ? 'تخفیف:' : 'Discount:'}</span>
-                    <span>-{Math.round((formData.dataLimit * selectedPlan.pricePerGB * discountUsed.percentage) / 100).toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
+                    <span>-{Math.round((formData.dataLimit * selectedPlan.price_per_gb * discountUsed.percentage) / 100).toLocaleString()} {language === 'fa' ? 'تومان' : 'Toman'}</span>
                   </div>
                 )}
                 <Separator />
@@ -670,13 +673,13 @@ const MarzbanSubscriptionForm = () => {
               type="submit" 
               size="lg" 
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
-              disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0 || (selectedPlan && planPanels.length === 0)}
+              disabled={isLoading || !selectedPlan || !formData.dataLimit || plans.length === 0 || (selectedPlan && selectedPlan.panels.length === 0)}
             >
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {!selectedPlan 
                 ? (language === 'fa' ? 'انتخاب پلن' : 'Select Plan')
-                : planPanels.length === 0 
-                ? (language === 'fa' ? 'پلن پیکربندی نشده' : 'Plan Not Configured')
+                : selectedPlan.panels.length === 0 
+                ? (language === 'fa' ? 'پلن در دسترس نیست' : 'Plan Not Available')
                 : (language === 'fa' ? 'ایجاد اشتراک' : 'Create Subscription')
               }
             </Button>

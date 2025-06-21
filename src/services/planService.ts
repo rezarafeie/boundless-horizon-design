@@ -14,6 +14,7 @@ export interface PlanWithPanels {
   default_duration_days: number;
   is_active: boolean;
   is_visible: boolean;
+  assigned_panel_id?: string;
   panels: {
     id: string;
     name: string;
@@ -50,14 +51,28 @@ function isValidHealthStatus(status: string): status is 'online' | 'offline' | '
 export class PlanService {
   
   static async getAvailablePlans(): Promise<PlanWithPanels[]> {
-    console.log('=== PLAN SERVICE: Fetching available plans ===');
+    console.log('=== PLAN SERVICE: Fetching available plans with assigned panels ===');
     
     try {
-      // Get plans with their panel mappings
+      // Get plans with their assigned panels (using the new assigned_panel_id field)
       const { data: plans, error: plansError } = await supabase
         .from('subscription_plans')
         .select(`
           *,
+          panel_servers!assigned_panel_id (
+            id,
+            name,
+            type,
+            country_en,
+            country_fa,
+            panel_url,
+            username,
+            password,
+            is_active,
+            health_status,
+            default_inbounds,
+            enabled_protocols
+          ),
           plan_panel_mappings (
             panel_id,
             is_primary,
@@ -102,33 +117,59 @@ export class PlanService {
           return true;
         })
         .map((plan: any) => {
-          const mappings = plan.plan_panel_mappings || [];
-          const availablePanels = mappings
-            .filter((mapping: any) => {
-              const server = mapping.panel_servers;
-              // Include panels that are active AND either online, unknown, or offline (but not null)
-              // This allows panels that haven't been health-checked yet to be available
-              return server?.is_active && server.health_status !== null;
-            })
-            .map((mapping: any) => {
-              const server = mapping.panel_servers;
-              return {
-                id: server.id,
-                name: server.name,
-                type: isValidPanelType(server.type) ? server.type : 'marzban',
-                country_en: server.country_en,
-                country_fa: server.country_fa,
-                panel_url: server.panel_url,
-                username: server.username,
-                password: server.password,
-                is_active: server.is_active,
-                health_status: isValidHealthStatus(server.health_status) ? server.health_status : 'unknown',
-                is_primary: mapping.is_primary,
-                inbound_ids: Array.isArray(mapping.inbound_ids) ? mapping.inbound_ids : [],
-                default_inbounds: Array.isArray(server.default_inbounds) ? server.default_inbounds : [],
-                enabled_protocols: Array.isArray(server.enabled_protocols) ? server.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
-              };
-            });
+          let availablePanels: any[] = [];
+
+          // Priority 1: Use assigned panel if available
+          if (plan.assigned_panel_id && plan.panel_servers) {
+            const assignedPanel = plan.panel_servers;
+            if (assignedPanel.is_active && assignedPanel.health_status !== null) {
+              availablePanels = [{
+                id: assignedPanel.id,
+                name: assignedPanel.name,
+                type: isValidPanelType(assignedPanel.type) ? assignedPanel.type : 'marzban',
+                country_en: assignedPanel.country_en,
+                country_fa: assignedPanel.country_fa,
+                panel_url: assignedPanel.panel_url,
+                username: assignedPanel.username,
+                password: assignedPanel.password,
+                is_active: assignedPanel.is_active,
+                health_status: isValidHealthStatus(assignedPanel.health_status) ? assignedPanel.health_status : 'unknown',
+                is_primary: true, // Assigned panel is always primary
+                inbound_ids: [],
+                default_inbounds: Array.isArray(assignedPanel.default_inbounds) ? assignedPanel.default_inbounds : [],
+                enabled_protocols: Array.isArray(assignedPanel.enabled_protocols) ? assignedPanel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
+              }];
+            }
+          }
+
+          // Fallback: Use plan_panel_mappings if no assigned panel or assigned panel is unavailable
+          if (availablePanels.length === 0) {
+            const mappings = plan.plan_panel_mappings || [];
+            availablePanels = mappings
+              .filter((mapping: any) => {
+                const server = mapping.panel_servers;
+                return server?.is_active && server.health_status !== null;
+              })
+              .map((mapping: any) => {
+                const server = mapping.panel_servers;
+                return {
+                  id: server.id,
+                  name: server.name,
+                  type: isValidPanelType(server.type) ? server.type : 'marzban',
+                  country_en: server.country_en,
+                  country_fa: server.country_fa,
+                  panel_url: server.panel_url,
+                  username: server.username,
+                  password: server.password,
+                  is_active: server.is_active,
+                  health_status: isValidHealthStatus(server.health_status) ? server.health_status : 'unknown',
+                  is_primary: mapping.is_primary,
+                  inbound_ids: Array.isArray(mapping.inbound_ids) ? mapping.inbound_ids : [],
+                  default_inbounds: Array.isArray(server.default_inbounds) ? server.default_inbounds : [],
+                  enabled_protocols: Array.isArray(server.enabled_protocols) ? server.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
+                };
+              });
+          }
 
           return {
             id: plan.id,
@@ -143,12 +184,19 @@ export class PlanService {
             default_duration_days: plan.default_duration_days,
             is_active: plan.is_active,
             is_visible: plan.is_visible,
+            assigned_panel_id: plan.assigned_panel_id,
             panels: availablePanels
           };
         })
         .filter(plan => plan.panels.length > 0); // Only include plans with available panels
 
       console.log('PLAN SERVICE: Successfully fetched', planWithPanels.length, 'plans with panels');
+      console.log('PLAN SERVICE: Plans with assigned panels:', planWithPanels.map(p => ({ 
+        name: p.name_en, 
+        assigned_panel: p.assigned_panel_id, 
+        available_panels: p.panels.length 
+      })));
+      
       return planWithPanels;
       
     } catch (error) {
@@ -169,7 +217,7 @@ export class PlanService {
         return null;
       }
       
-      console.log('PLAN SERVICE: Found plan:', plan.name_en);
+      console.log('PLAN SERVICE: Found plan:', plan.name_en, 'with', plan.panels.length, 'panels');
       return plan;
       
     } catch (error) {
@@ -179,11 +227,19 @@ export class PlanService {
   }
 
   static getPrimaryPanel(plan: PlanWithPanels) {
-    const primaryPanel = plan.panels.find(p => p.is_primary);
-    if (primaryPanel) return primaryPanel;
+    // First try to get the assigned panel (which is marked as primary)
+    const assignedPanel = plan.panels.find(p => p.is_primary);
+    if (assignedPanel) {
+      console.log('PLAN SERVICE: Using assigned panel:', assignedPanel.name);
+      return assignedPanel;
+    }
     
-    // Fallback to first panel if no primary is set
-    return plan.panels[0] || null;
+    // Fallback to first available panel
+    const fallbackPanel = plan.panels[0] || null;
+    if (fallbackPanel) {
+      console.log('PLAN SERVICE: Using fallback panel:', fallbackPanel.name);
+    }
+    return fallbackPanel;
   }
 
   static getApiType(plan: PlanWithPanels): 'marzban' | 'marzneshin' {
@@ -209,17 +265,25 @@ export class PlanService {
 
       const primaryPanel = this.getPrimaryPanel(plan);
       if (!primaryPanel) {
-        throw new Error('No active panel found for this plan');
+        throw new Error(`This plan is currently not available. Please choose another plan.`);
+      }
+
+      // Validate panel health
+      if (primaryPanel.health_status === 'offline') {
+        throw new Error(`The selected plan's server is currently offline. Please try again later or choose another plan.`);
       }
 
       // Use provided protocols or fetch from panel configuration
       const enabledProtocols = subscriptionData.enabledProtocols || primaryPanel.enabled_protocols;
 
       console.log('PLAN SERVICE: Using panel for subscription:', {
+        planName: plan.name_en,
         panelName: primaryPanel.name,
         panelType: primaryPanel.type,
+        panelUrl: primaryPanel.panel_url,
         apiType: this.getApiType(plan),
-        enabledProtocols: enabledProtocols
+        enabledProtocols: enabledProtocols,
+        isAssignedPanel: primaryPanel.is_primary
       });
 
       // Route to the correct edge function based on panel type
@@ -249,7 +313,7 @@ export class PlanService {
         throw new Error(`VPN creation failed: ${vpnResponse?.error || 'Unknown error'}`);
       }
 
-      console.log('PLAN SERVICE: VPN user created successfully with dynamic protocols');
+      console.log('PLAN SERVICE: VPN user created successfully with dynamic panel configuration');
       return vpnResponse.data;
       
     } catch (error) {
