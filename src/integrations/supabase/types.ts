@@ -395,6 +395,7 @@ export type Database = {
       subscription_plans: {
         Row: {
           api_type: string
+          assigned_panel_id: string | null
           available_countries: Json | null
           created_at: string
           default_data_limit_gb: number
@@ -412,6 +413,7 @@ export type Database = {
         }
         Insert: {
           api_type: string
+          assigned_panel_id?: string | null
           available_countries?: Json | null
           created_at?: string
           default_data_limit_gb?: number
@@ -429,6 +431,7 @@ export type Database = {
         }
         Update: {
           api_type?: string
+          assigned_panel_id?: string | null
           available_countries?: Json | null
           created_at?: string
           default_data_limit_gb?: number
@@ -444,7 +447,15 @@ export type Database = {
           price_per_gb?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "subscription_plans_assigned_panel_id_fkey"
+            columns: ["assigned_panel_id"]
+            isOneToOne: false
+            referencedRelation: "panel_servers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {

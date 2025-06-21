@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Loader2, Zap } from 'lucide-react';
+import { Loader2, Zap, AlertTriangle } from 'lucide-react';
 import { PanelUserCreationService } from '@/services/panelUserCreationService';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -29,7 +29,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
     mobile: ''
   });
 
-  // Load available plans when dialog opens
+  // Load available plans with STRICT panel requirements
   React.useEffect(() => {
     if (isOpen) {
       loadAvailablePlans();
@@ -38,44 +38,40 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
   const loadAvailablePlans = async () => {
     try {
-      console.log('FREE_TRIAL: Loading available plans with marzban panel mappings ONLY...');
+      console.log('FREE_TRIAL: Loading plans with STRICT panel assignment requirements...');
       
       const { data: plans, error } = await supabase
         .from('subscription_plans')
         .select(`
           *,
-          plan_panel_mappings!inner(
-            panel_id,
-            is_primary,
-            inbound_ids,
-            panel_servers!inner(
-              id,
-              name,
-              type,
-              is_active,
-              health_status,
-              panel_url
-            )
+          panel_servers!assigned_panel_id(
+            id,
+            name,
+            type,
+            is_active,
+            health_status,
+            panel_url
           )
         `)
         .eq('is_active', true)
         .eq('is_visible', true)
-        .eq('plan_panel_mappings.panel_servers.is_active', true)
-        .eq('plan_panel_mappings.panel_servers.type', 'marzban');
+        .not('assigned_panel_id', 'is', null); // STRICT: Only plans with assigned panels
 
-      console.log('FREE_TRIAL: Query result:', { 
+      console.log('FREE_TRIAL: STRICT query result:', { 
         error: error?.message, 
         plansCount: plans?.length || 0,
         plans: plans?.map(p => ({
           id: p.id,
           plan_id: p.plan_id,
           name: p.name_en,
-          panelMappings: p.plan_panel_mappings?.length || 0
+          hasAssignedPanel: !!p.panel_servers,
+          panelName: p.panel_servers?.name,
+          panelHealth: p.panel_servers?.health_status
         }))
       });
 
       if (error) {
-        console.error('FREE_TRIAL: Database error loading plans:', error);
+        console.error('FREE_TRIAL: Database error loading plans with STRICT requirements:', error);
         setDebugInfo({ error: error.message, step: 'query_plans' });
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
@@ -85,51 +81,60 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         return;
       }
 
-      // All plans returned should have active marzban panel mappings due to the query
-      const validPlans = plans || [];
+      // STRICT FILTERING: Only plans with active assigned panels
+      const validPlans = (plans || []).filter(plan => {
+        const hasActivePanel = plan.panel_servers && plan.panel_servers.is_active;
+        if (!hasActivePanel) {
+          console.warn('FREE_TRIAL: STRICT FILTER - Excluding plan without active panel:', {
+            planId: plan.plan_id,
+            planName: plan.name_en,
+            hasPanel: !!plan.panel_servers,
+            panelActive: plan.panel_servers?.is_active
+          });
+        }
+        return hasActivePanel;
+      });
 
-      console.log('FREE_TRIAL: Valid marzban plans:', {
-        totalPlans: validPlans.length,
+      console.log('FREE_TRIAL: STRICT filtering results:', {
+        totalPlans: plans?.length || 0,
+        validPlans: validPlans.length,
         validPlanDetails: validPlans.map(p => ({
           id: p.id,
           plan_id: p.plan_id,
           name: p.name_en,
-          panels: p.plan_panel_mappings?.map(m => ({
-            panelId: m.panel_servers?.id,
-            panelName: m.panel_servers?.name,
-            panelType: m.panel_servers?.type,
-            isActive: m.panel_servers?.is_active,
-            healthStatus: m.panel_servers?.health_status
-          }))
+          panelName: p.panel_servers.name,
+          panelType: p.panel_servers.type,
+          panelHealth: p.panel_servers.health_status
         }))
       });
 
       setAvailablePlans(validPlans);
       setDebugInfo({ 
         totalPlans: validPlans.length,
-        step: 'plans_loaded'
+        step: 'strict_plans_loaded'
       });
       
-      // Auto-select first available plan using its UUID ID
+      // Auto-select first valid plan
       if (validPlans.length > 0) {
-        setSelectedPlan(validPlans[0].id);  // Use UUID, not plan_id
-        console.log('FREE_TRIAL: Auto-selected plan:', { 
+        setSelectedPlan(validPlans[0].id);
+        console.log('FREE_TRIAL: Auto-selected STRICT plan:', { 
           uuid: validPlans[0].id, 
           plan_id: validPlans[0].plan_id,
-          name: validPlans[0].name_en 
+          name: validPlans[0].name_en,
+          assignedPanel: validPlans[0].panel_servers.name
         });
       } else {
-        console.warn('FREE_TRIAL: No valid marzban plans found');
+        console.warn('FREE_TRIAL: STRICT VALIDATION - No valid plans found');
         toast({
           title: language === 'fa' ? 'هشدار' : 'Warning',
           description: language === 'fa' ? 
-            'هیچ پلن فعالی با پنل مارزبان یافت نشد' : 
-            'No active plans with Marzban panels found',
+            'هیچ پلن فعالی با پنل اختصاصی یافت نشد' : 
+            'No active plans with assigned panels found',
           variant: 'destructive',
         });
       }
     } catch (error) {
-      console.error('FREE_TRIAL: Failed to load plans:', error);
+      console.error('FREE_TRIAL: Failed to load plans with STRICT requirements:', error);
       setDebugInfo({ error: error.message, step: 'exception' });
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
@@ -159,8 +164,8 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
-          'هیچ پلن فعالی یافت نشد' : 
-          'No active plans available',
+          'هیچ پلن فعالی با پنل اختصاصی یافت نشد' : 
+          'No active plans with assigned panels available',
         variant: 'destructive',
       });
       return;
@@ -169,25 +174,25 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
     setIsLoading(true);
 
     try {
-      console.log('FREE_TRIAL: Starting free trial creation with FIXED centralized service');
-      console.log('FREE_TRIAL: Selected plan UUID:', selectedPlan);
+      console.log('FREE_TRIAL: Starting STRICT plan-to-panel free trial creation');
+      console.log('FREE_TRIAL: Selected plan UUID for STRICT binding:', selectedPlan);
       
       // Generate unique username
       const timestamp = Date.now();
       const uniqueUsername = `${formData.username}_trial_${timestamp}`;
       
-      // Use the UUID directly, not the plan_id text field
+      // Use STRICT plan-to-panel binding
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
-        selectedPlan, // This is now the UUID
+        selectedPlan, // UUID with STRICT panel assignment
         1, // 1 GB for free trial
         1  // 1 day for free trial
       );
 
-      console.log('FREE_TRIAL: Creation result:', result);
+      console.log('FREE_TRIAL: STRICT creation result:', result);
 
       if (result.success && result.data) {
-        console.log('FREE_TRIAL: Success - calling onSuccess callback');
+        console.log('FREE_TRIAL: STRICT SUCCESS - calling onSuccess callback');
         toast({
           title: language === 'fa' ? 'موفقیت!' : 'Success!',
           description: language === 'fa' ? 
@@ -211,7 +216,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         setFormData({ username: '', mobile: '' });
         setSelectedPlan('');
       } else {
-        console.error('FREE_TRIAL: Creation failed:', result.error);
+        console.error('FREE_TRIAL: STRICT creation failed:', result.error);
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
           description: result.error || (language === 'fa' ? 
@@ -221,7 +226,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         });
       }
     } catch (error: any) {
-      console.error('FREE_TRIAL: Unexpected error:', error);
+      console.error('FREE_TRIAL: Unexpected error in STRICT mode:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: error.message || (language === 'fa' ? 
@@ -256,20 +261,26 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
               <SelectContent>
                 {availablePlans.map((plan) => (
                   <SelectItem key={plan.id} value={plan.id}>
-                    {language === 'fa' ? plan.name_fa : plan.name_en}
-                    {plan.plan_panel_mappings && plan.plan_panel_mappings.length > 0 && (
-                      <span className="text-xs text-gray-500 ml-2">
-                        ({plan.plan_panel_mappings[0].panel_servers.name})
+                    <div className="flex items-center gap-2">
+                      <span>{language === 'fa' ? plan.name_fa : plan.name_en}</span>
+                      <span className="text-xs text-gray-500">
+                        → {plan.panel_servers.name}
                       </span>
-                    )}
+                      <span className={`w-2 h-2 rounded-full ${
+                        plan.panel_servers.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
+                      }`} />
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {availablePlans.length === 0 && (
-              <p className="text-sm text-red-600 mt-1">
-                {language === 'fa' ? 'هیچ پلن مارزبان فعالی یافت نشد' : 'No active Marzban plans found'}
-              </p>
+              <div className="flex items-center gap-2 text-sm text-red-600 mt-1">
+                <AlertTriangle className="w-4 h-4" />
+                <span>
+                  {language === 'fa' ? 'هیچ پلن فعالی با پنل اختصاصی یافت نشد' : 'No active plans with assigned panels found'}
+                </span>
+              </div>
             )}
           </div>
           

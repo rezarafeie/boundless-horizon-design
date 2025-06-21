@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit, Trash2, Settings, Globe } from 'lucide-react';
+import { Plus, Edit, Trash2, Settings, Globe, Server } from 'lucide-react';
 import { CountrySelector } from './CountrySelector';
 import { Country } from '@/data/countries';
 
@@ -29,14 +28,32 @@ interface Plan {
   default_duration_days: number;
   is_active: boolean;
   is_visible: boolean;
+  assigned_panel_id?: string;
   available_countries?: Country[];
   created_at: string;
   updated_at: string;
+  panel_servers?: {
+    id: string;
+    name: string;
+    type: string;
+    health_status: string;
+    is_active: boolean;
+  };
+}
+
+interface PanelServer {
+  id: string;
+  name: string;
+  type: 'marzban' | 'marzneshin';
+  health_status: 'online' | 'offline' | 'unknown';
+  is_active: boolean;
+  country_en: string;
 }
 
 const PlansManagement = () => {
   const { toast } = useToast();
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [panels, setPanels] = useState<PanelServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
@@ -53,14 +70,44 @@ const PlansManagement = () => {
     default_duration_days: 30,
     is_active: true,
     is_visible: true,
+    assigned_panel_id: '',
     available_countries: [] as Country[]
   });
+
+  const fetchPanels = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('panel_servers')
+        .select('id, name, type, health_status, is_active, country_en')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setPanels(data || []);
+    } catch (error) {
+      console.error('Error fetching panels:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch panels',
+        variant: 'destructive'
+      });
+    }
+  };
 
   const fetchPlans = async () => {
     try {
       const { data, error } = await supabase
         .from('subscription_plans')
-        .select('*')
+        .select(`
+          *,
+          panel_servers (
+            id,
+            name,
+            type,
+            health_status,
+            is_active
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -108,6 +155,7 @@ const PlansManagement = () => {
 
   useEffect(() => {
     fetchPlans();
+    fetchPanels();
   }, []);
 
   const handleSave = async () => {
@@ -124,6 +172,7 @@ const PlansManagement = () => {
         default_duration_days: formData.default_duration_days,
         is_active: formData.is_active,
         is_visible: formData.is_visible,
+        assigned_panel_id: formData.assigned_panel_id || null,
         available_countries: formData.available_countries.map(country => ({
           code: country.code,
           name: country.name,
@@ -184,6 +233,7 @@ const PlansManagement = () => {
       default_duration_days: plan.default_duration_days,
       is_active: plan.is_active,
       is_visible: plan.is_visible,
+      assigned_panel_id: plan.assigned_panel_id || '',
       available_countries: plan.available_countries || []
     });
     setIsDialogOpen(true);
@@ -229,6 +279,7 @@ const PlansManagement = () => {
       default_duration_days: 30,
       is_active: true,
       is_visible: true,
+      assigned_panel_id: '',
       available_countries: []
     });
   };
@@ -246,7 +297,7 @@ const PlansManagement = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Plans Management</h1>
-          <p className="text-muted-foreground">Manage subscription plans and their configurations</p>
+          <p className="text-muted-foreground">Manage subscription plans and their panel assignments</p>
         </div>
         
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -289,6 +340,41 @@ const PlansManagement = () => {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Panel Assignment Section */}
+              <div>
+                <Label htmlFor="assigned_panel" className="flex items-center gap-2">
+                  <Server className="w-4 h-4" />
+                  Assigned Panel
+                </Label>
+                <Select 
+                  value={formData.assigned_panel_id} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, assigned_panel_id: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a panel for this plan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No panel assigned</SelectItem>
+                    {panels.map((panel) => (
+                      <SelectItem key={panel.id} value={panel.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{panel.name}</span>
+                          <Badge variant={panel.health_status === 'online' ? 'default' : 'destructive'}>
+                            {panel.health_status}
+                          </Badge>
+                          <Badge variant="outline">{panel.type}</Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!formData.assigned_panel_id && (
+                  <p className="text-sm text-amber-600 mt-1">
+                    ⚠️ Plans without assigned panels cannot create subscriptions
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -410,7 +496,7 @@ const PlansManagement = () => {
             Subscription Plans
           </CardTitle>
           <CardDescription>
-            Configure and manage all subscription plans
+            Configure and manage all subscription plans with their assigned panels
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -419,6 +505,7 @@ const PlansManagement = () => {
               <TableRow>
                 <TableHead>Plan ID</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Assigned Panel</TableHead>
                 <TableHead>API Type</TableHead>
                 <TableHead>Price/GB</TableHead>
                 <TableHead>Countries</TableHead>
@@ -435,6 +522,18 @@ const PlansManagement = () => {
                       <div className="font-medium">{plan.name_en}</div>
                       <div className="text-sm text-muted-foreground">{plan.name_fa}</div>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {plan.panel_servers ? (
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{plan.panel_servers.name}</span>
+                        <Badge variant={plan.panel_servers.health_status === 'online' ? 'default' : 'destructive'}>
+                          {plan.panel_servers.health_status}
+                        </Badge>
+                      </div>
+                    ) : (
+                      <Badge variant="destructive">No Panel</Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={plan.api_type === 'marzban' ? 'default' : 'secondary'}>
