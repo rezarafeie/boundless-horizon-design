@@ -85,6 +85,7 @@ const StepByStepRenewalForm = () => {
   const plans: SubscriptionPlan[] = [
     {
       id: 'lite',
+      plan_id: 'lite', // Added missing plan_id
       name: language === 'fa' ? 'شبکه بدون مرز لایت' : 'Boundless Network Lite',
       description: language === 'fa' ? 
         'اتصال پایه با آلمان، فنلاند، هلند - مناسب برای کاربری روزمره' : 
@@ -94,6 +95,7 @@ const StepByStepRenewalForm = () => {
     },
     {
       id: 'pro',
+      plan_id: 'pro', // Added missing plan_id
       name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
       description: language === 'fa' ? 
         'پریمیوم با تمام مکان‌های جهانی و اتصالات تونلی - بهترین عملکرد' : 
