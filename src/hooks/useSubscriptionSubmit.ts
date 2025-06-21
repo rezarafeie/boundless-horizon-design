@@ -26,29 +26,54 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
     setIsSubmitting(true);
     
     try {
-      console.log('SUBSCRIPTION_SUBMIT: Starting submission with dynamic plan system:', data.selectedPlan?.name_en);
+      console.log('SUBSCRIPTION_SUBMIT: Starting submission with plan:', data.selectedPlan?.name_en);
       
       // Validate that we have the required plan data
       if (!data.selectedPlan?.id) {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Validate that the plan has available panels
-      if (!data.selectedPlan.panels || data.selectedPlan.panels.length === 0) {
-        throw new Error('This plan is currently not available. Please choose another plan.');
+      // Get the latest plan data with panel information
+      const latestPlan = await PlanService.getPlanById(data.selectedPlan.id);
+      if (!latestPlan) {
+        throw new Error('Selected plan is no longer available. Please refresh the page and select another plan.');
       }
 
-      // Check panel health
-      const primaryPanel = PlanService.getPrimaryPanel(data.selectedPlan);
-      if (primaryPanel?.health_status === 'offline') {
+      // Check if plan has any panels available (more permissive check)
+      const primaryPanel = PlanService.getPrimaryPanel(latestPlan);
+      if (!primaryPanel) {
+        console.error('SUBSCRIPTION_SUBMIT: No panels available for plan:', {
+          planId: latestPlan.id,
+          planName: latestPlan.name_en,
+          assignedPanelId: latestPlan.assigned_panel_id,
+          availablePanels: latestPlan.panels.length
+        });
+        
+        throw new Error('This plan is temporarily unavailable. Please try again later or contact support.');
+      }
+
+      // Check panel health (but allow unknown status)
+      if (primaryPanel.health_status === 'offline') {
+        console.error('SUBSCRIPTION_SUBMIT: Primary panel is offline:', {
+          panelId: primaryPanel.id,
+          panelName: primaryPanel.name,
+          healthStatus: primaryPanel.health_status
+        });
+        
         throw new Error('The selected plan\'s server is currently offline. Please try again later or choose another plan.');
       }
 
-      const selectedPlanId = data.selectedPlan.id;
-      console.log('SUBSCRIPTION_SUBMIT: Using plan ID:', selectedPlanId);
+      console.log('SUBSCRIPTION_SUBMIT: Using plan with panel:', {
+        planName: latestPlan.name_en,
+        panelName: primaryPanel.name,
+        panelType: primaryPanel.type,
+        healthStatus: primaryPanel.health_status
+      });
+
+      const selectedPlanId = latestPlan.id;
 
       // Calculate price
-      const basePrice = data.dataLimit * (data.selectedPlan.price_per_gb || 0);
+      const basePrice = data.dataLimit * (latestPlan.price_per_gb || 0);
       const discountAmount = data.appliedDiscount ? 
         (basePrice * data.appliedDiscount.percentage) / 100 : 0;
       const finalPrice = Math.max(0, basePrice - discountAmount);
@@ -68,7 +93,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
         plan_id: selectedPlanId, // Use the plan UUID
-        notes: `Plan: ${data.selectedPlan.name_en} (${data.selectedPlan.plan_id}), Panel: ${primaryPanel?.name}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        notes: `Plan: ${latestPlan.name_en} (${latestPlan.plan_id}), Panel: ${primaryPanel.name}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
       console.log('SUBSCRIPTION_SUBMIT: Inserting subscription to database:', subscriptionData);
@@ -98,7 +123,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
               mobile: data.mobile,
               dataLimitGB: data.dataLimit,
               durationDays: data.duration,
-              notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name_en}`
+              notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${latestPlan.name_en}`
             }
           );
           
