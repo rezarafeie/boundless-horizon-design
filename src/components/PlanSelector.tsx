@@ -43,16 +43,35 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
         if (error) throw error;
         
         // Transform the data to ensure available_countries is properly typed
-        const transformedPlans: Plan[] = (data || []).map(plan => ({
-          id: plan.id,
-          plan_id: plan.plan_id,
-          name_en: plan.name_en,
-          name_fa: plan.name_fa,
-          description_en: plan.description_en,
-          description_fa: plan.description_fa,
-          price_per_gb: plan.price_per_gb,
-          available_countries: Array.isArray(plan.available_countries) ? plan.available_countries as Country[] : []
-        }));
+        const transformedPlans: Plan[] = (data || []).map(plan => {
+          let availableCountries: Country[] = [];
+          
+          // Safely parse available_countries from Json to Country[]
+          if (plan.available_countries && Array.isArray(plan.available_countries)) {
+            availableCountries = (plan.available_countries as unknown[]).filter((country: any) => 
+              country && 
+              typeof country === 'object' && 
+              typeof country.code === 'string' && 
+              typeof country.name === 'string' && 
+              typeof country.flag === 'string'
+            ).map((country: any) => ({
+              code: country.code,
+              name: country.name,
+              flag: country.flag
+            }));
+          }
+          
+          return {
+            id: plan.id,
+            plan_id: plan.plan_id,
+            name_en: plan.name_en,
+            name_fa: plan.name_fa,
+            description_en: plan.description_en,
+            description_fa: plan.description_fa,
+            price_per_gb: plan.price_per_gb,
+            available_countries: availableCountries
+          };
+        });
         
         setPlans(transformedPlans);
       } catch (error) {

@@ -75,21 +75,40 @@ export const PlansManagement = () => {
       }
       
       // Transform data to ensure proper typing
-      const transformedPlans: Plan[] = (data || []).map(plan => ({
-        id: plan.id,
-        plan_id: plan.plan_id,
-        name_en: plan.name_en,
-        name_fa: plan.name_fa,
-        description_en: plan.description_en,
-        description_fa: plan.description_fa,
-        price_per_gb: plan.price_per_gb,
-        api_type: plan.api_type as 'marzban' | 'marzneshin',
-        default_data_limit_gb: plan.default_data_limit_gb,
-        default_duration_days: plan.default_duration_days,
-        is_active: plan.is_active,
-        is_visible: plan.is_visible,
-        available_countries: Array.isArray(plan.available_countries) ? plan.available_countries as Country[] : []
-      }));
+      const transformedPlans: Plan[] = (data || []).map(plan => {
+        let availableCountries: Country[] = [];
+        
+        // Safely parse available_countries from Json to Country[]
+        if (plan.available_countries && Array.isArray(plan.available_countries)) {
+          availableCountries = (plan.available_countries as unknown[]).filter((country: any) => 
+            country && 
+            typeof country === 'object' && 
+            typeof country.code === 'string' && 
+            typeof country.name === 'string' && 
+            typeof country.flag === 'string'
+          ).map((country: any) => ({
+            code: country.code,
+            name: country.name,
+            flag: country.flag
+          }));
+        }
+        
+        return {
+          id: plan.id,
+          plan_id: plan.plan_id,
+          name_en: plan.name_en,
+          name_fa: plan.name_fa,
+          description_en: plan.description_en,
+          description_fa: plan.description_fa,
+          price_per_gb: plan.price_per_gb,
+          api_type: plan.api_type as 'marzban' | 'marzneshin',
+          default_data_limit_gb: plan.default_data_limit_gb,
+          default_duration_days: plan.default_duration_days,
+          is_active: plan.is_active,
+          is_visible: plan.is_visible,
+          available_countries: availableCountries
+        };
+      });
       
       console.log('PLANS: Successfully fetched', transformedPlans.length, 'plans');
       return transformedPlans;
@@ -169,7 +188,7 @@ export const PlansManagement = () => {
           console.log('PLANS: Plan updated successfully:', updatedPlan);
           planId = id;
         } else {
-          // Create new plan
+          // Create new plan - convert Country[] to plain objects for JSON storage
           console.log('PLANS: Creating new plan');
           const insertData = {
             plan_id: saveData.plan_id!,
@@ -183,7 +202,11 @@ export const PlansManagement = () => {
             default_duration_days: saveData.default_duration_days!,
             is_active: saveData.is_active ?? true,
             is_visible: saveData.is_visible ?? true,
-            available_countries: saveData.available_countries || []
+            available_countries: (saveData.available_countries || []).map(country => ({
+              code: country.code,
+              name: country.name,
+              flag: country.flag
+            }))
           };
           
           console.log('PLANS: Inserting plan with data:', insertData);

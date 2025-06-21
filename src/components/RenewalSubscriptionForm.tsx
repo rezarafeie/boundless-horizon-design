@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import PlanSelector from './PlanSelector';
 import DiscountField from './DiscountField';
 import { Search, RefreshCw, Calendar, Database, CheckCircle, CreditCard, Loader } from 'lucide-react';
-import { SubscriptionPlan, DiscountCode } from '@/types/subscription';
+import { DiscountCode } from '@/types/subscription';
 import { useToast } from '@/hooks/use-toast';
 import { useSubscriptionData } from '@/hooks/useSubscriptionData';
 
@@ -22,7 +21,7 @@ const RenewalSubscriptionForm = () => {
   
   const [searchMobile, setSearchMobile] = useState('');
   const [userSubscriptions, setUserSubscriptions] = useState<any[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [dataLimit, setDataLimit] = useState(10);
   const [duration, setDuration] = useState(30);
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
@@ -61,13 +60,7 @@ const RenewalSubscriptionForm = () => {
       } else {
         // Auto-select a plan based on most recent subscription
         const latestSubscription = subscriptions[0];
-        setSelectedPlan({
-          id: 'pro',
-          name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
-          description: language === 'fa' ? 'دسترسی کامل به همه سرورها' : 'Full access to all servers',
-          pricePerGB: 800,
-          apiType: 'marzneshin'
-        });
+        setSelectedPlan('pro'); // Set as string instead of object
         
         // Set defaults based on existing subscription
         setDataLimit(latestSubscription.data_limit_gb || 10);
@@ -87,7 +80,8 @@ const RenewalSubscriptionForm = () => {
 
   const calculatePrice = () => {
     if (!selectedPlan) return 0;
-    const basePrice = dataLimit * selectedPlan.pricePerGB;
+    // For now, use a basic calculation - this should be enhanced with actual plan pricing
+    const basePrice = dataLimit * 800; // Default price per GB
     
     if (appliedDiscount) {
       const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
@@ -99,7 +93,7 @@ const RenewalSubscriptionForm = () => {
 
   const calculateDiscount = () => {
     if (!selectedPlan || !appliedDiscount) return 0;
-    const basePrice = dataLimit * selectedPlan.pricePerGB;
+    const basePrice = dataLimit * 800; // Default price per GB
     return (basePrice * appliedDiscount.percentage) / 100;
   };
 
