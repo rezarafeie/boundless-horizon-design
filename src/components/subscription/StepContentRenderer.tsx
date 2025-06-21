@@ -59,6 +59,8 @@ const StepContentRenderer = ({
             notes: formData.notes,
             mobile: formData.mobile,
             selectedPlan: formData.selectedPlan ? {
+              id: formData.selectedPlan.id,
+              plan_id: formData.selectedPlan.plan_id,
               name: formData.selectedPlan.name_en,
               description: formData.selectedPlan.description_en || '',
               pricePerGB: formData.selectedPlan.price_per_gb,
