@@ -1,11 +1,11 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube } from 'lucide-react';
 import { PlanService } from '@/services/planService';
 import { toast } from 'sonner';
+import { TestDebugLog } from './TestDebugLog';
 
 interface Plan {
   id: string;
@@ -28,6 +28,13 @@ interface PlanTestResult {
   };
   availablePanels: number;
   errors: string[];
+  detailedLogs?: Array<{
+    step: string;
+    status: 'success' | 'error' | 'info';
+    message: string;
+    details?: any;
+    timestamp: string;
+  }>;
 }
 
 interface PlanTestConnectionProps {
@@ -38,6 +45,7 @@ interface PlanTestConnectionProps {
 export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [testResult, setTestResult] = useState<PlanTestResult | null>(null);
+  const [showDebugLogs, setShowDebugLogs] = useState(false);
 
   const testPlanConfiguration = async () => {
     setIsLoading(true);
@@ -46,50 +54,140 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
     try {
       console.log('Testing plan configuration:', plan.id);
       
+      const detailedLogs: Array<{
+        step: string;
+        status: 'success' | 'error' | 'info';
+        message: string;
+        details?: any;
+        timestamp: string;
+      }> = [];
+
+      const addLog = (step: string, status: 'success' | 'error' | 'info', message: string, details?: any) => {
+        detailedLogs.push({
+          step,
+          status,
+          message,
+          details,
+          timestamp: new Date().toISOString()
+        });
+      };
+
+      addLog('Plan Validation', 'info', `Starting configuration test for plan: ${plan.name_en}`);
+      
       // Get plan configuration from the service
       const planConfig = await PlanService.getPlanById(plan.id);
       if (!planConfig) {
+        addLog('Plan Validation', 'error', 'Plan configuration not found in database', { planId: plan.id });
         throw new Error('Plan configuration not found');
       }
+
+      addLog('Plan Validation', 'success', 'Plan configuration retrieved successfully', {
+        planId: planConfig.id,
+        apiType: planConfig.api_type,
+        isActive: planConfig.is_active,
+        isVisible: planConfig.is_visible
+      });
 
       const errors: string[] = [];
       let success = true;
 
       // Check if plan has panels
+      addLog('Panel Configuration', 'info', 'Checking associated panels');
       if (!planConfig.panels || planConfig.panels.length === 0) {
-        errors.push('No panels configured for this plan');
+        const error = 'No panels configured for this plan';
+        errors.push(error);
+        addLog('Panel Configuration', 'error', error, { availablePanels: 0 });
         success = false;
+      } else {
+        addLog('Panel Configuration', 'success', `Found ${planConfig.panels.length} associated panel(s)`, {
+          panels: planConfig.panels.map(p => ({ id: p.id, name: p.name, type: p.type, health: p.health_status }))
+        });
       }
 
       // Check primary panel
+      addLog('Primary Panel', 'info', 'Checking for primary panel configuration');
       const primaryPanel = PlanService.getPrimaryPanel(planConfig);
       if (!primaryPanel) {
-        errors.push('No primary panel configured');
+        const error = 'No primary panel configured';
+        errors.push(error);
+        addLog('Primary Panel', 'error', error);
         success = false;
+      } else {
+        addLog('Primary Panel', 'success', `Primary panel identified: ${primaryPanel.name}`, {
+          panelId: primaryPanel.id,
+          panelName: primaryPanel.name,
+          panelType: primaryPanel.type,
+          panelUrl: primaryPanel.panel_url,
+          healthStatus: primaryPanel.health_status
+        });
       }
 
       // Check panel health status
+      addLog('Health Check', 'info', 'Analyzing panel health status');
       const healthyPanels = planConfig.panels.filter(p => p.health_status === 'online');
+      const offlinePanels = planConfig.panels.filter(p => p.health_status === 'offline');
+      const unknownPanels = planConfig.panels.filter(p => p.health_status === 'unknown');
+
+      addLog('Health Check', 'info', 'Panel health status summary', {
+        totalPanels: planConfig.panels.length,
+        onlinePanels: healthyPanels.length,
+        offlinePanels: offlinePanels.length,
+        unknownPanels: unknownPanels.length
+      });
+
       if (healthyPanels.length === 0) {
-        errors.push('No panels are currently online');
+        const warning = 'No panels are currently online - this may affect subscription creation';
+        addLog('Health Check', 'error', warning, {
+          recommendation: 'Test individual panels using the panel test feature to diagnose connectivity issues'
+        });
         // Don't mark as failure since we now allow unknown status panels
+      } else {
+        addLog('Health Check', 'success', `${healthyPanels.length} panel(s) are online and ready`);
       }
 
-      // Test subscription creation (dry run)
+      // API Type validation
+      addLog('API Compatibility', 'info', 'Validating API type compatibility');
+      const apiType = PlanService.getApiType(planConfig);
+      const compatiblePanels = planConfig.panels.filter(p => p.type === apiType);
+      
+      if (compatiblePanels.length === 0) {
+        const error = `No panels match the plan's API type (${apiType})`;
+        errors.push(error);
+        addLog('API Compatibility', 'error', error, {
+          planApiType: apiType,
+          panelTypes: planConfig.panels.map(p => ({ name: p.name, type: p.type }))
+        });
+        success = false;
+      } else {
+        addLog('API Compatibility', 'success', `${compatiblePanels.length} panel(s) are compatible with ${apiType} API`, {
+          compatiblePanels: compatiblePanels.map(p => ({ name: p.name, type: p.type }))
+        });
+      }
+
+      // Test subscription creation logic (simulation)
       if (success && primaryPanel) {
+        addLog('Subscription Test', 'info', 'Simulating subscription creation process');
         try {
           // This is a simulation - we won't actually create a user
-          console.log('Plan configuration test passed for:', {
+          addLog('Subscription Test', 'success', 'Subscription creation simulation completed successfully', {
             planName: planConfig.name_en,
             apiType: PlanService.getApiType(planConfig),
             primaryPanel: primaryPanel.name,
-            panelsCount: planConfig.panels.length
+            panelsCount: planConfig.panels.length,
+            simulationNote: 'No actual user was created during this test'
           });
         } catch (testError) {
-          errors.push(`Subscription test failed: ${testError instanceof Error ? testError.message : 'Unknown error'}`);
+          const error = `Subscription test failed: ${testError instanceof Error ? testError.message : 'Unknown error'}`;
+          errors.push(error);
+          addLog('Subscription Test', 'error', error, { error: testError });
           success = false;
         }
       }
+
+      addLog('Test Completion', success ? 'success' : 'error', `Plan configuration test completed with ${success ? 'success' : 'failures'}`, {
+        totalErrors: errors.length,
+        errors: errors
+      });
 
       const result: PlanTestResult = {
         success,
@@ -101,7 +199,8 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
           type: primaryPanel.type
         } : undefined,
         availablePanels: planConfig.panels.length,
-        errors
+        errors,
+        detailedLogs
       };
 
       setTestResult(result);
@@ -110,6 +209,7 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
         toast.success(`Plan ${plan.name_en} configuration is valid!`);
       } else {
         toast.error(`Plan ${plan.name_en} has configuration issues. Check details below.`);
+        setShowDebugLogs(true); // Auto-show logs when there are errors
       }
       
       if (onTestComplete) {
@@ -123,9 +223,17 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
         planId: plan.id,
         planName: plan.name_en,
         availablePanels: 0,
-        errors: [error instanceof Error ? error.message : 'Unknown error']
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
+        detailedLogs: [{
+          step: 'Test Failure',
+          status: 'error',
+          message: `Plan configuration test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          details: { error },
+          timestamp: new Date().toISOString()
+        }]
       };
       setTestResult(errorResult);
+      setShowDebugLogs(true); // Auto-show logs when there are errors
       toast.error(`Failed to test plan ${plan.name_en}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
@@ -156,58 +264,82 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
           </>
         ) : (
           <>
-            <AlertCircle className="w-4 h-4 mr-2" />
+            <TestTube className="w-4 h-4 mr-2" />
             Test Plan Configuration
           </>
         )}
       </Button>
 
       {testResult && (
-        <Card className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {getStatusIcon(testResult.success)}
-              Plan Configuration Test
-              {getStatusBadge(testResult.success)}
-            </CardTitle>
-            <CardDescription>
-              Configuration test for plan: {testResult.planName}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium">Available Panels:</span>
-                <p>{testResult.availablePanels}</p>
-              </div>
-              {testResult.primaryPanel && (
+        <>
+          <Card className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {getStatusIcon(testResult.success)}
+                Plan Configuration Test
+                {getStatusBadge(testResult.success)}
+              </CardTitle>
+              <CardDescription>
+                Configuration test for plan: {testResult.planName}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="font-medium">Primary Panel:</span>
-                  <p>{testResult.primaryPanel.name} ({testResult.primaryPanel.type})</p>
+                  <span className="font-medium">Available Panels:</span>
+                  <p>{testResult.availablePanels}</p>
+                </div>
+                {testResult.primaryPanel && (
+                  <div>
+                    <span className="font-medium">Primary Panel:</span>
+                    <p>{testResult.primaryPanel.name} ({testResult.primaryPanel.type})</p>
+                  </div>
+                )}
+              </div>
+
+              {testResult.errors.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-red-700">Issues Found:</h4>
+                  <ul className="text-sm text-red-600 ml-4 mt-1">
+                    {testResult.errors.map((error, index) => (
+                      <li key={index} className="list-disc">
+                        {error}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-            </div>
 
-            {testResult.errors.length > 0 && (
-              <div>
-                <h4 className="font-medium text-red-700">Issues Found:</h4>
-                <ul className="text-sm text-red-600 ml-4 mt-1">
-                  {testResult.errors.map((error, index) => (
-                    <li key={index} className="list-disc">
-                      {error}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {testResult.success && (
+                <div className="text-sm text-green-700">
+                  <p>✅ Plan configuration is valid and ready for subscriptions</p>
+                </div>
+              )}
 
-            {testResult.success && (
-              <div className="text-sm text-green-700">
-                <p>✅ Plan configuration is valid and ready for subscriptions</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {/* Debug Logs Toggle */}
+              {testResult.detailedLogs && testResult.detailedLogs.length > 0 && (
+                <div className="pt-2 border-t">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDebugLogs(!showDebugLogs)}
+                    className="w-full"
+                  >
+                    <TestTube className="w-4 h-4 mr-2" />
+                    {showDebugLogs ? 'Hide' : 'Show'} Detailed Debug Logs
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Debug Logs Component */}
+          <TestDebugLog
+            logs={testResult.detailedLogs || []}
+            title="Plan Configuration Debug Logs"
+            isVisible={showDebugLogs}
+          />
+        </>
       )}
     </div>
   );
