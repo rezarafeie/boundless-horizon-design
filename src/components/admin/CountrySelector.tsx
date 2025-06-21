@@ -1,111 +1,192 @@
 
-import React, { useState } from 'react';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Check, ChevronsUpDown, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { X, Plus } from 'lucide-react';
 import { COUNTRIES, Country } from '@/data/countries';
 
 interface CountrySelectorProps {
   selectedCountries: Country[];
   onCountriesChange: (countries: Country[]) => void;
-  placeholder?: string;
 }
 
-export const CountrySelector = ({ 
-  selectedCountries, 
-  onCountriesChange, 
-  placeholder = "Select countries..." 
-}: CountrySelectorProps) => {
-  const [open, setOpen] = useState(false);
+export const CountrySelector = ({ selectedCountries = [], onCountriesChange }: CountrySelectorProps) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
 
-  const handleCountryToggle = (country: Country) => {
-    const isSelected = selectedCountries.some(c => c.code === country.code);
+  // Ensure COUNTRIES is always an array and filter safely
+  const availableCountries = Array.isArray(COUNTRIES) ? COUNTRIES : [];
+  const selectedCodes = new Set((selectedCountries || []).map(c => c.code));
+  
+  const filteredCountries = availableCountries.filter(country => {
+    if (!country || !country.name || !country.code) return false;
     
-    if (isSelected) {
-      onCountriesChange(selectedCountries.filter(c => c.code !== country.code));
-    } else {
-      onCountriesChange([...selectedCountries, country]);
+    const matchesSearch = searchTerm === '' || 
+      country.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      country.code.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const notSelected = !selectedCodes.has(country.code);
+    
+    return matchesSearch && notSelected;
+  });
+
+  const handleAddCountry = (countryCode: string) => {
+    const country = availableCountries.find(c => c?.code === countryCode);
+    if (country && !selectedCodes.has(countryCode)) {
+      const newCountries = [...(selectedCountries || []), country];
+      onCountriesChange(newCountries);
+      setSearchTerm('');
+      setIsSelectOpen(false);
     }
   };
 
-  const removeCountry = (countryCode: string) => {
-    onCountriesChange(selectedCountries.filter(c => c.code !== countryCode));
+  const handleRemoveCountry = (countryCode: string) => {
+    const newCountries = (selectedCountries || []).filter(c => c?.code !== countryCode);
+    onCountriesChange(newCountries);
+  };
+
+  const handleClearAll = () => {
+    onCountriesChange([]);
   };
 
   return (
-    <div className="space-y-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-sm">Selected Countries</CardTitle>
+            <CardDescription className="text-xs">
+              Countries where this plan will be available
+            </CardDescription>
+          </div>
+          {(selectedCountries || []).length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearAll}
+              className="text-xs"
+            >
+              Clear All
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Selected Countries Display */}
+        <div className="flex flex-wrap gap-2 min-h-[2rem]">
+          {(selectedCountries || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">No countries selected</p>
+          ) : (
+            (selectedCountries || []).map((country) => {
+              if (!country || !country.code) return null;
+              return (
+                <Badge
+                  key={country.code}
+                  variant="secondary"
+                  className="flex items-center gap-1 pr-1"
+                >
+                  <span>{country.flag}</span>
+                  <span>{country.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => handleRemoveCountry(country.code)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </Badge>
+              );
+            })
+          )}
+        </div>
+
+        {/* Add Country Section */}
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Search countries..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1"
+            />
+          </div>
+
+          {/* Country Selection using Select component */}
+          <Select 
+            value=""
+            onValueChange={handleAddCountry}
+            open={isSelectOpen}
+            onOpenChange={setIsSelectOpen}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select a country to add" />
+            </SelectTrigger>
+            <SelectContent className="max-h-60">
+              {filteredCountries.length === 0 ? (
+                <div className="px-2 py-1 text-sm text-muted-foreground">
+                  {searchTerm ? 'No countries match your search' : 'All countries selected'}
+                </div>
+              ) : (
+                filteredCountries.slice(0, 20).map((country) => (
+                  <SelectItem key={country.code} value={country.code}>
+                    <div className="flex items-center gap-2">
+                      <span>{country.flag}</span>
+                      <span>{country.name}</span>
+                      <span className="text-xs text-muted-foreground">({country.code})</span>
+                    </div>
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+
+          {filteredCountries.length > 20 && (
+            <p className="text-xs text-muted-foreground">
+              Showing first 20 results. Use search to find specific countries.
+            </p>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex gap-2">
           <Button
             variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="w-full justify-between h-10"
+            size="sm"
+            onClick={() => {
+              const commonCountries = availableCountries.filter(c => 
+                ['US', 'GB', 'DE', 'FR', 'CA', 'AU', 'JP'].includes(c?.code || '')
+              );
+              const newCountries = [
+                ...(selectedCountries || []),
+                ...commonCountries.filter(c => c && !selectedCodes.has(c.code))
+              ];
+              onCountriesChange(newCountries);
+            }}
+            className="text-xs"
           >
-            <span className="truncate">
-              {selectedCountries.length === 0 
-                ? placeholder 
-                : `${selectedCountries.length} countries selected`
-              }
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <Plus className="w-3 h-3 mr-1" />
+            Add Popular
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-full p-0 z-50" align="start">
-          <Command className="w-full">
-            <CommandInput 
-              placeholder="Search countries..." 
-              className="h-9"
-            />
-            <CommandEmpty>No countries found.</CommandEmpty>
-            <CommandGroup className="max-h-64 overflow-auto">
-              {COUNTRIES.map((country) => {
-                const isSelected = selectedCountries.some(c => c.code === country.code);
-                return (
-                  <CommandItem
-                    key={country.code}
-                    value={`${country.name} ${country.code}`}
-                    onSelect={() => handleCountryToggle(country)}
-                    className="flex items-center space-x-2 px-2 py-1.5 cursor-pointer hover:bg-gray-100"
-                  >
-                    <Check
-                      className={cn(
-                        "h-4 w-4",
-                        isSelected ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    <span className="text-lg">{country.flag}</span>
-                    <span className="flex-1">{country.name}</span>
-                    <span className="text-xs text-gray-500">{country.code}</span>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </Command>
-        </PopoverContent>
-      </Popover>
-      
-      {/* Selected Countries Display */}
-      {selectedCountries.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {selectedCountries.map((country) => (
-            <Badge key={country.code} variant="secondary" className="flex items-center gap-1 px-2 py-1">
-              <span>{country.flag}</span>
-              <span className="text-sm">{country.name}</span>
-              <button
-                type="button"
-                onClick={() => removeCountry(country.code)}
-                className="ml-1 hover:bg-gray-200 rounded-full p-0.5 transition-colors"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const allUnselected = availableCountries.filter(c => 
+                c && c.code && !selectedCodes.has(c.code)
+              );
+              onCountriesChange([...(selectedCountries || []), ...allUnselected]);
+            }}
+            className="text-xs"
+          >
+            <Plus className="w-3 h-3 mr-1" />
+            Add All
+          </Button>
         </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 };

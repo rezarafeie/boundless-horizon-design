@@ -24,11 +24,21 @@ interface Subscription {
   notes?: string;
   admin_decision?: string;
   receipt_image_url?: string;
-  // New fields for plan and panel info
-  plan_name?: string;
   plan_id?: string;
-  panel_name?: string;
-  panel_type?: string;
+  // Plan and panel info from the relationship
+  subscription_plans?: {
+    id: string;
+    plan_id: string;
+    name_en: string;
+    name_fa: string;
+    assigned_panel_id?: string;
+    panel_servers?: {
+      id: string;
+      name: string;
+      type: string;
+      health_status: string;
+    };
+  };
 }
 
 export const UsersManagement = () => {
@@ -38,19 +48,19 @@ export const UsersManagement = () => {
   const { data: subscriptions, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-subscriptions', searchTerm, statusFilter],
     queryFn: async () => {
-      console.log('=== USERS: Fetching subscriptions with plan and panel info ===');
+      console.log('=== USERS: Fetching subscriptions with plan and panel info using plan_id relationship ===');
       
       let query = supabase
         .from('subscriptions')
         .select(`
           *,
-          subscription_plans!inner(
+          subscription_plans!plan_id(
             id,
             plan_id,
             name_en,
             name_fa,
             assigned_panel_id,
-            panel_servers(
+            panel_servers!assigned_panel_id(
               id,
               name,
               type,
@@ -83,7 +93,7 @@ export const UsersManagement = () => {
       const transformedData: Subscription[] = (data || []).map((sub: any) => ({
         ...sub,
         plan_name: sub.subscription_plans?.name_en || 'Unknown Plan',
-        plan_id: sub.subscription_plans?.plan_id || 'N/A',
+        plan_id_text: sub.subscription_plans?.plan_id || 'N/A',
         panel_name: sub.subscription_plans?.panel_servers?.name || 'No Panel',
         panel_type: sub.subscription_plans?.panel_servers?.type || 'N/A'
       }));
@@ -310,11 +320,11 @@ export const UsersManagement = () => {
                     <div className="flex flex-wrap gap-2 mt-2">
                       <Badge variant="outline" className="text-xs">
                         <Package className="w-3 h-3 mr-1" />
-                        {subscription.plan_name} ({subscription.plan_id})
+                        {(subscription as any).plan_name} ({(subscription as any).plan_id_text})
                       </Badge>
                       <Badge variant="outline" className="text-xs">
                         <Server className="w-3 h-3 mr-1" />
-                        {subscription.panel_name} ({subscription.panel_type})
+                        {(subscription as any).panel_name} ({(subscription as any).panel_type})
                       </Badge>
                     </div>
                   </div>

@@ -470,6 +470,7 @@ export type Database = {
           marzban_user_created: boolean | null
           mobile: string
           notes: string | null
+          plan_id: string | null
           price_toman: number
           protocol: string | null
           receipt_image_url: string | null
@@ -493,6 +494,7 @@ export type Database = {
           marzban_user_created?: boolean | null
           mobile: string
           notes?: string | null
+          plan_id?: string | null
           price_toman: number
           protocol?: string | null
           receipt_image_url?: string | null
@@ -516,6 +518,7 @@ export type Database = {
           marzban_user_created?: boolean | null
           mobile?: string
           notes?: string | null
+          plan_id?: string | null
           price_toman?: number
           protocol?: string | null
           receipt_image_url?: string | null
@@ -527,7 +530,15 @@ export type Database = {
           zarinpal_authority?: string | null
           zarinpal_ref_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       zarinpal_contracts: {
         Row: {
