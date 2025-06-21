@@ -34,7 +34,7 @@ const StepContentRenderer = ({
       return (
         <PlanSelector
           selectedPlan={formData.selectedPlan}
-          onPlanSelect={(plan) => onUpdateFormData('selectedPlan', plan)}
+          onPlanSelect={(planId: string) => onUpdateFormData('selectedPlan', planId)}
           dataLimit={formData.dataLimit}
         />
       );

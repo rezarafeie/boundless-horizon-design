@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,7 +61,7 @@ const RenewalSubscriptionForm = () => {
       } else {
         // Auto-select a plan based on most recent subscription
         const latestSubscription = subscriptions[0];
-        setSelectedPlan('pro'); // Set as string instead of object
+        setSelectedPlan('pro'); // Set as string
         
         // Set defaults based on existing subscription
         setDataLimit(latestSubscription.data_limit_gb || 10);
@@ -459,15 +460,15 @@ const RenewalSubscriptionForm = () => {
                           </h4>
                           <p className="text-sm text-blue-600 dark:text-blue-400">
                             {language === 'fa' ? 
-                              `${dataLimit} گیگابایت × ${selectedPlan.pricePerGB.toLocaleString()} تومان` : 
-                              `${dataLimit} GB × ${selectedPlan.pricePerGB.toLocaleString()} Toman`
+                              `${dataLimit} گیگابایت × ۸۰۰ تومان` : 
+                              `${dataLimit} GB × 800 Toman`
                             }
                           </p>
                         </div>
                         <div className="text-right">
                           {appliedDiscount && (
                             <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
-                              {(dataLimit * selectedPlan.pricePerGB).toLocaleString()}
+                              {(dataLimit * 800).toLocaleString()}
                               {language === 'fa' ? ' تومان' : ' Toman'}
                             </div>
                           )}

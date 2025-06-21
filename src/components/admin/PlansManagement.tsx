@@ -1,19 +1,19 @@
+
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Pencil, Plus, Trash2, Settings, AlertTriangle, Loader2, TestTube } from 'lucide-react';
-import { toast } from 'sonner';
-import { PlanTestConnection } from './PlanTestConnection';
-import { CountrySelector } from './CountrySelector';
+import { Textarea } from '@/components/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Plus, Edit, Trash2, Settings, Globe } from 'lucide-react';
+import CountrySelector from './CountrySelector';
 import { Country } from '@/data/countries';
 
 interface Plan {
@@ -30,943 +30,469 @@ interface Plan {
   is_active: boolean;
   is_visible: boolean;
   available_countries?: Country[];
+  created_at: string;
+  updated_at: string;
 }
 
-interface Panel {
-  id: string;
-  name: string;
-  type: 'marzban' | 'marzneshin';
-  country_en: string;
-  country_fa: string;
-  default_inbounds: any[];
-  is_active: boolean;
-  health_status: 'online' | 'offline' | 'unknown';
-}
-
-interface PlanPanelMapping {
-  id: string;
-  plan_id: string;
-  panel_id: string;
-  is_primary: boolean;
-  inbound_ids: string[];
-}
-
-export const PlansManagement = () => {
+const PlansManagement = () => {
+  const { toast } = useToast();
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
-  const [showNewPlanForm, setShowNewPlanForm] = useState(false);
-  const [testingPlanId, setTestingPlanId] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  
+  const [formData, setFormData] = useState({
+    plan_id: '',
+    name_en: '',
+    name_fa: '',
+    description_en: '',
+    description_fa: '',
+    price_per_gb: 0,
+    api_type: 'marzban' as 'marzban' | 'marzneshin',
+    default_data_limit_gb: 10,
+    default_duration_days: 30,
+    is_active: true,
+    is_visible: true,
+    available_countries: [] as Country[]
+  });
 
-  const { data: plans, isLoading, error } = useQuery({
-    queryKey: ['admin-plans'],
-    queryFn: async () => {
-      console.log('=== PLANS: Starting fetch ===');
-      
+  const fetchPlans = async () => {
+    try {
       const { data, error } = await supabase
         .from('subscription_plans')
         .select('*')
         .order('created_at', { ascending: false });
-      
-      console.log('PLANS: Raw response:', { data, error, count: data?.length });
-      
-      if (error) {
-        console.error('PLANS: Query error:', error);
-        throw error;
-      }
-      
-      // Transform data to ensure proper typing
+
+      if (error) throw error;
+
+      // Transform the data to properly handle available_countries
       const transformedPlans: Plan[] = (data || []).map(plan => {
         let availableCountries: Country[] = [];
         
         // Safely parse available_countries from Json to Country[]
         if (plan.available_countries && Array.isArray(plan.available_countries)) {
-          availableCountries = (plan.available_countries as unknown[]).filter((country: any) => 
-            country && 
-            typeof country === 'object' && 
-            typeof country.code === 'string' && 
-            typeof country.name === 'string' && 
-            typeof country.flag === 'string'
-          ).map((country: any) => ({
-            code: country.code,
-            name: country.name,
-            flag: country.flag
-          }));
-        }
-        
-        return {
-          id: plan.id,
-          plan_id: plan.plan_id,
-          name_en: plan.name_en,
-          name_fa: plan.name_fa,
-          description_en: plan.description_en,
-          description_fa: plan.description_fa,
-          price_per_gb: plan.price_per_gb,
-          api_type: plan.api_type as 'marzban' | 'marzneshin',
-          default_data_limit_gb: plan.default_data_limit_gb,
-          default_duration_days: plan.default_duration_days,
-          is_active: plan.is_active,
-          is_visible: plan.is_visible,
-          available_countries: availableCountries
-        };
-      });
-      
-      console.log('PLANS: Successfully fetched', transformedPlans.length, 'plans');
-      return transformedPlans;
-    },
-    retry: 1
-  });
-
-  const { data: panels } = useQuery({
-    queryKey: ['admin-panels-for-plans'],
-    queryFn: async () => {
-      console.log('=== PLANS: Fetching panels for plan creation ===');
-      
-      const { data, error } = await supabase
-        .from('panel_servers')
-        .select('*')
-        .eq('is_active', true);
-      
-      console.log('PLANS: Panels response:', { data, error, count: data?.length });
-      
-      if (error) {
-        console.error('PLANS: Panels query error:', error);
-        throw error;
-      }
-      
-      console.log('PLANS: Successfully fetched', data?.length || 0, 'active panels');
-      return data as Panel[];
-    },
-    retry: 1
-  });
-
-  const { data: planPanelMappings } = useQuery({
-    queryKey: ['plan-panel-mappings'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('plan_panel_mappings')
-        .select('*');
-      
-      if (error) {
-        console.error('PLANS: Plan panel mappings query error:', error);
-        throw error;
-      }
-      
-      return data as PlanPanelMapping[];
-    }
-  });
-
-  const savePlanMutation = useMutation({
-    mutationFn: async (planData: Partial<Plan> & { id?: string; selectedPanels?: { panelId: string; isPrimary: boolean; inboundIds: string[] }[] }) => {
-      console.log('=== PLANS: Starting save mutation ===');
-      console.log('PLANS: Full plan data received:', planData);
-      
-      const { selectedPanels, available_countries, ...planFields } = planData;
-      let planId = planData.id;
-      
-      try {
-        // Convert available_countries to JSON format for database
-        const saveData = {
-          ...planFields,
-          available_countries: available_countries || []
-        };
-
-        if (planData.id) {
-          // Update existing plan
-          console.log('PLANS: Updating existing plan with ID:', planData.id);
-          const { id, ...updateData } = saveData;
-          const { data: updatedPlan, error } = await supabase
-            .from('subscription_plans')
-            .update(updateData)
-            .eq('id', id)
-            .select()
-            .single();
-          
-          if (error) {
-            console.error('PLANS: Update plan error:', error);
-            throw new Error(`Failed to update plan: ${error.message}`);
-          }
-          console.log('PLANS: Plan updated successfully:', updatedPlan);
-          planId = id;
-        } else {
-          // Create new plan - convert Country[] to plain objects for JSON storage
-          console.log('PLANS: Creating new plan');
-          const insertData = {
-            plan_id: saveData.plan_id!,
-            name_en: saveData.name_en!,
-            name_fa: saveData.name_fa!,
-            description_en: saveData.description_en || '',
-            description_fa: saveData.description_fa || '',
-            price_per_gb: saveData.price_per_gb!,
-            api_type: saveData.api_type!,
-            default_data_limit_gb: saveData.default_data_limit_gb!,
-            default_duration_days: saveData.default_duration_days!,
-            is_active: saveData.is_active ?? true,
-            is_visible: saveData.is_visible ?? true,
-            available_countries: (saveData.available_countries || []).map(country => ({
+          availableCountries = (plan.available_countries as unknown[])
+            .filter((country: any) => 
+              country && 
+              typeof country === 'object' && 
+              typeof country.code === 'string' && 
+              typeof country.name === 'string' && 
+              typeof country.flag === 'string'
+            )
+            .map((country: any) => ({
               code: country.code,
               name: country.name,
               flag: country.flag
-            }))
-          };
-          
-          console.log('PLANS: Inserting plan with data:', insertData);
-          const { data: newPlan, error } = await supabase
-            .from('subscription_plans')
-            .insert(insertData)
-            .select()
-            .single();
-          
-          if (error) {
-            console.error('PLANS: Insert plan error:', error);
-            throw new Error(`Failed to create plan: ${error.message}`);
-          }
-          console.log('PLANS: Plan created successfully:', newPlan);
-          planId = newPlan.id;
+            })) as Country[];
         }
         
-        // Handle panel mappings - this is critical for subscriptions to work!
-        if (selectedPanels && selectedPanels.length > 0 && planId) {
-          console.log('PLANS: Processing panel mappings for plan:', planId);
-          console.log('PLANS: Selected panels data:', selectedPanels);
-          
-          // Delete existing mappings first
-          console.log('PLANS: Deleting existing mappings...');
-          const { error: deleteError } = await supabase
-            .from('plan_panel_mappings')
-            .delete()
-            .eq('plan_id', planId);
-            
-          if (deleteError) {
-            console.error('PLANS: Error deleting existing mappings:', deleteError);
-            throw new Error(`Failed to delete existing mappings: ${deleteError.message}`);
-          }
-          console.log('PLANS: Existing mappings deleted successfully');
-          
-          // Create new mappings
-          const mappings = selectedPanels.map(panel => ({
-            plan_id: planId,
-            panel_id: panel.panelId,
-            is_primary: panel.isPrimary,
-            inbound_ids: panel.inboundIds || []
-          }));
-          
-          console.log('PLANS: Creating new mappings:', mappings);
-          const { data: createdMappings, error: mappingError } = await supabase
-            .from('plan_panel_mappings')
-            .insert(mappings)
-            .select();
-            
-          if (mappingError) {
-            console.error('PLANS: Panel mapping creation error:', mappingError);
-            throw new Error(`Failed to create panel mappings: ${mappingError.message}`);
-          }
-          
-          console.log('PLANS: Panel mappings created successfully:', createdMappings);
-          console.log('PLANS: Mappings count created:', createdMappings?.length);
-        } else {
-          console.warn('PLANS: No panels selected or invalid plan ID');
-          if (!planId) console.error('PLANS: Plan ID is missing!');
-          if (!selectedPanels || selectedPanels.length === 0) console.error('PLANS: No panels selected!');
-        }
-        
-        console.log('PLANS: Save mutation completed successfully');
-        return { success: true, planId };
-        
-      } catch (error) {
-        console.error('PLANS: Save mutation failed:', error);
-        throw error;
-      }
-    },
-    onSuccess: (result) => {
-      console.log('PLANS: Save mutation onSuccess:', result);
-      queryClient.invalidateQueries({ queryKey: ['admin-plans'] });
-      queryClient.invalidateQueries({ queryKey: ['plan-panel-mappings'] });
-      setEditingPlan(null);
-      setShowNewPlanForm(false);
-      toast.success('Plan saved successfully with panel configurations!');
-    },
-    onError: (error: any) => {
-      console.error('PLANS: Save mutation onError:', error);
-      toast.error(`Failed to save plan: ${error.message}`);
-    }
-  });
+        return {
+          ...plan,
+          available_countries: availableCountries
+        };
+      });
 
-  const deletePlanMutation = useMutation({
-    mutationFn: async (id: string) => {
-      console.log('PLANS: Deleting plan:', id);
-      
-      // First delete panel mappings
-      await supabase
-        .from('plan_panel_mappings')
-        .delete()
-        .eq('plan_id', id);
-      
-      // Then delete the plan
+      setPlans(transformedPlans);
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch plans',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlans();
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      const planData = {
+        plan_id: formData.plan_id,
+        name_en: formData.name_en,
+        name_fa: formData.name_fa,
+        description_en: formData.description_en,
+        description_fa: formData.description_fa,
+        price_per_gb: formData.price_per_gb,
+        api_type: formData.api_type,
+        default_data_limit_gb: formData.default_data_limit_gb,
+        default_duration_days: formData.default_duration_days,
+        is_active: formData.is_active,
+        is_visible: formData.is_visible,
+        available_countries: formData.available_countries as any // Cast to Json type
+      };
+
+      if (editingPlan) {
+        const { error } = await supabase
+          .from('subscription_plans')
+          .update(planData)
+          .eq('id', editingPlan.id);
+
+        if (error) throw error;
+
+        toast({
+          title: 'Success',
+          description: 'Plan updated successfully'
+        });
+      } else {
+        const { error } = await supabase
+          .from('subscription_plans')
+          .insert(planData);
+
+        if (error) throw error;
+
+        toast({
+          title: 'Success',
+          description: 'Plan created successfully'
+        });
+      }
+
+      setIsDialogOpen(false);
+      setEditingPlan(null);
+      resetForm();
+      fetchPlans();
+    } catch (error) {
+      console.error('Error saving plan:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save plan',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleEdit = (plan: Plan) => {
+    setEditingPlan(plan);
+    setFormData({
+      plan_id: plan.plan_id,
+      name_en: plan.name_en,
+      name_fa: plan.name_fa,
+      description_en: plan.description_en || '',
+      description_fa: plan.description_fa || '',
+      price_per_gb: plan.price_per_gb,
+      api_type: plan.api_type,
+      default_data_limit_gb: plan.default_data_limit_gb,
+      default_duration_days: plan.default_duration_days,
+      is_active: plan.is_active,
+      is_visible: plan.is_visible,
+      available_countries: plan.available_countries || []
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = async (planId: string) => {
+    if (!confirm('Are you sure you want to delete this plan?')) return;
+
+    try {
       const { error } = await supabase
         .from('subscription_plans')
         .delete()
-        .eq('id', id);
-      if (error) {
-        console.error('PLANS: Delete error:', error);
-        throw error;
-      }
-      console.log('PLANS: Delete successful');
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-plans'] });
-      queryClient.invalidateQueries({ queryKey: ['plan-panel-mappings'] });
-      toast.success('Plan deleted successfully');
-    },
-    onError: (error: any) => {
-      console.error('PLANS: Delete mutation error:', error);
-      toast.error('Failed to delete plan: ' + error.message);
-    }
-  });
+        .eq('id', planId);
 
-  const PlanForm = ({ plan, onSave, onCancel }: {
-    plan?: Plan;
-    onSave: (plan: Partial<Plan> & { selectedPanels: { panelId: string; isPrimary: boolean; inboundIds: string[] }[] }) => void;
-    onCancel: () => void;
-  }) => {
-    const [formData, setFormData] = useState({
-      plan_id: plan?.plan_id || '',
-      name_en: plan?.name_en || '',
-      name_fa: plan?.name_fa || '',
-      description_en: plan?.description_en || '',
-      description_fa: plan?.description_fa || '',
-      price_per_gb: plan?.price_per_gb || 0,
-      api_type: plan?.api_type || 'marzban' as 'marzban' | 'marzneshin',
-      default_data_limit_gb: plan?.default_data_limit_gb || 10,
-      default_duration_days: plan?.default_duration_days || 30,
-      is_active: plan?.is_active ?? true,
-      is_visible: plan?.is_visible ?? true,
-    });
+      if (error) throw error;
 
-    const [selectedCountries, setSelectedCountries] = useState<Country[]>(plan?.available_countries || []);
-    const [selectedPanels, setSelectedPanels] = useState<{ panelId: string; isPrimary: boolean; inboundIds: string[] }[]>([]);
-
-    // Load existing panel mappings when editing
-    useEffect(() => {
-      if (plan && planPanelMappings) {
-        const existingMappings = planPanelMappings
-          .filter(mapping => mapping.plan_id === plan.id)
-          .map(mapping => ({
-            panelId: mapping.panel_id,
-            isPrimary: mapping.is_primary,
-            inboundIds: Array.isArray(mapping.inbound_ids) ? mapping.inbound_ids : []
-          }));
-        console.log('PLANS: Loading existing mappings for plan:', plan.id, existingMappings);
-        setSelectedPanels(existingMappings);
-      }
-    }, [plan, planPanelMappings]);
-
-    const togglePanelSelection = (panelId: string) => {
-      console.log('PLANS: Toggling panel selection for:', panelId);
-      setSelectedPanels(prev => {
-        const exists = prev.find(p => p.panelId === panelId);
-        if (exists) {
-          const updated = prev.filter(p => p.panelId !== panelId);
-          console.log('PLANS: Panel removed, new selection:', updated);
-          return updated;
-        } else {
-          const updated = [...prev, { panelId, isPrimary: prev.length === 0, inboundIds: [] }];
-          console.log('PLANS: Panel added, new selection:', updated);
-          return updated;
-        }
+      toast({
+        title: 'Success',
+        description: 'Plan deleted successfully'
       });
-    };
-
-    const setPrimaryPanel = (panelId: string) => {
-      console.log('PLANS: Setting primary panel to:', panelId);
-      setSelectedPanels(prev => 
-        prev.map(p => ({ ...p, isPrimary: p.panelId === panelId }))
-      );
-    };
-
-    const updateInbounds = (panelId: string, inboundIds: string[]) => {
-      console.log('PLANS: Updating inbounds for panel:', panelId, inboundIds);
-      setSelectedPanels(prev =>
-        prev.map(p => p.panelId === panelId ? { ...p, inboundIds } : p)
-      );
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      console.log('PLANS: Form submitted');
-      console.log('PLANS: Form data:', formData);
-      console.log('PLANS: Selected panels:', selectedPanels);
-      console.log('PLANS: Selected countries:', selectedCountries);
       
-      if (!panels || panels.length === 0) {
-        toast.error('No active panels available. Add panels first before creating plans.');
-        return;
-      }
-
-      if (selectedPanels.length === 0) {
-        toast.error('Please select at least one panel for this plan. Plans without panels cannot be used for subscriptions.');
-        return;
-      }
-
-      // Ensure at least one panel is marked as primary
-      const hasPrimary = selectedPanels.some(p => p.isPrimary);
-      let finalSelectedPanels = selectedPanels;
-
-      if (selectedPanels.length === 1) {
-        // If only one panel, make it primary automatically
-        finalSelectedPanels = [{ ...selectedPanels[0], isPrimary: true }];
-        console.log('PLANS: Single panel auto-set as primary');
-      } else if (!hasPrimary) {
-        toast.error('Please select a primary panel when multiple panels are chosen.');
-        return;
-      }
-
-      console.log('PLANS: Final submission data:', { 
-        ...formData, 
-        id: plan?.id,
-        selectedPanels: finalSelectedPanels,
-        available_countries: selectedCountries
+      fetchPlans();
+    } catch (error) {
+      console.error('Error deleting plan:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete plan',
+        variant: 'destructive'
       });
-
-      onSave({ 
-        ...formData, 
-        id: plan?.id,
-        selectedPanels: finalSelectedPanels,
-        available_countries: selectedCountries
-      });
-    };
-
-    if (!panels || panels.length === 0) {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-yellow-500" />
-              No Active Panels Available
-            </CardTitle>
-            <CardDescription>
-              You need to add and activate at least one panel server before creating subscription plans.
-              Panels can have any health status (online, offline, or unknown) as long as they are marked as active.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={onCancel} variant="outline">
-              Cancel
-            </Button>
-          </CardContent>
-        </Card>
-      );
     }
-
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{plan ? 'Edit Plan' : 'Add New Plan'}</CardTitle>
-          <CardDescription>
-            Configure the subscription plan details and select which panel servers will handle subscriptions for this plan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="config" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="config">Configuration</TabsTrigger>
-              {plan && <TabsTrigger value="test">Test Plan</TabsTrigger>}
-            </TabsList>
-            
-            <TabsContent value="config">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Basic Plan Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="plan_id">Plan ID</Label>
-                    <Input
-                      id="plan_id"
-                      value={formData.plan_id}
-                      onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}
-                      placeholder="unique-plan-id"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="api_type">API Type</Label>
-                    <Select value={formData.api_type} onValueChange={(value: 'marzban' | 'marzneshin') => 
-                      setFormData({ ...formData, api_type: value })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="marzban">Marzban</SelectItem>
-                        <SelectItem value="marzneshin">Marzneshin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name_en">Plan Name (English)</Label>
-                    <Input
-                      id="name_en"
-                      value={formData.name_en}
-                      onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="name_fa">Plan Name (Persian)</Label>
-                    <Input
-                      id="name_fa"
-                      value={formData.name_fa}
-                      onChange={(e) => setFormData({ ...formData, name_fa: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="description_en">Description (English)</Label>
-                    <Input
-                      id="description_en"
-                      value={formData.description_en}
-                      onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="description_fa">Description (Persian)</Label>
-                    <Input
-                      id="description_fa"
-                      value={formData.description_fa}
-                      onChange={(e) => setFormData({ ...formData, description_fa: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="price_per_gb">Price per GB (Toman)</Label>
-                    <Input
-                      id="price_per_gb"
-                      type="number"
-                      value={formData.price_per_gb}
-                      onChange={(e) => setFormData({ ...formData, price_per_gb: parseInt(e.target.value) })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="default_data_limit_gb">Default Data Limit (GB)</Label>
-                    <Input
-                      id="default_data_limit_gb"
-                      type="number"
-                      value={formData.default_data_limit_gb}
-                      onChange={(e) => setFormData({ ...formData, default_data_limit_gb: parseInt(e.target.value) })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="default_duration_days">Default Duration (Days)</Label>
-                    <Input
-                      id="default_duration_days"
-                      type="number"
-                      value={formData.default_duration_days}
-                      onChange={(e) => setFormData({ ...formData, default_duration_days: parseInt(e.target.value) })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Available Countries Section */}
-                <div className="space-y-3 border-t pt-6">
-                  <div>
-                    <Label className="text-lg font-semibold">Available Countries</Label>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Select which countries are available for this plan. Users will see these countries with flags in the plan details.
-                    </p>
-                  </div>
-                  
-                  <CountrySelector
-                    selectedCountries={selectedCountries}
-                    onCountriesChange={setSelectedCountries}
-                    placeholder="Select countries for this plan..."
-                  />
-                  
-                  {selectedCountries.length > 0 && (
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                      <p className="text-sm text-green-800 dark:text-green-200">
-                        ✅ {selectedCountries.length} countries selected for this plan
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Panel Selection */}
-                <div className="space-y-4 border-t pt-6">
-                  <div>
-                    <Label className="text-lg font-semibold flex items-center gap-2">
-                      <Settings className="w-5 h-5" />
-                      Panel Configuration (Required)
-                    </Label>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Select which panel servers will handle subscriptions for this plan. At least one panel is required for the plan to be usable.
-                      {selectedPanels.length > 1 && " Select one as the primary panel."}
-                    </p>
-                  </div>
-                  
-                  <div className="grid gap-4">
-                    {panels.map((panel) => {
-                      const isSelected = selectedPanels.some(p => p.panelId === panel.id);
-                      const selectedPanel = selectedPanels.find(p => p.panelId === panel.id);
-                      
-                      return (
-                        <Card key={panel.id} className={`${isSelected ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}>
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center space-x-3">
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => togglePanelSelection(panel.id)}
-                                />
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{panel.name}</span>
-                                    <Badge variant={panel.is_active ? 'default' : 'secondary'}>
-                                      {panel.is_active ? 'Active' : 'Inactive'}
-                                    </Badge>
-                                    <Badge variant={panel.health_status === 'online' ? 'default' : 'secondary'}>
-                                      {panel.health_status}
-                                    </Badge>
-                                  </div>
-                                  <p className="text-sm text-gray-600">{panel.country_en} - {panel.type}</p>
-                                </div>
-                              </div>
-                              
-                              {isSelected && selectedPanels.length > 1 && (
-                                <div className="flex items-center space-x-2">
-                                  <Checkbox
-                                    checked={selectedPanel?.isPrimary || false}
-                                    onCheckedChange={() => setPrimaryPanel(panel.id)}
-                                  />
-                                  <Label className="text-sm">Primary</Label>
-                                </div>
-                              )}
-                            </div>
-                            
-                            {isSelected && panel.default_inbounds && panel.default_inbounds.length > 0 && (
-                              <div className="mt-3">
-                                <Label className="text-sm font-medium">Available Inbounds:</Label>
-                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                  {panel.default_inbounds.map((inbound: any, index: number) => (
-                                    <div key={index} className="flex items-center space-x-2">
-                                      <Checkbox
-                                        checked={selectedPanel?.inboundIds.includes(inbound.tag) || false}
-                                        onCheckedChange={(checked) => {
-                                          const currentIds = selectedPanel?.inboundIds || [];
-                                          const newIds = checked 
-                                            ? [...currentIds, inbound.tag]
-                                            : currentIds.filter(id => id !== inbound.tag);
-                                          updateInbounds(panel.id, newIds);
-                                        }}
-                                      />
-                                      <span className="text-sm">{inbound.tag}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                  
-                  {selectedPanels.length > 0 ? (
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                      <p className="text-sm text-green-800 dark:text-green-200">
-                        ✅ {selectedPanels.length} panel(s) selected for this plan
-                        {selectedPanels.length > 1 && selectedPanels.some(p => p.isPrimary) && 
-                          ` (Primary: ${panels.find(p => p.id === selectedPanels.find(sp => sp.isPrimary)?.panelId)?.name})`
-                        }
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                      <p className="text-sm text-red-800 dark:text-red-200">
-                        ⚠️ No panels selected. This plan will not be usable for subscriptions until panels are configured.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="is_active"
-                      checked={formData.is_active}
-                      onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                    />
-                    <Label htmlFor="is_active">Active</Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="is_visible"
-                      checked={formData.is_visible}
-                      onCheckedChange={(checked) => setFormData({ ...formData, is_visible: checked })}
-                    />
-                    <Label htmlFor="is_visible">Visible to Users</Label>
-                  </div>
-                </div>
-
-                <div className="flex space-x-2">
-                  <Button type="submit" disabled={selectedPanels.length === 0}>
-                    {selectedPanels.length === 0 ? 'Select Panels to Save' : 'Save Plan'}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-                </div>
-              </form>
-            </TabsContent>
-            
-            {plan && (
-              <TabsContent value="test">
-                <PlanTestConnection 
-                  plan={plan} 
-                  onTestComplete={(result) => {
-                    console.log('Plan test completed:', result);
-                  }}
-                />
-              </TabsContent>
-            )}
-          </Tabs>
-        </CardContent>
-      </Card>
-    );
   };
 
-  const getPlanPanels = (planId: string) => {
-    if (!planPanelMappings || !panels) return [];
-    
-    const mappings = planPanelMappings.filter(m => m.plan_id === planId);
-    return mappings.map(mapping => {
-      const panel = panels.find(p => p.id === mapping.panel_id);
-      return panel ? { ...panel, mapping } : null;
-    }).filter(Boolean);
+  const resetForm = () => {
+    setFormData({
+      plan_id: '',
+      name_en: '',
+      name_fa: '',
+      description_en: '',
+      description_fa: '',
+      price_per_gb: 0,
+      api_type: 'marzban',
+      default_data_limit_gb: 10,
+      default_duration_days: 30,
+      is_active: true,
+      is_visible: true,
+      available_countries: []
+    });
   };
 
-  console.log('PLANS: Component render - isLoading:', isLoading, 'plans count:', plans?.length, 'panels count:', panels?.length, 'error:', error);
+  const handleCountryChange = (countries: Country[]) => {
+    setFormData(prev => ({ ...prev, available_countries: countries }));
+  };
 
-  if (error) {
-    console.error('PLANS: Component error state:', error);
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Subscription Plans</h1>
-          <p className="text-gray-600">Error loading plans</p>
-        </div>
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-red-600">
-              <p>Error loading plans: {error?.message || 'Unknown error'}</p>
-              <p className="text-sm mt-2">Check the browser console for more details.</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    console.log('PLANS: Component loading state');
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Subscription Plans</h1>
-          <p className="text-gray-600">Loading plans...</p>
-        </div>
-      </div>
-    );
+  if (loading) {
+    return <div>Loading plans...</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Subscription Plans</h1>
-          <p className="text-gray-600">
-            Manage your VPN subscription plans ({plans?.length || 0} plans found, {panels?.length || 0} active panels available)
-          </p>
+          <h1 className="text-3xl font-bold">Plans Management</h1>
+          <p className="text-muted-foreground">Manage subscription plans and their configurations</p>
         </div>
-        <Button onClick={() => setShowNewPlanForm(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Plan
-        </Button>
+        
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => { resetForm(); setEditingPlan(null); }}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Plan
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
+              <DialogDescription>
+                {editingPlan ? 'Update plan details' : 'Create a new subscription plan'}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="plan_id">Plan ID</Label>
+                  <Input
+                    id="plan_id"
+                    value={formData.plan_id}
+                    onChange={(e) => setFormData(prev => ({ ...prev, plan_id: e.target.value }))}
+                    placeholder="e.g., pro, lite"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="api_type">API Type</Label>
+                  <Select value={formData.api_type} onValueChange={(value: 'marzban' | 'marzneshin') => 
+                    setFormData(prev => ({ ...prev, api_type: value }))
+                  }>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="marzban">Marzban</SelectItem>
+                      <SelectItem value="marzneshin">Marzneshin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="name_en">Name (English)</Label>
+                  <Input
+                    id="name_en"
+                    value={formData.name_en}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name_en: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="name_fa">Name (Persian)</Label>
+                  <Input
+                    id="name_fa"
+                    value={formData.name_fa}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name_fa: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="description_en">Description (English)</Label>
+                  <Textarea
+                    id="description_en"
+                    value={formData.description_en}
+                    onChange={(e) => setFormData(prev => ({ ...prev, description_en: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="description_fa">Description (Persian)</Label>
+                  <Textarea
+                    id="description_fa"
+                    value={formData.description_fa}
+                    onChange={(e) => setFormData(prev => ({ ...prev, description_fa: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="price_per_gb">Price per GB (Toman)</Label>
+                  <Input
+                    id="price_per_gb"
+                    type="number"
+                    value={formData.price_per_gb}
+                    onChange={(e) => setFormData(prev => ({ ...prev, price_per_gb: Number(e.target.value) }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="default_data_limit_gb">Default Data Limit (GB)</Label>
+                  <Input
+                    id="default_data_limit_gb"
+                    type="number"
+                    value={formData.default_data_limit_gb}
+                    onChange={(e) => setFormData(prev => ({ ...prev, default_data_limit_gb: Number(e.target.value) }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="default_duration_days">Default Duration (Days)</Label>
+                  <Input
+                    id="default_duration_days"
+                    type="number"
+                    value={formData.default_duration_days}
+                    onChange={(e) => setFormData(prev => ({ ...prev, default_duration_days: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+
+              {/* Country Selection */}
+              <div>
+                <Label className="flex items-center gap-2 mb-2">
+                  <Globe className="w-4 h-4" />
+                  Available Countries
+                </Label>
+                <CountrySelector
+                  selectedCountries={formData.available_countries}
+                  onCountriesChange={handleCountryChange}
+                />
+              </div>
+
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="is_active"
+                    checked={formData.is_active}
+                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
+                  />
+                  <Label htmlFor="is_active">Active</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="is_visible"
+                    checked={formData.is_visible}
+                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_visible: checked }))}
+                  />
+                  <Label htmlFor="is_visible">Visible</Label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave}>
+                {editingPlan ? 'Update' : 'Create'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {showNewPlanForm && (
-        <PlanForm
-          onSave={(plan) => savePlanMutation.mutate(plan)}
-          onCancel={() => setShowNewPlanForm(false)}
-        />
-      )}
-
-      {editingPlan && (
-        <PlanForm
-          plan={editingPlan}
-          onSave={(plan) => savePlanMutation.mutate(plan)}
-          onCancel={() => setEditingPlan(null)}
-        />
-      )}
-
-      <div className="grid gap-6">
-        {plans?.map((plan) => {
-          const planPanels = getPlanPanels(plan.id);
-          
-          return (
-            <Card key={plan.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Settings className="w-5 h-5" />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            Subscription Plans
+          </CardTitle>
+          <CardDescription>
+            Configure and manage all subscription plans
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Plan ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>API Type</TableHead>
+                <TableHead>Price/GB</TableHead>
+                <TableHead>Countries</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {plans.map((plan) => (
+                <TableRow key={plan.id}>
+                  <TableCell className="font-mono">{plan.plan_id}</TableCell>
+                  <TableCell>
                     <div>
-                      <CardTitle className="flex items-center gap-2">
-                        {plan.name_en} ({plan.name_fa})
-                        <Badge variant={plan.is_active ? 'default' : 'secondary'}>
-                          {plan.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                        <Badge variant={plan.is_visible ? 'default' : 'outline'}>
-                          {plan.is_visible ? 'Visible' : 'Hidden'}
-                        </Badge>
-                      </CardTitle>
-                      <CardDescription>{plan.description_en} / {plan.description_fa}</CardDescription>
+                      <div className="font-medium">{plan.name_en}</div>
+                      <div className="text-sm text-muted-foreground">{plan.name_fa}</div>
                     </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTestingPlanId(testingPlanId === plan.id ? null : plan.id)}
-                    >
-                      <TestTube className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingPlan(plan)}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => deletePlanMutation.mutate(plan.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
-                  <div>
-                    <span className="font-medium">Plan ID:</span>
-                    <p className="font-mono">{plan.plan_id}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium">API Type:</span>
-                    <p>{plan.api_type}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium">Price per GB:</span>
-                    <p>{plan.price_per_gb.toLocaleString()} Toman</p>
-                  </div>
-                  <div>
-                    <span className="font-medium">Defaults:</span>
-                    <p>{plan.default_data_limit_gb}GB / {plan.default_duration_days} days</p>
-                  </div>
-                </div>
-                
-                {/* Available Countries Display */}
-                {plan.available_countries && plan.available_countries.length > 0 ? (
-                  <div className="mb-4">
-                    <span className="font-medium text-sm">Available Countries:</span>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {plan.available_countries.map((country: Country) => (
-                        <Badge key={country.code} variant="outline" className="flex items-center gap-1">
-                          <span>{country.flag}</span>
-                          <span>{country.name}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={plan.api_type === 'marzban' ? 'default' : 'secondary'}>
+                      {plan.api_type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{plan.price_per_gb.toLocaleString()} T</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {plan.available_countries?.slice(0, 3).map((country) => (
+                        <Badge key={country.code} variant="outline" className="text-xs">
+                          {country.flag} {country.code}
                         </Badge>
                       ))}
+                      {(plan.available_countries?.length || 0) > 3 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{(plan.available_countries?.length || 0) - 3}
+                        </Badge>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      ⚠️ No countries configured for this plan. Edit the plan to add available countries.
-                    </p>
-                  </div>
-                )}
-                
-                {/* Show Associated Panels */}
-                {planPanels.length > 0 ? (
-                  <div>
-                    <span className="font-medium text-sm">Associated Panels:</span>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                      {planPanels.map((panelData: any, index: number) => {
-                        if (!panelData) return null;
-                        const { mapping, ...panel } = panelData;
-                        return (
-                          <div key={index} className="p-2 bg-gray-50 dark:bg-gray-800 rounded flex items-center justify-between">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono text-sm">{panel.name}</span>
-                                {mapping.is_primary && <Badge variant="default">Primary</Badge>}
-                              </div>
-                              <p className="text-xs text-gray-600 dark:text-gray-400">
-                                {panel.country_en} - {panel.type}
-                              </p>
-                            </div>
-                            <Badge variant={panel.health_status === 'online' ? 'default' : 'secondary'}>
-                              {panel.health_status}
-                            </Badge>
-                          </div>
-                        );
-                      })}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Badge variant={plan.is_active ? 'default' : 'destructive'}>
+                        {plan.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      {plan.is_visible && (
+                        <Badge variant="outline">Visible</Badge>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      ⚠️ No panels configured for this plan. Edit the plan to add panels.
-                    </p>
-                  </div>
-                )}
-                
-                {testingPlanId === plan.id && (
-                  <div className="mt-4 pt-4 border-t">
-                    <PlanTestConnection 
-                      plan={plan} 
-                      onTestComplete={(result) => {
-                        console.log('Plan test completed:', result);
-                        setTestingPlanId(null);
-                      }}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-        
-        {(!plans || plans.length === 0) && !isLoading && (
-          <Card>
-            <CardContent className="text-center py-12">
-              <p className="text-gray-500 mb-4">No subscription plans found.</p>
-              <Button onClick={() => setShowNewPlanForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Your First Plan
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(plan)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(plan.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {plans.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No plans found. Create your first plan to get started.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
+
+export default PlansManagement;
