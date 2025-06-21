@@ -79,7 +79,7 @@ const HeroSection = () => {
             </Button>
 
             <div className="w-full sm:w-auto">
-              <FreeTrialButton planType="lite" />
+              <FreeTrialButton />
             </div>
 
             <Button asChild variant="hero-accent" size="xl" className="w-full sm:w-auto group">

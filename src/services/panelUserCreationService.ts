@@ -28,10 +28,10 @@ export interface PanelUserCreationResponse {
 export class PanelUserCreationService {
   
   static async createUserFromPanel(request: PanelUserCreationRequest): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Starting UNIFIED user creation with request:', request);
+    console.log('PANEL_USER_CREATION: Starting user creation with request:', request);
     
     try {
-      // Step 1: Get plan configuration with panel mappings - UNIFIED APPROACH
+      // Step 1: Get plan configuration with panel mappings - FIXED TO USE ACTUAL UUID
       console.log('PANEL_USER_CREATION: Looking up plan by ID:', request.planId);
       
       const { data: planConfig, error: planError } = await supabase
@@ -129,7 +129,7 @@ export class PanelUserCreationService {
       }
 
       const panel = selectedMapping.panel_servers;
-      console.log('PANEL_USER_CREATION: Selected panel for UNIFIED creation:', {
+      console.log('PANEL_USER_CREATION: Selected panel:', {
         id: panel.id,
         name: panel.name,
         type: panel.type,
@@ -138,8 +138,8 @@ export class PanelUserCreationService {
         isActive: panel.is_active
       });
 
-      // Step 3: Create user using the UNIFIED test-panel-connection function 
-      console.log('PANEL_USER_CREATION: Creating user via UNIFIED test-panel-connection function');
+      // Step 3: Create user using the test-panel-connection function with ALL required data
+      console.log('PANEL_USER_CREATION: Creating user via test-panel-connection function');
       
       const userCreationData = {
         username: request.username,
@@ -151,16 +151,15 @@ export class PanelUserCreationService {
         isFreeTriaL: request.isFreeTriaL || false
       };
 
-      // ✅ UNIFIED APPROACH: Use the same edge function that fetches reza config
       const { data: creationResult, error: creationError } = await supabase.functions.invoke('test-panel-connection', {
         body: {
-          panelId: panel.id, // Specify the exact panel to use
+          panelId: panel.id,
           createUser: true,
           userData: userCreationData
         }
       });
 
-      console.log('PANEL_USER_CREATION: UNIFIED user creation response:', { 
+      console.log('PANEL_USER_CREATION: User creation response:', { 
         success: creationResult?.success,
         error: creationError || creationResult?.error,
         userCreation: creationResult?.userCreation
@@ -192,7 +191,7 @@ export class PanelUserCreationService {
         };
       }
 
-      console.log('PANEL_USER_CREATION: UNIFIED user created successfully:', {
+      console.log('PANEL_USER_CREATION: User created successfully:', {
         username: userCreation.username,
         hasSubscriptionUrl: !!userCreation.subscriptionUrl
       });
@@ -208,7 +207,7 @@ export class PanelUserCreationService {
         panel_id: panel.id
       };
 
-      console.log('PANEL_USER_CREATION: Returning UNIFIED success response:', responseData);
+      console.log('PANEL_USER_CREATION: Returning success response:', responseData);
       return {
         success: true,
         data: responseData
@@ -229,60 +228,52 @@ export class PanelUserCreationService {
     }
   }
 
-  // Create free trial using UNIFIED approach - UPDATED MAPPING
+  // Create free trial using admin panel configuration - FIXED to get actual plan UUIDs
   static async createFreeTrial(
     username: string, 
-    planIdOrName: string,  // Can be UUID or plan name like "lite" or "plus"
+    planIdOrName: string,  // Can be UUID or plan name like "lite"
     dataLimitGB: number = 1,
     durationDays: number = 1
   ): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Creating UNIFIED free trial:', { username, planIdOrName, dataLimitGB, durationDays });
+    console.log('PANEL_USER_CREATION: Creating free trial:', { username, planIdOrName, dataLimitGB, durationDays });
     
     try {
-      // UPDATED MAPPING: Switch pro to plus
-      let mappedPlanName = planIdOrName;
-      if (planIdOrName === 'pro') {
-        mappedPlanName = 'plus'; // Map pro to plus panel
-        console.log('PANEL_USER_CREATION: Mapped "pro" to "plus" for free trial');
-      }
-      
       // First, try to resolve the plan ID if it's a name
-      let actualPlanId = mappedPlanName;
+      let actualPlanId = planIdOrName;
       
       // Check if it looks like a UUID (has dashes)
-      if (!mappedPlanName.includes('-')) {
-        console.log('PANEL_USER_CREATION: Converting plan name to UUID:', mappedPlanName);
+      if (!planIdOrName.includes('-')) {
+        console.log('PANEL_USER_CREATION: Converting plan name to UUID:', planIdOrName);
         
         const { data: plan, error } = await supabase
           .from('subscription_plans')
           .select('id')
-          .eq('plan_id', mappedPlanName)  // Look up by plan_id field
+          .eq('plan_id', planIdOrName)  // Look up by plan_id field
           .eq('is_active', true)
           .single();
           
         if (error || !plan) {
-          console.error('PANEL_USER_CREATION: Could not find plan by name:', mappedPlanName, error);
+          console.error('PANEL_USER_CREATION: Could not find plan by name:', planIdOrName, error);
           return {
             success: false,
-            error: `Plan "${mappedPlanName}" not found or inactive. Available plans should be configured in admin panel.`
+            error: `Plan "${planIdOrName}" not found or inactive`
           };
         }
         
         actualPlanId = plan.id;
-        console.log('PANEL_USER_CREATION: Resolved plan name to UUID:', { name: mappedPlanName, uuid: actualPlanId });
+        console.log('PANEL_USER_CREATION: Resolved plan name to UUID:', { name: planIdOrName, uuid: actualPlanId });
       }
       
-      // Use UNIFIED creation approach
       return this.createUserFromPanel({
         planId: actualPlanId,
         username,
         dataLimitGB,
         durationDays,
-        notes: `Free Trial - Plan: ${planIdOrName} (mapped to ${mappedPlanName})`,
+        notes: `Free Trial - Plan: ${planIdOrName}`,
         isFreeTriaL: true
       });
     } catch (error) {
-      console.error('PANEL_USER_CREATION: Error in UNIFIED createFreeTrial:', error);
+      console.error('PANEL_USER_CREATION: Error in createFreeTrial:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error in free trial creation'
@@ -290,7 +281,7 @@ export class PanelUserCreationService {
     }
   }
 
-  // Create paid subscription using UNIFIED approach
+  // Create paid subscription using admin panel configuration - FIXED to get actual plan UUIDs
   static async createPaidSubscription(
     username: string,
     planIdOrName: string,  // Can be UUID or plan name
@@ -299,7 +290,7 @@ export class PanelUserCreationService {
     subscriptionId: string,
     notes?: string
   ): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Creating UNIFIED paid subscription:', { 
+    console.log('PANEL_USER_CREATION: Creating paid subscription:', { 
       username, planIdOrName, dataLimitGB, durationDays, subscriptionId
     });
     
@@ -330,7 +321,6 @@ export class PanelUserCreationService {
         console.log('PANEL_USER_CREATION: Resolved plan name to UUID:', { name: planIdOrName, uuid: actualPlanId });
       }
       
-      // Use UNIFIED creation approach
       return this.createUserFromPanel({
         planId: actualPlanId,
         username,
@@ -341,7 +331,7 @@ export class PanelUserCreationService {
         isFreeTriaL: false
       });
     } catch (error) {
-      console.error('PANEL_USER_CREATION: Error in UNIFIED createPaidSubscription:', error);
+      console.error('PANEL_USER_CREATION: Error in createPaidSubscription:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error in paid subscription creation'
