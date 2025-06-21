@@ -36,40 +36,79 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    addLog(detailedLogs, 'Test Initialization', 'info', 'Starting panel connection test');
+    addLog(detailedLogs, 'Request Parse', 'info', 'Starting panel connection test');
 
-    const { panelId, dynamicProxies, enabledProtocols } = await req.json();
+    const { panelId, dynamicProxies, enabledProtocols, createUser, userData } = await req.json();
     
-    addLog(detailedLogs, 'Request Parsing', 'info', 'Test parameters received', { 
+    addLog(detailedLogs, 'Request Parse', 'info', 'Request parameters received', { 
       panelId, 
       dynamicProxies, 
-      enabledProtocols 
+      enabledProtocols,
+      createUser,
+      hasUserData: !!userData
     });
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    addLog(detailedLogs, 'Database Query', 'info', `Fetching panel data for ID: ${panelId}`);
+    let panel;
+    
+    if (panelId) {
+      // Use specific panel
+      addLog(detailedLogs, 'Panel Selection', 'info', `Fetching specific panel: ${panelId}`);
+      
+      const { data: panelData, error: panelError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('id', panelId)
+        .single();
 
-    // Get panel information
-    const { data: panel, error: panelError } = await supabase
-      .from('panel_servers')
-      .select('*')
-      .eq('id', panelId)
-      .single();
+      if (panelError || !panelData) {
+        addLog(detailedLogs, 'Panel Selection', 'error', `Failed to fetch panel: ${panelError?.message}`);
+        throw new Error(`Panel not found: ${panelError?.message}`);
+      }
+      
+      panel = panelData;
+    } else {
+      // Auto-select panel based on user data panel type or default
+      const targetPanelType = userData?.panelType || 'marzban';
+      
+      addLog(detailedLogs, 'Panel Selection', 'info', `Auto-selecting panel of type: ${targetPanelType}`);
+      
+      const { data: panels, error: panelError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('type', targetPanelType)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
 
-    if (panelError || !panel) {
-      addLog(detailedLogs, 'Database Query', 'error', `Failed to fetch panel: ${panelError?.message}`);
-      throw new Error(`Panel not found: ${panelError?.message}`);
+      if (panelError) {
+        addLog(detailedLogs, 'Panel Selection', 'error', 'Database query failed', panelError);
+        throw new Error(`Database query failed: ${panelError.message}`);
+      }
+
+      if (!panels || panels.length === 0) {
+        addLog(detailedLogs, 'Panel Selection', 'error', `No ${targetPanelType} panels found`, { targetPanelType, totalPanels: 0 });
+        throw new Error(`No active ${targetPanelType} panels available`);
+      }
+
+      // Prefer healthy panels
+      let availablePanels = panels.filter(p => p.health_status === 'online');
+      if (availablePanels.length === 0) {
+        addLog(detailedLogs, 'Panel Selection', 'info', 'No healthy panels found, using any active panel');
+        availablePanels = panels;
+      }
+
+      panel = availablePanels[0];
     }
 
-    addLog(detailedLogs, 'Database Query', 'success', 'Panel data retrieved successfully', {
+    addLog(detailedLogs, 'Panel Selection', 'success', 'Panel selected', {
+      id: panel.id,
       name: panel.name,
-      type: panel.type,
       url: panel.panel_url,
-      username: panel.username,
-      enabledProtocols: enabledProtocols
+      type: panel.type,
+      health_status: panel.health_status
     });
 
     const testResult = {
@@ -88,6 +127,8 @@ serve(async (req) => {
     };
 
     // Test Authentication
+    let token: string;
+    
     if (panel.type === 'marzban') {
       addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzban authentication');
 
@@ -102,7 +143,7 @@ serve(async (req) => {
         }),
       });
 
-      addLog(detailedLogs, 'Authentication', 'info', `Auth request sent to ${panel.panel_url}/api/admin/token`, {
+      addLog(detailedLogs, 'Authentication', 'info', `Auth request sent`, {
         status: authResponse.status,
         statusText: authResponse.statusText,
         ok: authResponse.ok
@@ -110,17 +151,17 @@ serve(async (req) => {
 
       if (!authResponse.ok) {
         const errorText = await authResponse.text();
-        addLog(detailedLogs, 'Authentication', 'error', `Authentication failed: ${authResponse.status} ${authResponse.statusText}`, {
+        addLog(detailedLogs, 'Authentication', 'error', `Authentication failed: ${authResponse.status}`, {
           responseBody: errorText
         });
         throw new Error(`Authentication failed: ${authResponse.status}`);
       }
 
       const authData = await authResponse.json();
-      const token = authData.access_token;
+      token = authData.access_token;
 
       if (!token) {
-        addLog(detailedLogs, 'Authentication', 'error', 'No access token received from panel');
+        addLog(detailedLogs, 'Authentication', 'error', 'No access token received');
         throw new Error('No access token received');
       }
 
@@ -135,109 +176,118 @@ serve(async (req) => {
         tokenType: authData.token_type || 'bearer'
       };
 
-      // Test User Creation with fallback protocols
-      const testUsername = `test_${Date.now()}`;
-      const testExpire = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 24 hours from now
+      // Create User or Test User Creation
+      const isActualUserCreation = createUser && userData;
+      const targetUsername = isActualUserCreation ? userData.username : `test_${Date.now()}`;
+      const targetDataLimit = isActualUserCreation ? userData.dataLimitGB : 1;
+      const targetDuration = isActualUserCreation ? userData.durationDays : 1;
+      const testExpire = Math.floor(Date.now() / 1000) + (targetDuration * 24 * 60 * 60);
+      const targetNotes = isActualUserCreation ? userData.notes : 'Test user - will be deleted';
 
-      addLog(detailedLogs, 'User Creation', 'info', `Creating test user: ${testUsername}`);
+      addLog(detailedLogs, 'User Creation', 'info', `${isActualUserCreation ? 'Creating actual user' : 'Creating test user'}: ${targetUsername}`);
 
-      // Try creating user with minimal protocol setup first
-      const protocolsToTry = [
-        ['vless'], // Try VLESS only first
-        ['trojan'], // Then Trojan only
-        ['shadowsocks'], // Then Shadowsocks only
-        enabledProtocols || ['vless', 'vmess', 'trojan', 'shadowsocks'] // Finally try all enabled
-      ];
+      // Use enabled protocols from panel or provided ones
+      const protocolsToUse = enabledProtocols || panel.enabled_protocols || ['vless', 'vmess', 'trojan', 'shadowsocks'];
 
-      let userCreationSuccess = false;
-      let userData = null;
-      let lastError = null;
+      const userPayload = {
+        username: targetUsername,
+        data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
+        expire: testExpire,
+        proxies: protocolsToUse.reduce((acc: any, protocol: string) => {
+          acc[protocol] = {};
+          return acc;
+        }, {}),
+        note: targetNotes || `Created via bnets.co - ${isActualUserCreation ? 'Subscription' : 'Test'}`
+      };
 
-      for (const protocols of protocolsToTry) {
-        try {
-          const userPayload = {
-            username: testUsername,
-            data_limit: 1 * 1024 * 1024 * 1024, // 1GB in bytes
-            expire: testExpire,
-            proxies: protocols.reduce((acc, protocol) => {
-              acc[protocol] = {};
-              return acc;
-            }, {} as Record<string, {}>)
-          };
+      addLog(detailedLogs, 'User Creation', 'info', 'Creating user with payload', userPayload);
 
-          addLog(detailedLogs, 'User Creation', 'info', `Trying user creation with protocols: ${protocols.join(', ')}`, userPayload);
+      const createResponse = await fetch(`${panel.panel_url}/api/user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userPayload),
+      });
 
-          const createResponse = await fetch(`${panel.panel_url}/api/user`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(userPayload),
-          });
+      addLog(detailedLogs, 'User Creation', 'info', 'User creation response', {
+        status: createResponse.status,
+        statusText: createResponse.statusText,
+        ok: createResponse.ok
+      });
 
-          addLog(detailedLogs, 'User Creation', 'info', `User creation response for ${protocols.join(', ')}`, {
-            status: createResponse.status,
-            statusText: createResponse.statusText,
-            ok: createResponse.ok
-          });
-
-          if (createResponse.ok) {
-            userData = await createResponse.json();
-            addLog(detailedLogs, 'User Creation', 'success', `Test user created successfully with protocols: ${protocols.join(', ')}`, {
-              username: userData.username,
-              hasSubscriptionUrl: !!userData.subscription_url,
-              workingProtocols: protocols
-            });
-            userCreationSuccess = true;
-            break;
-          } else {
-            const errorBody = await createResponse.text();
-            lastError = errorBody;
-            addLog(detailedLogs, 'User Creation', 'info', `Failed with protocols ${protocols.join(', ')}: ${createResponse.status}`, {
-              status: createResponse.status,
-              statusText: createResponse.statusText,
-              errorBody: errorBody
-            });
-            // Continue to next protocol combination
-          }
-        } catch (error) {
-          lastError = error instanceof Error ? error.message : 'Unknown error';
-          addLog(detailedLogs, 'User Creation', 'info', `Error with protocols ${protocols.join(', ')}: ${lastError}`);
-          // Continue to next protocol combination
-        }
-      }
-
-      if (!userCreationSuccess) {
-        addLog(detailedLogs, 'User Creation', 'error', 'All protocol combinations failed', {
-          lastError: lastError
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        addLog(detailedLogs, 'User Creation', 'error', `User creation failed: ${createResponse.status}`, {
+          errorText: errorText
         });
-        throw new Error(`User creation failed with all protocol combinations. Last error: ${lastError}`);
+        throw new Error(`User creation failed: ${createResponse.status} - ${errorText}`);
       }
+
+      const userData = await createResponse.json();
+      
+      addLog(detailedLogs, 'User Creation', 'success', `User created successfully`, {
+        username: userData.username,
+        hasSubscriptionUrl: !!userData.subscription_url
+      });
 
       testResult.userCreation = {
         success: true,
         username: userData.username,
-        subscriptionUrl: userData.subscription_url
+        subscriptionUrl: userData.subscription_url,
+        expire: userData.expire,
+        dataLimit: userData.data_limit
       };
 
-      // Clean up - Delete test user
-      addLog(detailedLogs, 'Cleanup', 'info', `Deleting test user: ${testUsername}`);
+      // If this is a test (not actual user creation), clean up by deleting the test user
+      if (!isActualUserCreation) {
+        addLog(detailedLogs, 'Cleanup', 'info', `Deleting test user: ${targetUsername}`);
 
-      const deleteResponse = await fetch(`${panel.panel_url}/api/user/${testUsername}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (deleteResponse.ok) {
-        addLog(detailedLogs, 'Cleanup', 'success', 'Test user deleted successfully');
-      } else {
-        addLog(detailedLogs, 'Cleanup', 'error', 'Failed to delete test user (non-critical)', {
-          status: deleteResponse.status,
-          statusText: deleteResponse.statusText
+        const deleteResponse = await fetch(`${panel.panel_url}/api/user/${targetUsername}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
         });
+
+        if (deleteResponse.ok) {
+          addLog(detailedLogs, 'Cleanup', 'success', 'Test user deleted successfully');
+        } else {
+          addLog(detailedLogs, 'Cleanup', 'error', 'Failed to delete test user (non-critical)', {
+            status: deleteResponse.status,
+            statusText: deleteResponse.statusText
+          });
+        }
+      } else if (userData.subscriptionId) {
+        // Update subscription record for actual user creation
+        addLog(detailedLogs, 'Subscription Update', 'info', 'Updating subscription record');
+        
+        try {
+          const subscriptionUrl = userData.subscription_url || `${panel.panel_url}/sub/${userData.username}`;
+          const expireAt = userData.expire ? 
+            new Date(userData.expire * 1000).toISOString() : 
+            new Date(Date.now() + targetDuration * 24 * 60 * 60 * 1000).toISOString();
+
+          const { error: updateError } = await supabase
+            .from('subscriptions')
+            .update({
+              status: 'active',
+              subscription_url: subscriptionUrl,
+              marzban_user_created: true,
+              expire_at: expireAt,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', userData.subscriptionId);
+
+          if (updateError) {
+            addLog(detailedLogs, 'Subscription Update', 'error', 'Failed to update subscription record', updateError);
+          } else {
+            addLog(detailedLogs, 'Subscription Update', 'success', 'Subscription record updated successfully');
+          }
+        } catch (updateError) {
+          addLog(detailedLogs, 'Subscription Update', 'error', 'Exception during subscription update', updateError);
+        }
       }
 
       testResult.success = true;
@@ -245,7 +295,7 @@ serve(async (req) => {
 
     // Update panel health status
     const healthStatus = testResult.success ? 'online' : 'offline';
-    addLog(detailedLogs, 'Database Update', 'info', `Updating panel health status to: ${healthStatus}`);
+    addLog(detailedLogs, 'Health Update', 'info', `Updating panel health status to: ${healthStatus}`);
 
     const { error: updateError } = await supabase
       .from('panel_servers')
@@ -253,43 +303,18 @@ serve(async (req) => {
         health_status: healthStatus,
         last_health_check: new Date().toISOString()
       })
-      .eq('id', panelId);
+      .eq('id', panel.id);
 
     if (updateError) {
-      addLog(detailedLogs, 'Database Update', 'error', `Failed to update panel status: ${updateError.message}`);
+      addLog(detailedLogs, 'Health Update', 'error', `Failed to update panel status: ${updateError.message}`);
     } else {
-      addLog(detailedLogs, 'Database Update', 'success', 'Panel health status updated successfully');
-    }
-
-    // Save test log
-    addLog(detailedLogs, 'Test Log Save', 'info', 'Saving test results to database');
-
-    const { error: logError } = await supabase
-      .from('panel_test_logs')
-      .insert({
-        panel_id: panelId,
-        test_result: testResult.success,
-        response_time_ms: Date.now() - startTime,
-        test_details: {
-          authentication: testResult.authentication,
-          userCreation: testResult.userCreation,
-          enabledProtocols: enabledProtocols,
-          dynamicProxies: dynamicProxies,
-          detailedLogs: detailedLogs
-        },
-        error_message: testResult.success ? null : detailedLogs.filter(log => log.status === 'error').map(log => log.message).join('; ')
-      });
-
-    if (logError) {
-      addLog(detailedLogs, 'Test Log Save', 'error', `Failed to save test log: ${logError.message}`);
-    } else {
-      addLog(detailedLogs, 'Test Log Save', 'success', 'Test log saved successfully');
+      addLog(detailedLogs, 'Health Update', 'success', 'Panel health status updated successfully');
     }
 
     testResult.responseTime = Date.now() - startTime;
     testResult.detailedLogs = detailedLogs;
 
-    addLog(detailedLogs, 'Test Completion', 'success', 'Panel connection test completed', { success: testResult.success });
+    addLog(detailedLogs, 'Test Complete', 'success', 'Panel connection test completed', { success: testResult.success });
 
     return new Response(JSON.stringify(testResult), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

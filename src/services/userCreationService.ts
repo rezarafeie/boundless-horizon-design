@@ -30,8 +30,21 @@ export class UserCreationService {
     console.log('USER_CREATION_SERVICE: Creating user with request:', request);
     
     try {
-      const { data, error } = await supabase.functions.invoke('create-user-direct', {
-        body: request
+      // Use the same edge function pattern as the admin panel test
+      const { data, error } = await supabase.functions.invoke('test-panel-connection', {
+        body: {
+          panelId: null, // Let the function auto-select panel
+          createUser: true, // Flag to create actual user instead of test
+          userData: {
+            username: request.username,
+            dataLimitGB: request.dataLimitGB,
+            durationDays: request.durationDays,
+            notes: request.notes || '',
+            panelType: request.panelType,
+            subscriptionId: request.subscriptionId,
+            isFreeTriaL: request.isFreeTriaL
+          }
+        }
       });
 
       console.log('USER_CREATION_SERVICE: Edge function response:', { data, error });
@@ -51,8 +64,25 @@ export class UserCreationService {
         throw new Error(data.error || 'User creation service failed');
       }
 
-      console.log('USER_CREATION_SERVICE: User created successfully:', data.data);
-      return data;
+      // Transform test response to user creation response format
+      const userData = data.userCreation;
+      if (userData && userData.success) {
+        console.log('USER_CREATION_SERVICE: User created successfully:', userData);
+        return {
+          success: true,
+          data: {
+            username: userData.username,
+            subscription_url: userData.subscriptionUrl,
+            expire: userData.expire || Math.floor(Date.now() / 1000) + (request.durationDays * 24 * 60 * 60),
+            data_limit: request.dataLimitGB * 1073741824, // Convert GB to bytes
+            panel_type: data.panel.type,
+            panel_name: data.panel.name,
+            panel_id: data.panel.id
+          }
+        };
+      } else {
+        throw new Error(userData?.error || 'User creation failed');
+      }
     } catch (error) {
       console.error('USER_CREATION_SERVICE: Error:', error);
       
