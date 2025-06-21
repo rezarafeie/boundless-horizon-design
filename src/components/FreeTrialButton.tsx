@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Gift, Zap, Shield, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { UserCreationService } from '@/services/userCreationService';
 import FreeTrialResult from './FreeTrialResult';
 
 interface TrialPlan {
@@ -18,7 +18,7 @@ interface TrialPlan {
   description: string;
   descriptionEn: string;
   descriptionFa: string;
-  apiType: 'marzban' | 'marzneshin';
+  panelType: 'marzban' | 'marzneshin';
   icon: React.ComponentType<any>;
 }
 
@@ -47,7 +47,7 @@ const FreeTrialButton = () => {
       description: 'Lower speed, limited servers',
       descriptionEn: 'Lower speed, limited servers',
       descriptionFa: 'سرعت کمتر، سرورهای محدود',
-      apiType: 'marzban',
+      panelType: 'marzban',
       icon: Shield
     },
     {
@@ -58,7 +58,7 @@ const FreeTrialButton = () => {
       description: 'High performance, full server list',
       descriptionEn: 'High performance, full server list',
       descriptionFa: 'کارایی بالا، لیست کامل سرورها',
-      apiType: 'marzneshin',
+      panelType: 'marzneshin',
       icon: Zap
     }
   ];
@@ -85,102 +85,6 @@ const FreeTrialButton = () => {
     return `${prefix}${timestamp}_${random}`;
   };
 
-  // Get panel ID for the given API type
-  const getPanelIdForApiType = async (apiType: 'marzban' | 'marzneshin'): Promise<string> => {
-    console.log(`FREE TRIAL: Fetching panel ID for API type: ${apiType}`);
-    
-    const { data: panels, error } = await supabase
-      .from('panel_servers')
-      .select('id')
-      .eq('type', apiType)
-      .eq('is_active', true)
-      .eq('health_status', 'online')
-      .limit(1);
-
-    if (error) {
-      console.error('FREE TRIAL: Error fetching panel:', error);
-      throw new Error(`Failed to find active ${apiType} panel`);
-    }
-
-    if (!panels || panels.length === 0) {
-      throw new Error(`No active ${apiType} panel found. Please try again later.`);
-    }
-
-    console.log(`FREE TRIAL: Found panel ID: ${panels[0].id} for ${apiType}`);
-    return panels[0].id;
-  };
-
-  // Create trial user using edge functions with proper panel ID
-  const createTrialUser = async (plan: TrialPlan): Promise<TrialResult> => {
-    const username = generateTrialUsername();
-
-    try {
-      console.log(`Creating trial user via ${plan.apiType} edge function...`);
-      
-      // Get the appropriate panel ID for this API type
-      const panelId = await getPanelIdForApiType(plan.apiType);
-      
-      let result;
-      
-      if (plan.apiType === 'marzban') {
-        console.log('Using Marzban edge function with panel ID:', panelId);
-        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
-          body: {
-            username: username,
-            dataLimitGB: 1, // 1GB
-            durationDays: 1, // 1 day
-            notes: 'Free Trial - 1 Day / 1GB',
-            panelId: panelId
-          }
-        });
-        
-        if (error) {
-          console.error('Marzban edge function error:', error);
-          throw new Error(`Marzban service error: ${error.message}`);
-        }
-        
-        if (!data?.success) {
-          throw new Error(`Marzban user creation failed: ${data?.error}`);
-        }
-        
-        result = data.data;
-      } else {
-        console.log('Using Marzneshin edge function with panel ID:', panelId);
-        const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
-          body: {
-            username: username,
-            dataLimitGB: 1, // 1GB
-            durationDays: 1, // 1 day
-            notes: 'Free Trial - 1 Day / 1GB',
-            panelId: panelId
-          }
-        });
-        
-        if (error) {
-          console.error('Marzneshin edge function error:', error);
-          throw new Error(`Marzneshin service error: ${error.message}`);
-        }
-        
-        if (!data?.success) {
-          throw new Error(`Marzneshin user creation failed: ${data?.error}`);
-        }
-        
-        result = data.data;
-      }
-
-      return {
-        username: result.username,
-        subscription_url: result.subscription_url,
-        expire: result.expire || Math.floor(Date.now() / 1000) + (24 * 60 * 60),
-        data_limit: result.data_limit || 1073741824, // 1GB
-        plan: plan
-      };
-    } catch (error) {
-      console.error(`${plan.apiType} trial creation error:`, error);
-      throw error;
-    }
-  };
-
   // Handle plan selection and trial creation
   const handlePlanSelect = async (plan: TrialPlan) => {
     if (checkTrialUsage()) {
@@ -197,12 +101,27 @@ const FreeTrialButton = () => {
     setIsCreatingTrial(true);
 
     try {
-      const result = await createTrialUser(plan);
+      const username = generateTrialUsername();
+      
+      console.log('FREE_TRIAL: Creating trial with new service:', { username, planId: plan.id });
+      
+      const result = await UserCreationService.createFreeTrial(username, plan.id, 1, 1);
+
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Failed to create free trial');
+      }
 
       // Mark trial as used today
       localStorage.setItem('lastTrialDate', new Date().toDateString());
       setHasUsedTrial(true);
-      setTrialResult(result);
+      
+      setTrialResult({
+        username: result.data.username,
+        subscription_url: result.data.subscription_url,
+        expire: result.data.expire,
+        data_limit: result.data.data_limit,
+        plan: plan
+      });
       
       toast({
         title: language === 'fa' ? 'موفق' : 'Success',
@@ -212,7 +131,7 @@ const FreeTrialButton = () => {
       });
 
     } catch (error) {
-      console.error('Trial creation error:', error);
+      console.error('FREE_TRIAL: Creation failed:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: error instanceof Error ? error.message : (
@@ -238,7 +157,7 @@ const FreeTrialButton = () => {
       username: trialResult.username,
       subscription_url: trialResult.subscription_url,
       planName: language === 'fa' ? trialResult.plan.nameFa : trialResult.plan.nameEn,
-      apiType: trialResult.plan.apiType,
+      apiType: trialResult.plan.panelType,
       dataLimit: 1, // 1GB for free trial
       duration: 1 // 1 day for free trial
     };
