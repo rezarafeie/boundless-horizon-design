@@ -176,31 +176,106 @@ serve(async (req) => {
         tokenType: authData.token_type || 'bearer'
       };
 
+      // Fetch template user configuration from 'reza'
+      let templateConfig = null;
+      
+      addLog(detailedLogs, 'Template Fetch', 'info', 'Fetching template user configuration from "reza"');
+      
+      const templateResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      addLog(detailedLogs, 'Template Fetch', 'info', 'Template user fetch response', {
+        status: templateResponse.status,
+        statusText: templateResponse.statusText,
+        ok: templateResponse.ok
+      });
+
+      if (templateResponse.ok) {
+        templateConfig = await templateResponse.json();
+        addLog(detailedLogs, 'Template Fetch', 'success', 'Template user configuration fetched successfully', {
+          username: templateConfig.username,
+          hasProxies: !!templateConfig.proxies,
+          proxiesCount: templateConfig.proxies ? Object.keys(templateConfig.proxies).length : 0,
+          hasExcludedInbounds: !!templateConfig.excluded_inbounds,
+          originalNote: templateConfig.note
+        });
+      } else {
+        const errorText = await templateResponse.text();
+        addLog(detailedLogs, 'Template Fetch', 'error', 'Failed to fetch template user, will use fallback config', {
+          status: templateResponse.status,
+          errorText: errorText
+        });
+      }
+
       // Create User or Test User Creation
       const isActualUserCreation = createUser && userData;
       const targetUsername = isActualUserCreation ? userData.username : `test_${Date.now()}`;
       const targetDataLimit = isActualUserCreation ? userData.dataLimitGB : 1;
       const targetDuration = isActualUserCreation ? userData.durationDays : 1;
       const testExpire = Math.floor(Date.now() / 1000) + (targetDuration * 24 * 60 * 60);
-      const targetNotes = isActualUserCreation ? userData.notes : 'Test user - will be deleted';
+      const targetNotes = isActualUserCreation ? 
+        'Created via bnets.co - Subscription' : 
+        'Test user - will be deleted';
 
       addLog(detailedLogs, 'User Creation', 'info', `${isActualUserCreation ? 'Creating actual user' : 'Creating test user'}: ${targetUsername}`);
 
-      // Use enabled protocols from panel or provided ones
-      const protocolsToUse = enabledProtocols || panel.enabled_protocols || ['vless', 'vmess', 'trojan', 'shadowsocks'];
+      // Build user payload using template configuration or fallback
+      let userPayload;
+      
+      if (templateConfig && templateConfig.proxies) {
+        // Use template configuration
+        addLog(detailedLogs, 'User Creation', 'info', 'Using template configuration from "reza"');
+        
+        userPayload = {
+          username: targetUsername,
+          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
+          expire: testExpire,
+          proxies: templateConfig.proxies, // Use exact proxies from template
+          note: targetNotes
+        };
 
-      const userPayload = {
-        username: targetUsername,
-        data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
-        expire: testExpire,
-        proxies: protocolsToUse.reduce((acc: any, protocol: string) => {
-          acc[protocol] = {};
-          return acc;
-        }, {}),
-        note: targetNotes || `Created via bnets.co - ${isActualUserCreation ? 'Subscription' : 'Test'}`
-      };
+        // Include excluded_inbounds if present in template
+        if (templateConfig.excluded_inbounds) {
+          userPayload.excluded_inbounds = templateConfig.excluded_inbounds;
+        }
 
-      addLog(detailedLogs, 'User Creation', 'info', 'Creating user with payload', userPayload);
+        // Include any other template fields that might be important
+        if (templateConfig.inbounds) {
+          userPayload.inbounds = templateConfig.inbounds;
+        }
+
+      } else {
+        // Fallback to original logic if template fetch failed
+        addLog(detailedLogs, 'User Creation', 'info', 'Using fallback configuration (template not available)');
+        
+        const protocolsToUse = enabledProtocols || panel.enabled_protocols || ['vless', 'vmess', 'trojan', 'shadowsocks'];
+        
+        userPayload = {
+          username: targetUsername,
+          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
+          expire: testExpire,
+          proxies: protocolsToUse.reduce((acc: any, protocol: string) => {
+            acc[protocol] = {};
+            return acc;
+          }, {}),
+          note: targetNotes
+        };
+      }
+
+      addLog(detailedLogs, 'User Creation', 'info', 'Creating user with payload', {
+        username: userPayload.username,
+        dataLimit: userPayload.data_limit,
+        expire: userPayload.expire,
+        proxiesCount: Object.keys(userPayload.proxies || {}).length,
+        proxiesTypes: Object.keys(userPayload.proxies || {}),
+        hasExcludedInbounds: !!userPayload.excluded_inbounds,
+        note: userPayload.note
+      });
 
       const createResponse = await fetch(`${panel.panel_url}/api/user`, {
         method: 'POST',
@@ -225,19 +300,19 @@ serve(async (req) => {
         throw new Error(`User creation failed: ${createResponse.status} - ${errorText}`);
       }
 
-      const userData = await createResponse.json();
+      const createdUserData = await createResponse.json();
       
       addLog(detailedLogs, 'User Creation', 'success', `User created successfully`, {
-        username: userData.username,
-        hasSubscriptionUrl: !!userData.subscription_url
+        username: createdUserData.username,
+        hasSubscriptionUrl: !!createdUserData.subscription_url
       });
 
       testResult.userCreation = {
         success: true,
-        username: userData.username,
-        subscriptionUrl: userData.subscription_url,
-        expire: userData.expire,
-        dataLimit: userData.data_limit
+        username: createdUserData.username,
+        subscriptionUrl: createdUserData.subscription_url,
+        expire: createdUserData.expire,
+        dataLimit: createdUserData.data_limit
       };
 
       // If this is a test (not actual user creation), clean up by deleting the test user
@@ -264,9 +339,9 @@ serve(async (req) => {
         addLog(detailedLogs, 'Subscription Update', 'info', 'Updating subscription record');
         
         try {
-          const subscriptionUrl = userData.subscription_url || `${panel.panel_url}/sub/${userData.username}`;
-          const expireAt = userData.expire ? 
-            new Date(userData.expire * 1000).toISOString() : 
+          const subscriptionUrl = createdUserData.subscription_url || `${panel.panel_url}/sub/${createdUserData.username}`;
+          const expireAt = createdUserData.expire ? 
+            new Date(createdUserData.expire * 1000).toISOString() : 
             new Date(Date.now() + targetDuration * 24 * 60 * 60 * 1000).toISOString();
 
           const { error: updateError } = await supabase
