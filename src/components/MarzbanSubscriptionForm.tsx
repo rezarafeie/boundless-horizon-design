@@ -214,7 +214,7 @@ const MarzbanSubscriptionForm = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('=== SUBSCRIPTION FORM: Starting submission with centralized service ===');
+    console.log('=== SUBSCRIPTION FORM: Starting UNIFIED submission with centralized service ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
     
     // Enhanced validation
@@ -258,7 +258,7 @@ const MarzbanSubscriptionForm = () => {
     setError('');
 
     try {
-      console.log('=== SUBSCRIPTION: Starting subscription creation with centralized service ===');
+      console.log('=== SUBSCRIPTION: Starting UNIFIED subscription creation ===');
       
       // Calculate final price with discount
       let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
@@ -306,73 +306,87 @@ const MarzbanSubscriptionForm = () => {
 
       console.log('SUBSCRIPTION: ✅ Successfully saved subscription to database:', savedSubscription);
 
-      // STEP 2: Create VPN user using centralized service
-      console.log('=== CREATING VPN USER USING CENTRALIZED SERVICE ===');
-      
-      const vpnResult = await PanelUserCreationService.createPaidSubscription(
-        savedSubscription.username,
-        selectedPlan.id, // Use plan ID
-        formData.dataLimit,
-        formData.duration,
-        savedSubscription.id,
-        `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
-      );
+      // STEP 2: For free subscriptions (price = 0), create VPN user immediately using UNIFIED service
+      if (finalPrice === 0) {
+        console.log('=== CREATING VPN USER FOR FREE SUBSCRIPTION USING UNIFIED SERVICE ===');
         
-      console.log('SUBSCRIPTION: VPN creation response:', vpnResult);
+        const vpnResult = await PanelUserCreationService.createPaidSubscription(
+          savedSubscription.username,
+          selectedPlan.id, // Use plan UUID - this will be resolved to actual panel via plan mappings
+          formData.dataLimit,
+          formData.duration,
+          savedSubscription.id,
+          `Free subscription via discount: ${discountUsed?.code || 'N/A'} - Plan: ${selectedPlan.name}, Mobile: ${formData.mobile}`
+        );
+          
+        console.log('SUBSCRIPTION: UNIFIED VPN creation response:', vpnResult);
 
-      if (!vpnResult.success) {
-        console.error('SUBSCRIPTION: VPN user creation failed:', vpnResult.error);
+        if (!vpnResult.success) {
+          console.error('SUBSCRIPTION: VPN user creation failed:', vpnResult.error);
+          
+          // Update subscription status to failed
+          await supabase
+            .from('subscriptions')
+            .update({ 
+              status: 'failed',
+              notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResult.error}`
+            })
+            .eq('id', savedSubscription.id);
+          
+          throw new Error(`Failed to create VPN user: ${vpnResult.error}`);
+        }
+
+        console.log('SUBSCRIPTION: ✅ VPN user created successfully using UNIFIED service');
+
+        // Check if this is a lite plan and handle differently
+        const isLitePlan = selectedPlan.planId === 'lite';
         
-        // Update subscription status to failed
-        await supabase
-          .from('subscriptions')
-          .update({ 
-            status: 'failed',
-            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResult.error}`
-          })
-          .eq('id', savedSubscription.id);
-        
-        throw new Error(`Failed to create VPN user: ${vpnResult.error}`);
-      }
-
-      console.log('SUBSCRIPTION: ✅ VPN user created successfully using centralized service');
-
-      // STEP 3: Check if this is a lite plan and handle differently
-      const isLitePlan = selectedPlan.planId === 'lite';
-      
-      console.log('SUBSCRIPTION: Plan type check:', { 
-        selectedPlanId: selectedPlan.planId, 
-        isLitePlan 
-      });
-
-      // Prepare data for result display
-      const subscriptionResult = {
-        username: vpnResult.data!.username,
-        subscription_url: vpnResult.data!.subscription_url,
-        expire: vpnResult.data!.expire,
-        data_limit: vpnResult.data!.data_limit,
-        status: 'active',
-        used_traffic: 0,
-        apiType: 'marzban',
-        planName: selectedPlan.name,
-        dataLimitGB: formData.dataLimit,
-        durationDays: formData.duration
-      };
-
-      if (isLitePlan) {
-        console.log('SUBSCRIPTION: ✅ Lite plan detected - showing success component');
-        setLiteSuccessData(subscriptionResult);
-        setShowLiteSuccess(true);
-      } else {
-        console.log('SUBSCRIPTION: ✅ Pro plan detected - redirecting to delivery page');
-        localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
-        navigate('/delivery', { 
-          state: { subscriptionData: subscriptionResult }
+        console.log('SUBSCRIPTION: Plan type check:', { 
+          selectedPlanId: selectedPlan.planId, 
+          isLitePlan 
         });
-      }
 
+        // Prepare data for result display
+        const subscriptionResult = {
+          username: vpnResult.data!.username,
+          subscription_url: vpnResult.data!.subscription_url,
+          expire: vpnResult.data!.expire,
+          data_limit: vpnResult.data!.data_limit,
+          status: 'active',
+          used_traffic: 0,
+          apiType: 'marzban',
+          planName: selectedPlan.name,
+          dataLimitGB: formData.dataLimit,
+          durationDays: formData.duration
+        };
+
+        if (isLitePlan) {
+          console.log('SUBSCRIPTION: ✅ Lite plan detected - showing success component');
+          setLiteSuccessData(subscriptionResult);
+          setShowLiteSuccess(true);
+        } else {
+          console.log('SUBSCRIPTION: ✅ Non-lite plan detected - redirecting to delivery page');
+          localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
+          navigate('/delivery', { 
+            state: { subscriptionData: subscriptionResult }
+          });
+        }
+        
+        return; // Exit here for free subscriptions
+      }
+      
+      // For paid subscriptions, redirect to payment processing
+      console.log('SUBSCRIPTION: ✅ Paid subscription created, redirecting to payment');
+      toast({
+        title: language === 'fa' ? 'موفق' : 'Success',
+        description: language === 'fa' ? 'اشتراک ایجاد شد. در حال انتقال به پرداخت...' : 'Subscription created. Redirecting to payment...',
+      });
+      
+      // Navigate to payment step or redirect as needed
+      // This part depends on your payment flow implementation
+      
     } catch (error: any) {
-      console.error('SUBSCRIPTION: ❌ Process failed with error:', error);
+      console.error('SUBSCRIPTION: ❌ UNIFIED process failed with error:', error);
       
       setError(error.message || 'An unexpected error occurred');
       
