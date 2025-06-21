@@ -65,13 +65,15 @@ export const PanelsManagement = () => {
         return;
       }
 
-      // Cast the data to match our Panel interface
+      // Cast the data to match our Panel interface with proper type casting
       const typedPanels: Panel[] = (data || []).map(panel => ({
         ...panel,
         type: panel.type as 'marzban' | 'marzneshin',
         health_status: panel.health_status as 'online' | 'offline' | 'unknown',
         default_inbounds: Array.isArray(panel.default_inbounds) ? panel.default_inbounds : [],
-        enabled_protocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks'],
+        enabled_protocols: Array.isArray(panel.enabled_protocols) 
+          ? panel.enabled_protocols.filter((p): p is string => typeof p === 'string')
+          : ['vless', 'vmess', 'trojan', 'shadowsocks'],
         panel_config_data: panel.panel_config_data || {}
       }));
 

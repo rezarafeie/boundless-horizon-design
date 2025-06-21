@@ -57,9 +57,10 @@ interface TestResult {
 interface PanelTestConnectionProps {
   panel: Panel;
   onTestComplete?: (result: TestResult) => void;
+  disabled?: boolean;
 }
 
-export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnectionProps) => {
+export const PanelTestConnection = ({ panel, onTestComplete, disabled = false }: PanelTestConnectionProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentTestResult, setCurrentTestResult] = useState<TestResult | null>(null);
 
@@ -131,7 +132,7 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
       {/* Test Controls */}
       <Button 
         onClick={testConnection} 
-        disabled={isLoading}
+        disabled={isLoading || disabled}
         className="w-full"
       >
         {isLoading ? (
