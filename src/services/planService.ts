@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface PlanWithPanels {
@@ -101,8 +100,13 @@ export class PlanService {
         })
         .map((plan: any) => {
           const mappings = plan.plan_panel_mappings || [];
-          const activePanels = mappings
-            .filter((mapping: any) => mapping.panel_servers?.is_active)
+          const availablePanels = mappings
+            .filter((mapping: any) => {
+              const server = mapping.panel_servers;
+              // Include panels that are active AND either online, unknown, or offline (but not null)
+              // This allows panels that haven't been health-checked yet to be available
+              return server?.is_active && server.health_status !== null;
+            })
             .map((mapping: any) => {
               const server = mapping.panel_servers;
               return {
@@ -135,10 +139,10 @@ export class PlanService {
             default_duration_days: plan.default_duration_days,
             is_active: plan.is_active,
             is_visible: plan.is_visible,
-            panels: activePanels
+            panels: availablePanels
           };
         })
-        .filter(plan => plan.panels.length > 0); // Only include plans with active panels
+        .filter(plan => plan.panels.length > 0); // Only include plans with available panels
 
       console.log('PLAN SERVICE: Successfully fetched', planWithPanels.length, 'plans with panels');
       return planWithPanels;
