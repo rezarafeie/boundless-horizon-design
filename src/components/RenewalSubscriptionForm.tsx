@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import PlanSelector from './PlanSelector';
 import DiscountField from './DiscountField';
 import { Search, RefreshCw, Calendar, Database, CheckCircle, CreditCard, Loader } from 'lucide-react';
-import { DiscountCode } from '@/types/subscription';
+import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
 import { useToast } from '@/hooks/use-toast';
 import { useSubscriptionData } from '@/hooks/useSubscriptionData';
 
@@ -22,7 +22,7 @@ const RenewalSubscriptionForm = () => {
   
   const [searchMobile, setSearchMobile] = useState('');
   const [userSubscriptions, setUserSubscriptions] = useState<any[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [dataLimit, setDataLimit] = useState(10);
   const [duration, setDuration] = useState(30);
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
@@ -59,11 +59,8 @@ const RenewalSubscriptionForm = () => {
           variant: 'destructive'
         });
       } else {
-        // Auto-select a plan based on most recent subscription
-        const latestSubscription = subscriptions[0];
-        setSelectedPlan('pro'); // Set as string
-        
         // Set defaults based on existing subscription
+        const latestSubscription = subscriptions[0];
         setDataLimit(latestSubscription.data_limit_gb || 10);
         setDuration(latestSubscription.duration_days || 30);
       }
@@ -79,10 +76,16 @@ const RenewalSubscriptionForm = () => {
     }
   };
 
+  const handlePlanSelect = (plan: SubscriptionPlan) => {
+    console.log('RenewalForm - Plan selected:', plan);
+    setSelectedPlan(plan);
+  };
+
   const calculatePrice = () => {
     if (!selectedPlan) return 0;
-    // For now, use a basic calculation - this should be enhanced with actual plan pricing
-    const basePrice = dataLimit * 800; // Default price per GB
+    
+    // Use the plan's price per GB - prioritize new format
+    const basePrice = (selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800) * dataLimit;
     
     if (appliedDiscount) {
       const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
@@ -94,7 +97,7 @@ const RenewalSubscriptionForm = () => {
 
   const calculateDiscount = () => {
     if (!selectedPlan || !appliedDiscount) return 0;
-    const basePrice = dataLimit * 800; // Default price per GB
+    const basePrice = (selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800) * dataLimit;
     return (basePrice * appliedDiscount.percentage) / 100;
   };
 
@@ -438,8 +441,8 @@ const RenewalSubscriptionForm = () => {
 
                 {/* Plan Selection */}
                 <PlanSelector
-                  selectedPlan={selectedPlan}
-                  onPlanSelect={setSelectedPlan}
+                  selectedPlan={selectedPlan?.id || selectedPlan?.plan_id || ''}
+                  onPlanSelect={handlePlanSelect}
                   dataLimit={dataLimit}
                 />
 
@@ -460,15 +463,15 @@ const RenewalSubscriptionForm = () => {
                           </h4>
                           <p className="text-sm text-blue-600 dark:text-blue-400">
                             {language === 'fa' ? 
-                              `${dataLimit} گیگابایت × ۸۰۰ تومان` : 
-                              `${dataLimit} GB × 800 Toman`
+                              `${dataLimit} گیگابایت × ${(selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800).toLocaleString()} تومان` : 
+                              `${dataLimit} GB × ${(selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800).toLocaleString()} Toman`
                             }
                           </p>
                         </div>
                         <div className="text-right">
                           {appliedDiscount && (
                             <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
-                              {(dataLimit * 800).toLocaleString()}
+                              {(dataLimit * (selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800)).toLocaleString()}
                               {language === 'fa' ? ' تومان' : ' Toman'}
                             </div>
                           )}
