@@ -1,15 +1,17 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Gift } from 'lucide-react';
 import FreeTrialResult from './FreeTrialResult';
+import { PlanService, PlanWithPanels } from '@/services/planService';
 
 interface FreeTrialDialogProps {
   children: React.ReactNode;
@@ -20,11 +22,48 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [availablePlans, setAvailablePlans] = useState<PlanWithPanels[]>([]);
   const [formData, setFormData] = useState({
     mobile: '',
-    reason: ''
+    reason: '',
+    selectedPlanId: ''
   });
   const [result, setResult] = useState<any>(null);
+
+  // Load available plans when dialog opens
+  useEffect(() => {
+    if (open) {
+      loadAvailablePlans();
+    }
+  }, [open]);
+
+  const loadAvailablePlans = async () => {
+    try {
+      console.log('FREE TRIAL: Loading available plans from admin configuration');
+      const plans = await PlanService.getAvailablePlans();
+      console.log('FREE TRIAL: Available plans:', plans.length);
+      setAvailablePlans(plans);
+      
+      if (plans.length === 0) {
+        toast({
+          title: language === 'fa' ? 'هیچ پلنی موجود نیست' : 'No Plans Available',
+          description: language === 'fa' ? 
+            'هیچ پلن فعالی در سیستم یافت نشد' : 
+            'No active plans found in the system',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('FREE TRIAL: Failed to load plans:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'خطا در بارگذاری پلن‌های موجود' : 
+          'Failed to load available plans',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,40 +77,35 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
       return;
     }
 
+    if (!formData.selectedPlanId) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'لطفاً یک پلن انتخاب کنید' : 'Please select a plan',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       console.log('=== FREE TRIAL: Starting free trial creation ===');
       
+      // Get selected plan
+      const selectedPlan = availablePlans.find(p => p.id === formData.selectedPlanId);
+      if (!selectedPlan) {
+        throw new Error('Selected plan not found');
+      }
+
+      console.log('FREE TRIAL: Using plan:', {
+        name: selectedPlan.name_en,
+        apiType: PlanService.getApiType(selectedPlan),
+        panelsCount: selectedPlan.panels.length
+      });
+
       // Generate unique username for free trial
       const username = `trial_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       
-      // Always use Lite plan for free trials (hardcoded to Marzban)
-      const { data: litePlan, error: planError } = await supabase
-        .from('subscription_plans')
-        .select('*')
-        .eq('plan_id', 'lite')
-        .eq('is_active', true)
-        .eq('is_visible', true)
-        .single();
-
-      if (planError || !litePlan) {
-        console.error('FREE TRIAL: Failed to get Lite plan:', planError);
-        throw new Error('Lite plan not available for free trial');
-      }
-
-      console.log('FREE TRIAL: Using Lite plan for free trial:', {
-        id: litePlan.plan_id,
-        name: litePlan.name_en,
-        api_type: litePlan.api_type
-      });
-
-      // Verify it's Marzban API type
-      if (litePlan.api_type !== 'marzban') {
-        console.error('FREE TRIAL: Lite plan is not configured for Marzban');
-        throw new Error('Lite plan must use Marzban API for free trials');
-      }
-
       // Create subscription record first
       const subscriptionData = {
         mobile: formData.mobile,
@@ -80,7 +114,7 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
         price_toman: 0, // Free trial
         status: 'pending',
         username: username,
-        notes: `Free trial - Lite plan - Reason: ${formData.reason || 'N/A'}`,
+        notes: `Free trial - ${selectedPlan.name_en} - Reason: ${formData.reason || 'N/A'}`,
         marzban_user_created: false
       };
 
@@ -99,42 +133,25 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
 
       console.log('FREE TRIAL: Subscription saved:', subscription);
 
-      // Create VPN user using Marzban edge function (hardcoded for free trials)
-      console.log('FREE TRIAL: Creating VPN user using Marzban API');
+      // Create VPN user using the plan's configuration
+      console.log('FREE TRIAL: Creating VPN user using plan configuration');
       
-      const vpnUserRequest = {
+      const vpnUserData = await PlanService.createSubscription(selectedPlan.id, {
         username: username,
+        mobile: formData.mobile,
         dataLimitGB: 2,
         durationDays: 7,
         notes: `Free trial - Mobile: ${formData.mobile}, Reason: ${formData.reason || 'N/A'}`
-      };
-      
-      console.log('FREE TRIAL: Marzban request payload:', vpnUserRequest);
-      
-      const { data: vpnResponse, error: vpnError } = await supabase.functions.invoke('marzban-create-user', {
-        body: vpnUserRequest
       });
-      
-      if (vpnError) {
-        console.error('FREE TRIAL: Marzban VPN creation failed:', vpnError);
-        throw new Error(`Marzban service error: ${vpnError.message}`);
-      }
 
-      console.log('FREE TRIAL: VPN response from Marzban:', vpnResponse);
-
-      if (!vpnResponse?.success) {
-        console.error('FREE TRIAL: VPN user creation failed:', vpnResponse?.error);
-        throw new Error(`Failed to create VPN user: ${vpnResponse?.error || 'Unknown error'}`);
-      }
-
-      console.log('FREE TRIAL: VPN user created successfully:', vpnResponse.data);
+      console.log('FREE TRIAL: VPN user created successfully:', vpnUserData);
 
       // Update subscription with VPN details
       const updateData = {
-        subscription_url: vpnResponse.data.subscription_url,
+        subscription_url: vpnUserData.subscription_url,
         status: 'active',
         marzban_user_created: true,
-        expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire * 1000).toISOString() : null
+        expire_at: vpnUserData.expire ? new Date(vpnUserData.expire * 1000).toISOString() : null
       };
 
       const { error: updateError } = await supabase
@@ -151,10 +168,10 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
 
       // Set result for display
       const freeTrialResult = {
-        username: vpnResponse.data.username,
-        subscription_url: vpnResponse.data.subscription_url,
-        planName: language === 'fa' ? litePlan.name_fa : litePlan.name_en,
-        apiType: 'marzban',
+        username: vpnUserData.username,
+        subscription_url: vpnUserData.subscription_url,
+        planName: language === 'fa' ? selectedPlan.name_fa : selectedPlan.name_en,
+        apiType: PlanService.getApiType(selectedPlan),
         dataLimit: 2,
         duration: 7
       };
@@ -184,7 +201,7 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
   };
 
   const resetForm = () => {
-    setFormData({ mobile: '', reason: '' });
+    setFormData({ mobile: '', reason: '', selectedPlanId: '' });
     setResult(null);
     setOpen(false);
   };
@@ -227,6 +244,34 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
                 required
               />
             </div>
+
+            <div>
+              <Label htmlFor="plan">
+                {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
+              </Label>
+              <Select 
+                value={formData.selectedPlanId} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, selectedPlanId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={language === 'fa' ? 'پلن مورد نظر را انتخاب کنید' : 'Choose your plan'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availablePlans.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {language === 'fa' ? plan.name_fa : plan.name_en}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {plan.panels.length} panel(s) • {PlanService.getApiType(plan)}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             
             <div>
               <Label htmlFor="reason">
@@ -247,8 +292,8 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
             <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
               <p className="text-sm text-blue-700 dark:text-blue-300">
                 {language === 'fa' ? 
-                  '🎁 اشتراک رایگان: 2 گیگابایت حجم برای 7 روز (پلن لایت)' : 
-                  '🎁 Free Trial: 2GB data for 7 days (Lite Plan)'
+                  '🎁 اشتراک رایگان: 2 گیگابایت حجم برای 7 روز' : 
+                  '🎁 Free Trial: 2GB data for 7 days'
                 }
               </p>
             </div>
@@ -256,7 +301,7 @@ const FreeTrialDialog = ({ children }: FreeTrialDialogProps) => {
             <Button 
               type="submit" 
               className="w-full" 
-              disabled={isLoading}
+              disabled={isLoading || availablePlans.length === 0}
             >
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {language === 'fa' ? 'درخواست اشتراک رایگان' : 'Request Free Trial'}

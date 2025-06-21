@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { PlanService } from '@/services/planService';
 
 interface SubscriptionData {
   username: string;
@@ -26,16 +27,27 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
     setIsSubmitting(true);
     
     try {
-      console.log('Submitting subscription data:', data);
-      console.log('Selected plan API type:', data.selectedPlan?.apiType);
+      console.log('SUBSCRIPTION SUBMIT: Starting submission with plan:', data.selectedPlan?.name);
       
       // Validate that we have the required plan data
-      if (!data.selectedPlan?.apiType) {
-        throw new Error('Plan API type is missing. Please select a valid plan.');
+      if (!data.selectedPlan?.id) {
+        throw new Error('Plan ID is missing. Please select a valid plan.');
       }
       
+      // Get plan configuration from the service
+      const planConfig = await PlanService.getPlanById(data.selectedPlan.id);
+      if (!planConfig) {
+        throw new Error('Selected plan is not available or inactive.');
+      }
+
+      console.log('SUBSCRIPTION SUBMIT: Using plan configuration:', {
+        planName: planConfig.name_en,
+        apiType: PlanService.getApiType(planConfig),
+        panelsCount: planConfig.panels.length
+      });
+      
       // Calculate price
-      const basePrice = data.dataLimit * (data.selectedPlan?.pricePerGB || 800);
+      const basePrice = data.dataLimit * planConfig.price_per_gb;
       const discountAmount = data.appliedDiscount ? 
         (basePrice * data.appliedDiscount.percentage) / 100 : 0;
       const finalPrice = Math.max(0, basePrice - discountAmount);
@@ -55,10 +67,10 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         price_toman: finalPrice,
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
-        notes: `Plan: ${data.selectedPlan.name}, API: ${data.selectedPlan.apiType}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        notes: `Plan: ${planConfig.name_en}, API: ${PlanService.getApiType(planConfig)}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
-      console.log('Inserting subscription to database:', subscriptionData);
+      console.log('SUBSCRIPTION SUBMIT: Inserting subscription to database:', subscriptionData);
       
       const { data: subscription, error: insertError } = await supabase
         .from('subscriptions')
@@ -67,71 +79,26 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         .single();
       
       if (insertError) {
-        console.error('Database insert error:', insertError);
+        console.error('SUBSCRIPTION SUBMIT: Database insert error:', insertError);
         throw new Error(`Failed to save subscription: ${insertError.message}`);
       }
       
-      console.log('Subscription inserted successfully:', subscription);
+      console.log('SUBSCRIPTION SUBMIT: Subscription inserted successfully:', subscription);
       
       // If price is 0, create VPN user immediately
       if (finalPrice === 0) {
         try {
-          console.log(`Creating VPN user for free subscription using ${data.selectedPlan.apiType} edge function...`);
+          console.log('SUBSCRIPTION SUBMIT: Creating VPN user for free subscription using plan service...');
           
-          let vpnResult;
+          const vpnResult = await PlanService.createSubscription(planConfig.id, {
+            username: uniqueUsername,
+            mobile: data.mobile,
+            dataLimitGB: data.dataLimit,
+            durationDays: data.duration,
+            notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig.name_en}`
+          });
           
-          // Use edge functions consistently for both APIs
-          if (data.selectedPlan.apiType === 'marzban') {
-            console.log('Using Marzban edge function');
-            const { data: edgeResult, error: vpnError } = await supabase.functions.invoke(
-              'marzban-create-user',
-              {
-                body: {
-                  username: uniqueUsername,
-                  dataLimitGB: data.dataLimit,
-                  durationDays: data.duration,
-                  notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
-                }
-              }
-            );
-            
-            if (vpnError) {
-              console.error('Marzban edge function error:', vpnError);
-              throw new Error(`VPN user creation failed: ${vpnError.message}`);
-            }
-            
-            if (!edgeResult.success) {
-              throw new Error(`VPN user creation failed: ${edgeResult.error}`);
-            }
-            
-            vpnResult = edgeResult.data;
-          } else {
-            console.log('Using Marzneshin edge function');
-            const { data: edgeResult, error: vpnError } = await supabase.functions.invoke(
-              'marzneshin-create-user',
-              {
-                body: {
-                  username: uniqueUsername,
-                  dataLimitGB: data.dataLimit,
-                  durationDays: data.duration,
-                  notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name}`
-                }
-              }
-            );
-            
-            if (vpnError) {
-              console.error('Marzneshin edge function error:', vpnError);
-              throw new Error(`VPN user creation failed: ${vpnError.message}`);
-            }
-            
-            if (!edgeResult.success) {
-              throw new Error(`VPN user creation failed: ${edgeResult.error}`);
-            }
-            
-            vpnResult = edgeResult.data;
-          }
-          
-          console.log(`VPN creation response using ${data.selectedPlan.apiType}:`, vpnResult);
+          console.log('SUBSCRIPTION SUBMIT: VPN creation response:', vpnResult);
           
           if (vpnResult?.subscription_url) {
             // Update subscription with VPN details
@@ -146,12 +113,12 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
               .eq('id', subscription.id);
             
             if (updateError) {
-              console.error('Failed to update subscription with VPN details:', updateError);
+              console.error('SUBSCRIPTION SUBMIT: Failed to update subscription with VPN details:', updateError);
             } else {
-              console.log(`Free subscription completed successfully using ${data.selectedPlan.apiType}`);
+              console.log('SUBSCRIPTION SUBMIT: Free subscription completed successfully');
             }
           } else {
-            console.warn('VPN user created but no subscription URL returned');
+            console.warn('SUBSCRIPTION SUBMIT: VPN user created but no subscription URL returned');
           }
           
           toast({
@@ -161,7 +128,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
           
           return subscription.id;
         } catch (vpnError) {
-          console.error(`VPN creation failed for free subscription using ${data.selectedPlan.apiType}:`, vpnError);
+          console.error('SUBSCRIPTION SUBMIT: VPN creation failed for free subscription:', vpnError);
           toast({
             title: 'Partial Success',
             description: 'Subscription saved but VPN creation failed. Please contact support.',
@@ -180,7 +147,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       return subscription.id;
       
     } catch (error) {
-      console.error('Subscription submission error:', error);
+      console.error('SUBSCRIPTION SUBMIT: Submission error:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to create subscription',

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Pencil, Plus, Trash2, Settings, AlertTriangle } from 'lucide-react';
+import { Pencil, Plus, Trash2, Settings, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan {

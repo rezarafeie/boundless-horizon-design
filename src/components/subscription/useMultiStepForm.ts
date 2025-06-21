@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
 import { DiscountCode } from '@/types/subscription';
+import { PlanService, PlanWithPanels } from '@/services/planService';
 
 export const useMultiStepForm = () => {
   const { language } = useLanguage();
@@ -23,6 +24,40 @@ export const useMultiStepForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subscriptionId, setSubscriptionId] = useState<string>('');
   const [isCreatingSubscription, setIsCreatingSubscription] = useState(false);
+  const [availablePlans, setAvailablePlans] = useState<PlanWithPanels[]>([]);
+
+  // Load available plans on component mount
+  useEffect(() => {
+    loadAvailablePlans();
+  }, []);
+
+  const loadAvailablePlans = async () => {
+    try {
+      console.log('MULTI STEP FORM: Loading available plans from admin configuration');
+      const plans = await PlanService.getAvailablePlans();
+      console.log('MULTI STEP FORM: Available plans:', plans.length);
+      setAvailablePlans(plans);
+      
+      if (plans.length === 0) {
+        toast({
+          title: language === 'fa' ? 'هیچ پلنی موجود نیست' : 'No Plans Available',
+          description: language === 'fa' ? 
+            'هیچ پلن فعالی در سیستم یافت نشد' : 
+            'No active plans found in the system',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('MULTI STEP FORM: Failed to load plans:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'خطا در بارگذاری پلن‌های موجود' : 
+          'Failed to load available plans',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -61,7 +96,7 @@ export const useMultiStepForm = () => {
 
   const createSubscriptionRecord = async (): Promise<string | null> => {
     if (!formData.selectedPlan) {
-      console.error('No plan selected');
+      console.error('MULTI STEP FORM: No plan selected');
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
@@ -72,10 +107,23 @@ export const useMultiStepForm = () => {
       return null;
     }
 
+    // Get full plan configuration
+    const planConfig = await PlanService.getPlanById(formData.selectedPlan.id);
+    if (!planConfig) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'پلن انتخابی در دسترس نیست' : 
+          'Selected plan is not available',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
     setIsCreatingSubscription(true);
     
     try {
-      console.log('Creating subscription record...', formData);
+      console.log('MULTI STEP FORM: Creating subscription record with plan:', planConfig.name_en);
       
       const totalPrice = calculateTotalPrice();
       const newSubscriptionId = generateSubscriptionId();
@@ -87,7 +135,7 @@ export const useMultiStepForm = () => {
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        notes: formData.notes?.trim() || '',
+        notes: formData.notes?.trim() || `Plan: ${planConfig.name_en}, API: ${PlanService.getApiType(planConfig)}`,
         status: 'pending'
       };
 
@@ -98,11 +146,11 @@ export const useMultiStepForm = () => {
         .single();
 
       if (error) {
-        console.error('Failed to create subscription:', error);
+        console.error('MULTI STEP FORM: Failed to create subscription:', error);
         throw new Error(error.message || 'Database error occurred');
       }
 
-      console.log('Subscription created with ID:', data.id);
+      console.log('MULTI STEP FORM: Subscription created with ID:', data.id);
       
       toast({
         title: language === 'fa' ? 'موفق' : 'Success',
@@ -113,7 +161,7 @@ export const useMultiStepForm = () => {
       
       return data.id;
     } catch (error) {
-      console.error('Error creating subscription:', error);
+      console.error('MULTI STEP FORM: Error creating subscription:', error);
       
       let errorMessage = language === 'fa' ? 
         'خطا در ایجاد سفارش. لطفاً دوباره تلاش کنید.' : 
@@ -192,13 +240,17 @@ export const useMultiStepForm = () => {
 
   const calculateTotalPrice = (): number => {
     if (!formData.selectedPlan) {
-      console.warn('No plan selected for price calculation');
+      console.warn('MULTI STEP FORM: No plan selected for price calculation');
       return 0;
     }
     
-    const basePrice = formData.selectedPlan.pricePerGB * formData.dataLimit;
-    console.log('Calculated price:', {
-      pricePerGB: formData.selectedPlan.pricePerGB,
+    // Use the selected plan's price per GB
+    const planConfig = availablePlans.find(p => p.id === formData.selectedPlan.id);
+    const pricePerGB = planConfig?.price_per_gb || formData.selectedPlan.pricePerGB || 0;
+    
+    const basePrice = pricePerGB * formData.dataLimit;
+    console.log('MULTI STEP FORM: Calculated price:', {
+      pricePerGB,
       dataLimit: formData.dataLimit,
       basePrice,
       discount: appliedDiscount
@@ -217,6 +269,8 @@ export const useMultiStepForm = () => {
     result,
     subscriptionId,
     isCreatingSubscription,
+    availablePlans,
+    loadAvailablePlans,
     canProceedFromStep,
     handleNext,
     handlePrevious,
