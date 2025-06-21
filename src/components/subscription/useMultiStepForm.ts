@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -30,6 +31,7 @@ interface PlanWithPanels {
 export const useMultiStepForm = () => {
   const { language } = useLanguage();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<StepNumber>(1);
   const [formData, setFormData] = useState<FormData>({
     username: '',
@@ -314,9 +316,9 @@ export const useMultiStepForm = () => {
       }
       setSubscriptionId(newSubscriptionId);
       
-      // If we got a result (free subscription), skip to step 4
+      // If we got a result (free subscription), redirect directly to delivery page
       if (result) {
-        setCurrentStep(4);
+        navigate(`/subscription-delivery?id=${newSubscriptionId}`);
         return;
       }
     }
@@ -333,17 +335,7 @@ export const useMultiStepForm = () => {
   };
 
   const handlePaymentSuccess = (subscriptionUrl?: string) => {
-    console.log('Payment successful, creating subscription result');
-    
-    const subscriptionResult: SubscriptionResponse = {
-      username: formData.username.trim(),
-      subscription_url: subscriptionUrl || '',
-      expire: Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-      data_limit: formData.dataLimit
-    };
-    
-    setResult(subscriptionResult);
-    setCurrentStep(4);
+    console.log('MULTI STEP FORM: Payment successful, redirecting to delivery page');
     
     toast({
       title: language === 'fa' ? 'تبریک!' : 'Congratulations!',
@@ -351,6 +343,9 @@ export const useMultiStepForm = () => {
         'پرداخت شما با موفقیت انجام شد' : 
         'Your payment was successful'
     });
+
+    // Redirect directly to delivery page instead of going to step 4
+    navigate(`/subscription-delivery?id=${subscriptionId}`);
   };
 
   const calculateTotalPrice = (): number => {

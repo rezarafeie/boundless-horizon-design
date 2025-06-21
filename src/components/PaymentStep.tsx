@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
 import PaymentMethodSelector, { PaymentMethod } from './PaymentMethodSelector';
 import ManualPaymentForm from './ManualPaymentForm';
 import CryptoPaymentForm from './CryptoPaymentForm';
@@ -20,7 +19,6 @@ interface PaymentStepProps {
 const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('manual');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showWaitingState, setShowWaitingState] = useState(false);
@@ -64,7 +62,7 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
           'Your payment information has been recorded and is awaiting admin approval',
       });
 
-      // Show waiting state instead of calling onSuccess
+      // Show waiting state instead of calling onSuccess immediately
       setShowWaitingState(true);
       
     } catch (error) {
@@ -83,8 +81,8 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
     debugLog('info', 'Subscription status updated', { status, subscriptionUrl });
     
     if (status === 'active' && subscriptionId) {
-      // Redirect to delivery page instead of calling onSuccess
-      navigate(`/subscription-delivery?id=${subscriptionId}`);
+      // Call onSuccess to trigger redirection in parent component
+      onSuccess(subscriptionUrl);
     } else if (status === 'rejected') {
       toast({
         title: language === 'fa' ? 'پرداخت رد شد' : 'Payment Rejected',
@@ -97,9 +95,10 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
     }
   };
 
-  const handlePaymentSuccess = () => {
-    // Redirect to delivery page for all successful payments
-    navigate(`/subscription-delivery?id=${subscriptionId}`);
+  const handlePaymentSuccess = (subscriptionUrl?: string) => {
+    debugLog('success', 'Payment successful, calling onSuccess callback');
+    // Call onSuccess to trigger redirection in parent component
+    onSuccess(subscriptionUrl);
   };
 
   // If showing waiting state for manual payment, show the monitor
