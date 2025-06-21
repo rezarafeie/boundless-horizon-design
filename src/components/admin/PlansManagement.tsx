@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,8 +9,10 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Pencil, Plus, Trash2, Settings, AlertTriangle, Loader2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Pencil, Plus, Trash2, Settings, AlertTriangle, Loader2, TestTube } from 'lucide-react';
 import { toast } from 'sonner';
+import { PlanTestConnection } from './PlanTestConnection';
 
 interface Plan {
   id: string;
@@ -50,6 +51,7 @@ interface PlanPanelMapping {
 export const PlansManagement = () => {
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [showNewPlanForm, setShowNewPlanForm] = useState(false);
+  const [testingPlanId, setTestingPlanId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: plans, isLoading, error } = useQuery({
@@ -410,232 +412,252 @@ export const PlansManagement = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Basic Plan Info */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="plan_id">Plan ID</Label>
-                <Input
-                  id="plan_id"
-                  value={formData.plan_id}
-                  onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}
-                  placeholder="unique-plan-id"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="api_type">API Type</Label>
-                <Select value={formData.api_type} onValueChange={(value: 'marzban' | 'marzneshin') => 
-                  setFormData({ ...formData, api_type: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="marzban">Marzban</SelectItem>
-                    <SelectItem value="marzneshin">Marzneshin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+          <Tabs defaultValue="config" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="config">Configuration</TabsTrigger>
+              {plan && <TabsTrigger value="test">Test Plan</TabsTrigger>}
+            </TabsList>
+            
+            <TabsContent value="config">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Basic Plan Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="plan_id">Plan ID</Label>
+                    <Input
+                      id="plan_id"
+                      value={formData.plan_id}
+                      onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}
+                      placeholder="unique-plan-id"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="api_type">API Type</Label>
+                    <Select value={formData.api_type} onValueChange={(value: 'marzban' | 'marzneshin') => 
+                      setFormData({ ...formData, api_type: value })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="marzban">Marzban</SelectItem>
+                        <SelectItem value="marzneshin">Marzneshin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="name_en">Plan Name (English)</Label>
-                <Input
-                  id="name_en"
-                  value={formData.name_en}
-                  onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="name_fa">Plan Name (Persian)</Label>
-                <Input
-                  id="name_fa"
-                  value={formData.name_fa}
-                  onChange={(e) => setFormData({ ...formData, name_fa: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name_en">Plan Name (English)</Label>
+                    <Input
+                      id="name_en"
+                      value={formData.name_en}
+                      onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="name_fa">Plan Name (Persian)</Label>
+                    <Input
+                      id="name_fa"
+                      value={formData.name_fa}
+                      onChange={(e) => setFormData({ ...formData, name_fa: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="description_en">Description (English)</Label>
-                <Input
-                  id="description_en"
-                  value={formData.description_en}
-                  onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="description_fa">Description (Persian)</Label>
-                <Input
-                  id="description_fa"
-                  value={formData.description_fa}
-                  onChange={(e) => setFormData({ ...formData, description_fa: e.target.value })}
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="description_en">Description (English)</Label>
+                    <Input
+                      id="description_en"
+                      value={formData.description_en}
+                      onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="description_fa">Description (Persian)</Label>
+                    <Input
+                      id="description_fa"
+                      value={formData.description_fa}
+                      onChange={(e) => setFormData({ ...formData, description_fa: e.target.value })}
+                    />
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="price_per_gb">Price per GB (Toman)</Label>
-                <Input
-                  id="price_per_gb"
-                  type="number"
-                  value={formData.price_per_gb}
-                  onChange={(e) => setFormData({ ...formData, price_per_gb: parseInt(e.target.value) })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="default_data_limit_gb">Default Data Limit (GB)</Label>
-                <Input
-                  id="default_data_limit_gb"
-                  type="number"
-                  value={formData.default_data_limit_gb}
-                  onChange={(e) => setFormData({ ...formData, default_data_limit_gb: parseInt(e.target.value) })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="default_duration_days">Default Duration (Days)</Label>
-                <Input
-                  id="default_duration_days"
-                  type="number"
-                  value={formData.default_duration_days}
-                  onChange={(e) => setFormData({ ...formData, default_duration_days: parseInt(e.target.value) })}
-                  required
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="price_per_gb">Price per GB (Toman)</Label>
+                    <Input
+                      id="price_per_gb"
+                      type="number"
+                      value={formData.price_per_gb}
+                      onChange={(e) => setFormData({ ...formData, price_per_gb: parseInt(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="default_data_limit_gb">Default Data Limit (GB)</Label>
+                    <Input
+                      id="default_data_limit_gb"
+                      type="number"
+                      value={formData.default_data_limit_gb}
+                      onChange={(e) => setFormData({ ...formData, default_data_limit_gb: parseInt(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="default_duration_days">Default Duration (Days)</Label>
+                    <Input
+                      id="default_duration_days"
+                      type="number"
+                      value={formData.default_duration_days}
+                      onChange={(e) => setFormData({ ...formData, default_duration_days: parseInt(e.target.value) })}
+                      required
+                    />
+                  </div>
+                </div>
 
-            {/* Panel Selection */}
-            <div className="space-y-4 border-t pt-6">
-              <div>
-                <Label className="text-lg font-semibold flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  Panel Configuration (Required)
-                </Label>
-                <p className="text-sm text-gray-600 mt-1">
-                  Select which panel servers will handle subscriptions for this plan. At least one panel is required for the plan to be usable.
-                  {selectedPanels.length > 1 && " Select one as the primary panel."}
-                </p>
-              </div>
-              
-              <div className="grid gap-4">
-                {panels.map((panel) => {
-                  const isSelected = selectedPanels.some(p => p.panelId === panel.id);
-                  const selectedPanel = selectedPanels.find(p => p.panelId === panel.id);
+                {/* Panel Selection */}
+                <div className="space-y-4 border-t pt-6">
+                  <div>
+                    <Label className="text-lg font-semibold flex items-center gap-2">
+                      <Settings className="w-5 h-5" />
+                      Panel Configuration (Required)
+                    </Label>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Select which panel servers will handle subscriptions for this plan. At least one panel is required for the plan to be usable.
+                      {selectedPanels.length > 1 && " Select one as the primary panel."}
+                    </p>
+                  </div>
                   
-                  return (
-                    <Card key={panel.id} className={`${isSelected ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center space-x-3">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => togglePanelSelection(panel.id)}
-                            />
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{panel.name}</span>
-                                <Badge variant={panel.is_active ? 'default' : 'secondary'}>
-                                  {panel.is_active ? 'Active' : 'Inactive'}
-                                </Badge>
-                                <Badge variant={panel.health_status === 'online' ? 'default' : 'secondary'}>
-                                  {panel.health_status}
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-gray-600">{panel.country_en} - {panel.type}</p>
-                            </div>
-                          </div>
-                          
-                          {isSelected && selectedPanels.length > 1 && (
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                checked={selectedPanel?.isPrimary || false}
-                                onCheckedChange={() => setPrimaryPanel(panel.id)}
-                              />
-                              <Label className="text-sm">Primary</Label>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {isSelected && panel.default_inbounds && panel.default_inbounds.length > 0 && (
-                          <div className="mt-3">
-                            <Label className="text-sm font-medium">Available Inbounds:</Label>
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                              {panel.default_inbounds.map((inbound: any, index: number) => (
-                                <div key={index} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    checked={selectedPanel?.inboundIds.includes(inbound.tag) || false}
-                                    onCheckedChange={(checked) => {
-                                      const currentIds = selectedPanel?.inboundIds || [];
-                                      const newIds = checked 
-                                        ? [...currentIds, inbound.tag]
-                                        : currentIds.filter(id => id !== inbound.tag);
-                                      updateInbounds(panel.id, newIds);
-                                    }}
-                                  />
-                                  <span className="text-sm">{inbound.tag}</span>
+                  <div className="grid gap-4">
+                    {panels.map((panel) => {
+                      const isSelected = selectedPanels.some(p => p.panelId === panel.id);
+                      const selectedPanel = selectedPanels.find(p => p.panelId === panel.id);
+                      
+                      return (
+                        <Card key={panel.id} className={`${isSelected ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-3">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => togglePanelSelection(panel.id)}
+                                />
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{panel.name}</span>
+                                    <Badge variant={panel.is_active ? 'default' : 'secondary'}>
+                                      {panel.is_active ? 'Active' : 'Inactive'}
+                                    </Badge>
+                                    <Badge variant={panel.health_status === 'online' ? 'default' : 'secondary'}>
+                                      {panel.health_status}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-gray-600">{panel.country_en} - {panel.type}</p>
                                 </div>
-                              ))}
+                              </div>
+                              
+                              {isSelected && selectedPanels.length > 1 && (
+                                <div className="flex items-center space-x-2">
+                                  <Checkbox
+                                    checked={selectedPanel?.isPrimary || false}
+                                    onCheckedChange={() => setPrimaryPanel(panel.id)}
+                                  />
+                                  <Label className="text-sm">Primary</Label>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-              
-              {selectedPanels.length > 0 ? (
-                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <p className="text-sm text-green-800 dark:text-green-200">
-                    ✅ {selectedPanels.length} panel(s) selected for this plan
-                    {selectedPanels.length > 1 && selectedPanels.some(p => p.isPrimary) && 
-                      ` (Primary: ${panels.find(p => p.id === selectedPanels.find(sp => sp.isPrimary)?.panelId)?.name})`
-                    }
-                  </p>
+                            
+                            {isSelected && panel.default_inbounds && panel.default_inbounds.length > 0 && (
+                              <div className="mt-3">
+                                <Label className="text-sm font-medium">Available Inbounds:</Label>
+                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                  {panel.default_inbounds.map((inbound: any, index: number) => (
+                                    <div key={index} className="flex items-center space-x-2">
+                                      <Checkbox
+                                        checked={selectedPanel?.inboundIds.includes(inbound.tag) || false}
+                                        onCheckedChange={(checked) => {
+                                          const currentIds = selectedPanel?.inboundIds || [];
+                                          const newIds = checked 
+                                            ? [...currentIds, inbound.tag]
+                                            : currentIds.filter(id => id !== inbound.tag);
+                                          updateInbounds(panel.id, newIds);
+                                        }}
+                                      />
+                                      <span className="text-sm">{inbound.tag}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                  
+                  {selectedPanels.length > 0 ? (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <p className="text-sm text-green-800 dark:text-green-200">
+                        ✅ {selectedPanels.length} panel(s) selected for this plan
+                        {selectedPanels.length > 1 && selectedPanels.some(p => p.isPrimary) && 
+                          ` (Primary: ${panels.find(p => p.id === selectedPanels.find(sp => sp.isPrimary)?.panelId)?.name})`
+                        }
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <p className="text-sm text-red-800 dark:text-red-200">
+                        ⚠️ No panels selected. This plan will not be usable for subscriptions until panels are configured.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <p className="text-sm text-red-800 dark:text-red-200">
-                    ⚠️ No panels selected. This plan will not be usable for subscriptions until panels are configured.
-                  </p>
+
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                    />
+                    <Label htmlFor="is_active">Active</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_visible"
+                      checked={formData.is_visible}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_visible: checked })}
+                    />
+                    <Label htmlFor="is_visible">Visible to Users</Label>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="is_active"
-                  checked={formData.is_active}
-                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                <div className="flex space-x-2">
+                  <Button type="submit" disabled={selectedPanels.length === 0}>
+                    {selectedPanels.length === 0 ? 'Select Panels to Save' : 'Save Plan'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+                </div>
+              </form>
+            </TabsContent>
+            
+            {plan && (
+              <TabsContent value="test">
+                <PlanTestConnection 
+                  plan={plan} 
+                  onTestComplete={(result) => {
+                    console.log('Plan test completed:', result);
+                  }}
                 />
-                <Label htmlFor="is_active">Active</Label>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="is_visible"
-                  checked={formData.is_visible}
-                  onCheckedChange={(checked) => setFormData({ ...formData, is_visible: checked })}
-                />
-                <Label htmlFor="is_visible">Visible to Users</Label>
-              </div>
-            </div>
-
-            <div className="flex space-x-2">
-              <Button type="submit" disabled={selectedPanels.length === 0}>
-                {selectedPanels.length === 0 ? 'Select Panels to Save' : 'Save Plan'}
-              </Button>
-              <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-            </div>
-          </form>
+              </TabsContent>
+            )}
+          </Tabs>
         </CardContent>
       </Card>
     );
@@ -742,6 +764,13 @@ export const PlansManagement = () => {
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => setTestingPlanId(testingPlanId === plan.id ? null : plan.id)}
+                    >
+                      <TestTube className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setEditingPlan(plan)}
                     >
                       <Pencil className="w-4 h-4" />
@@ -808,6 +837,18 @@ export const PlansManagement = () => {
                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
                       ⚠️ No panels configured for this plan. Edit the plan to add panels.
                     </p>
+                  </div>
+                )}
+                
+                {testingPlanId === plan.id && (
+                  <div className="mt-4 pt-4 border-t">
+                    <PlanTestConnection 
+                      plan={plan} 
+                      onTestComplete={(result) => {
+                        console.log('Plan test completed:', result);
+                        setTestingPlanId(null);
+                      }}
+                    />
                   </div>
                 )}
               </CardContent>

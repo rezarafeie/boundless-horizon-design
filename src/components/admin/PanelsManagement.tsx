@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Plus, Trash2, Server, X } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Pencil, Plus, Trash2, Server, X, TestTube } from 'lucide-react';
 import { toast } from 'sonner';
+import { PanelTestConnection } from './PanelTestConnection';
 
 interface Panel {
   id: string;
@@ -37,6 +39,7 @@ interface Inbound {
 export const PanelsManagement = () => {
   const [editingPanel, setEditingPanel] = useState<Panel | null>(null);
   const [showNewPanelForm, setShowNewPanelForm] = useState(false);
+  const [testingPanelId, setTestingPanelId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: panels, isLoading, error } = useQuery({
@@ -202,191 +205,212 @@ export const PanelsManagement = () => {
           <CardTitle>{panel ? 'Edit Panel' : 'Add New Panel'}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="name">Panel Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="type">Panel Type</Label>
-                <Select value={formData.type} onValueChange={(value: 'marzban' | 'marzneshin') => 
-                  setFormData({ ...formData, type: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="marzban">Marzban</SelectItem>
-                    <SelectItem value="marzneshin">Marzneshin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+          <Tabs defaultValue="config" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="config">Configuration</TabsTrigger>
+              {panel && <TabsTrigger value="test">Test Connection</TabsTrigger>}
+            </TabsList>
+            
+            <TabsContent value="config">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name">Panel Name</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="type">Panel Type</Label>
+                    <Select value={formData.type} onValueChange={(value: 'marzban' | 'marzneshin') => 
+                      setFormData({ ...formData, type: value })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="marzban">Marzban</SelectItem>
+                        <SelectItem value="marzneshin">Marzneshin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-            <div>
-              <Label htmlFor="panel_url">Panel URL</Label>
-              <Input
-                id="panel_url"
-                value={formData.panel_url}
-                onChange={(e) => setFormData({ ...formData, panel_url: e.target.value })}
-                placeholder="https://panel.example.com"
-                required
-              />
-            </div>
+                <div>
+                  <Label htmlFor="panel_url">Panel URL</Label>
+                  <Input
+                    id="panel_url"
+                    value={formData.panel_url}
+                    onChange={(e) => setFormData({ ...formData, panel_url: e.target.value })}
+                    placeholder="https://panel.example.com"
+                    required
+                  />
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="username">Admin Username</Label>
-                <Input
-                  id="username"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="password">Admin Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="username">Admin Username</Label>
+                    <Input
+                      id="username"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="password">Admin Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="country_en">Panel Country (English)</Label>
-                <Input
-                  id="country_en"
-                  value={formData.country_en}
-                  onChange={(e) => setFormData({ ...formData, country_en: e.target.value })}
-                  placeholder="Germany"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="country_fa">Panel Country (Persian)</Label>
-                <Input
-                  id="country_fa"
-                  value={formData.country_fa}
-                  onChange={(e) => setFormData({ ...formData, country_fa: e.target.value })}
-                  placeholder="آلمان"
-                  required
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="country_en">Panel Country (English)</Label>
+                    <Input
+                      id="country_en"
+                      value={formData.country_en}
+                      onChange={(e) => setFormData({ ...formData, country_en: e.target.value })}
+                      placeholder="Germany"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="country_fa">Panel Country (Persian)</Label>
+                    <Input
+                      id="country_fa"
+                      value={formData.country_fa}
+                      onChange={(e) => setFormData({ ...formData, country_fa: e.target.value })}
+                      placeholder="آلمان"
+                      required
+                    />
+                  </div>
+                </div>
 
-            {/* Inbounds Configuration */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label className="text-lg font-semibold">Inbound Configuration</Label>
-                <Button type="button" onClick={addInbound} size="sm">
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Inbound
-                </Button>
-              </div>
-              
-              {inbounds.map((inbound, index) => (
-                <Card key={index} className="p-4 bg-gray-50 dark:bg-gray-800">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-medium">Inbound #{index + 1}</span>
-                    {inbounds.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeInbound(index)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    )}
+                {/* Inbounds Configuration */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-lg font-semibold">Inbound Configuration</Label>
+                    <Button type="button" onClick={addInbound} size="sm">
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Inbound
+                    </Button>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor={`tag-${index}`}>Inbound Tag</Label>
-                      <Input
-                        id={`tag-${index}`}
-                        value={inbound.tag}
-                        onChange={(e) => updateInbound(index, 'tag', e.target.value)}
-                        placeholder="e.g., VLESS_TCP_GERMANY"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`protocol-${index}`}>Protocol</Label>
-                      <Select 
-                        value={inbound.protocol} 
-                        onValueChange={(value) => updateInbound(index, 'protocol', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="vless">VLESS</SelectItem>
-                          <SelectItem value="vmess">VMess</SelectItem>
-                          <SelectItem value="trojan">Trojan</SelectItem>
-                          <SelectItem value="shadowsocks">Shadowsocks</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor={`country_en-${index}`}>Country (English)</Label>
-                      <Input
-                        id={`country_en-${index}`}
-                        value={inbound.country_en}
-                        onChange={(e) => updateInbound(index, 'country_en', e.target.value)}
-                        placeholder="Germany"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`country_fa-${index}`}>Country (Persian)</Label>
-                      <Input
-                        id={`country_fa-${index}`}
-                        value={inbound.country_fa}
-                        onChange={(e) => updateInbound(index, 'country_fa', e.target.value)}
-                        placeholder="آلمان"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`port-${index}`}>Port (Optional)</Label>
-                      <Input
-                        id={`port-${index}`}
-                        type="number"
-                        value={inbound.port || ''}
-                        onChange={(e) => updateInbound(index, 'port', parseInt(e.target.value) || '')}
-                        placeholder="443"
-                      />
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  {inbounds.map((inbound, index) => (
+                    <Card key={index} className="p-4 bg-gray-50 dark:bg-gray-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-medium">Inbound #{index + 1}</span>
+                        {inbounds.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeInbound(index)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor={`tag-${index}`}>Inbound Tag</Label>
+                          <Input
+                            id={`tag-${index}`}
+                            value={inbound.tag}
+                            onChange={(e) => updateInbound(index, 'tag', e.target.value)}
+                            placeholder="e.g., VLESS_TCP_GERMANY"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`protocol-${index}`}>Protocol</Label>
+                          <Select 
+                            value={inbound.protocol} 
+                            onValueChange={(value) => updateInbound(index, 'protocol', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="vless">VLESS</SelectItem>
+                              <SelectItem value="vmess">VMess</SelectItem>
+                              <SelectItem value="trojan">Trojan</SelectItem>
+                              <SelectItem value="shadowsocks">Shadowsocks</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor={`country_en-${index}`}>Country (English)</Label>
+                          <Input
+                            id={`country_en-${index}`}
+                            value={inbound.country_en}
+                            onChange={(e) => updateInbound(index, 'country_en', e.target.value)}
+                            placeholder="Germany"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`country_fa-${index}`}>Country (Persian)</Label>
+                          <Input
+                            id={`country_fa-${index}`}
+                            value={inbound.country_fa}
+                            onChange={(e) => updateInbound(index, 'country_fa', e.target.value)}
+                            placeholder="آلمان"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`port-${index}`}>Port (Optional)</Label>
+                          <Input
+                            id={`port-${index}`}
+                            type="number"
+                            value={inbound.port || ''}
+                            onChange={(e) => updateInbound(index, 'port', parseInt(e.target.value) || '')}
+                            placeholder="443"
+                          />
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="is_active"
-                checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-              />
-              <Label htmlFor="is_active">Active</Label>
-            </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="is_active"
+                    checked={formData.is_active}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                  />
+                  <Label htmlFor="is_active">Active</Label>
+                </div>
 
-            <div className="flex space-x-2">
-              <Button type="submit">Save Panel</Button>
-              <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-            </div>
-          </form>
+                <div className="flex space-x-2">
+                  <Button type="submit">Save Panel</Button>
+                  <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+                </div>
+              </form>
+            </TabsContent>
+            
+            {panel && (
+              <TabsContent value="test">
+                <PanelTestConnection 
+                  panel={panel} 
+                  onTestComplete={(result) => {
+                    // Refresh the panels list to update health status
+                    queryClient.invalidateQueries({ queryKey: ['admin-panels'] });
+                  }}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
         </CardContent>
       </Card>
     );
@@ -489,6 +513,13 @@ export const PanelsManagement = () => {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => setTestingPanelId(testingPanelId === panel.id ? null : panel.id)}
+                  >
+                    <TestTube className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setEditingPanel(panel)}
                   >
                     <Pencil className="w-4 h-4" />
@@ -537,6 +568,18 @@ export const PanelsManagement = () => {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+              
+              {testingPanelId === panel.id && (
+                <div className="mt-4 pt-4 border-t">
+                  <PanelTestConnection 
+                    panel={panel} 
+                    onTestComplete={(result) => {
+                      queryClient.invalidateQueries({ queryKey: ['admin-panels'] });
+                      setTestingPanelId(null);
+                    }}
+                  />
                 </div>
               )}
             </CardContent>
