@@ -31,6 +31,21 @@ export interface PlanWithPanels {
   }[];
 }
 
+// Type guard to validate API type
+function isValidApiType(apiType: string): apiType is 'marzban' | 'marzneshin' {
+  return apiType === 'marzban' || apiType === 'marzneshin';
+}
+
+// Type guard to validate panel type
+function isValidPanelType(panelType: string): panelType is 'marzban' | 'marzneshin' {
+  return panelType === 'marzban' || panelType === 'marzneshin';
+}
+
+// Type guard to validate health status
+function isValidHealthStatus(status: string): status is 'online' | 'offline' | 'unknown' {
+  return status === 'online' || status === 'offline' || status === 'unknown';
+}
+
 export class PlanService {
   
   static async getAvailablePlans(): Promise<PlanWithPanels[]> {
@@ -74,30 +89,52 @@ export class PlanService {
         return [];
       }
 
-      // Transform the data to our desired format
+      // Transform the data to our desired format with proper type validation
       const planWithPanels: PlanWithPanels[] = plans
-        .map(plan => {
+        .filter((plan: any) => {
+          // Validate required fields
+          if (!isValidApiType(plan.api_type)) {
+            console.warn(`PLAN SERVICE: Invalid api_type for plan ${plan.id}: ${plan.api_type}`);
+            return false;
+          }
+          return true;
+        })
+        .map((plan: any) => {
           const mappings = plan.plan_panel_mappings || [];
           const activePanels = mappings
             .filter((mapping: any) => mapping.panel_servers?.is_active)
-            .map((mapping: any) => ({
-              id: mapping.panel_servers.id,
-              name: mapping.panel_servers.name,
-              type: mapping.panel_servers.type,
-              country_en: mapping.panel_servers.country_en,
-              country_fa: mapping.panel_servers.country_fa,
-              panel_url: mapping.panel_servers.panel_url,
-              username: mapping.panel_servers.username,
-              password: mapping.panel_servers.password,
-              is_active: mapping.panel_servers.is_active,
-              health_status: mapping.panel_servers.health_status,
-              is_primary: mapping.is_primary,
-              inbound_ids: mapping.inbound_ids || [],
-              default_inbounds: mapping.panel_servers.default_inbounds || []
-            }));
+            .map((mapping: any) => {
+              const server = mapping.panel_servers;
+              return {
+                id: server.id,
+                name: server.name,
+                type: isValidPanelType(server.type) ? server.type : 'marzban',
+                country_en: server.country_en,
+                country_fa: server.country_fa,
+                panel_url: server.panel_url,
+                username: server.username,
+                password: server.password,
+                is_active: server.is_active,
+                health_status: isValidHealthStatus(server.health_status) ? server.health_status : 'unknown',
+                is_primary: mapping.is_primary,
+                inbound_ids: Array.isArray(mapping.inbound_ids) ? mapping.inbound_ids : [],
+                default_inbounds: Array.isArray(server.default_inbounds) ? server.default_inbounds : []
+              };
+            });
 
           return {
-            ...plan,
+            id: plan.id,
+            plan_id: plan.plan_id,
+            name_en: plan.name_en,
+            name_fa: plan.name_fa,
+            description_en: plan.description_en,
+            description_fa: plan.description_fa,
+            price_per_gb: plan.price_per_gb,
+            api_type: plan.api_type as 'marzban' | 'marzneshin', // Safe cast after validation
+            default_data_limit_gb: plan.default_data_limit_gb,
+            default_duration_days: plan.default_duration_days,
+            is_active: plan.is_active,
+            is_visible: plan.is_visible,
             panels: activePanels
           };
         })
