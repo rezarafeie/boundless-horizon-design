@@ -19,6 +19,7 @@ interface SubscriptionPlan {
   pricePerGB: number;
   apiType: 'marzban' | 'marzneshin';
   durationDays?: number;
+  planId: string;
 }
 
 interface DiscountCode {
@@ -87,6 +88,7 @@ const MarzbanSubscriptionForm = () => {
           
           return {
             id: plan.id,
+            planId: plan.plan_id,
             name: language === 'fa' ? plan.name_fa : plan.name_en,
             description: language === 'fa' ? plan.description_fa || '' : plan.description_en || '',
             pricePerGB: plan.price_per_gb,
@@ -233,46 +235,23 @@ const MarzbanSubscriptionForm = () => {
       return;
     }
 
-    // CRITICAL: Pre-execution API type validation and debugging
-    console.log('🔥🔥🔥 CRITICAL DEBUG: Pre-execution API type check');
-    console.log('🔥🔥🔥 Selected Plan Object:', JSON.stringify(selectedPlan, null, 2));
-    console.log('🔥🔥🔥 Selected Plan API Type:', selectedPlan.apiType);
-    console.log('🔥🔥🔥 typeof selectedPlan.apiType:', typeof selectedPlan.apiType);
-    console.log('🔥🔥🔥 selectedPlan.apiType === "marzban":', selectedPlan.apiType === 'marzban');
-    console.log('🔥🔥🔥 selectedPlan.apiType === "marzneshin":', selectedPlan.apiType === 'marzneshin');
-
-    // Double-check by fetching plan from database
-    console.log('🔥🔥🔥 DOUBLE-CHECK: Fetching plan from database for verification');
-    const { data: planVerification, error: planError } = await supabase
-      .from('subscription_plans')
-      .select('api_type, name_en, name_fa, plan_id')
-      .eq('id', selectedPlan.id)
-      .single();
+    // Hardcoded API routing based on plan_id
+    console.log('=== HARDCODED API ROUTING ===');
+    console.log('Selected Plan ID:', selectedPlan.planId);
+    console.log('Selected Plan API Type:', selectedPlan.apiType);
     
-    if (planError) {
-      console.error('🔥🔥🔥 CRITICAL ERROR: Failed to verify plan API type:', planError);
-      setError('Failed to verify plan configuration. Please try again.');
-      return;
-    }
-
-    console.log('🔥🔥🔥 DATABASE VERIFICATION Result:', JSON.stringify(planVerification, null, 2));
-    console.log('🔥🔥🔥 DB API Type:', planVerification.api_type);
-    console.log('🔥🔥🔥 Frontend API Type:', selectedPlan.apiType);
-    
-    // Validate API type consistency
-    if (planVerification.api_type !== selectedPlan.apiType) {
-      console.error('🔥🔥🔥 CRITICAL ERROR: API type mismatch detected!');
-      console.error('🔥🔥🔥 Database says:', planVerification.api_type);
-      console.error('🔥🔥🔥 Frontend says:', selectedPlan.apiType);
-      setError(`API type mismatch detected. Please refresh and try again.`);
-      return;
-    }
-
-    // Enhanced API type validation with explicit error throwing
-    const validApiTypes = ['marzban', 'marzneshin'];
-    if (!validApiTypes.includes(selectedPlan.apiType)) {
-      console.error('🔥🔥🔥 INVALID API TYPE:', selectedPlan.apiType);
-      throw new Error(`🔥🔥🔥 CRITICAL: Invalid API type: ${selectedPlan.apiType}. Expected 'marzban' or 'marzneshin'`);
+    // Simple hardcoded routing logic
+    let apiTypeToUse: 'marzban' | 'marzneshin';
+    if (selectedPlan.planId === 'lite') {
+      apiTypeToUse = 'marzban';
+      console.log('✅ LITE PLAN DETECTED - ROUTING TO MARZBAN');
+    } else if (selectedPlan.planId === 'pro') {
+      apiTypeToUse = 'marzneshin';
+      console.log('✅ PRO PLAN DETECTED - ROUTING TO MARZNESHIN');
+    } else {
+      // Fallback to plan's configured API type
+      apiTypeToUse = selectedPlan.apiType;
+      console.log('✅ USING PLAN CONFIGURED API TYPE:', apiTypeToUse);
     }
 
     // Validate panels are configured
@@ -326,7 +305,7 @@ const MarzbanSubscriptionForm = () => {
         price_toman: finalPrice,
         status: 'pending',
         username: username,
-        notes: `Plan: ${selectedPlan.name}, Data: ${formData.dataLimit}GB, Duration: ${formData.duration} days, API: ${selectedPlan.apiType}, Panels: ${planPanels.length}`,
+        notes: `Plan: ${selectedPlan.name} (${selectedPlan.planId}), Data: ${formData.dataLimit}GB, API: ${apiTypeToUse}`,
         marzban_user_created: false
       };
 
@@ -343,40 +322,17 @@ const MarzbanSubscriptionForm = () => {
         throw new Error(`Failed to save subscription to database: ${saveError.message}`);
       }
 
-      if (!savedSubscription) {
-        console.error('SUBSCRIPTION: No subscription returned from database insert');
-        throw new Error('Failed to save subscription - no data returned from database');
-      }
-
       console.log('SUBSCRIPTION: ✅ Successfully saved subscription to database:', savedSubscription);
 
-      // Show success toast for database save
-      toast({
-        title: language === 'fa' ? 'اشتراک ثبت شد' : 'Subscription Saved',
-        description: language === 'fa' ? 
-          'اشتراک شما در پایگاه داده ثبت شد. در حال ایجاد کاربر VPN...' : 
-          'Your subscription has been saved to database. Creating VPN user...',
-      });
-
-      // STEP 2: CRITICAL API ROUTING WITH EXPLICIT BLOCKS AND VALIDATION
-      const apiTypeToUse = planVerification.api_type; // Use DB value for absolute certainty
-      console.log(`🔥🔥🔥 FINAL API ROUTING DECISION: Using "${apiTypeToUse}" from database`);
-      
-      // EXPLICIT VALIDATION BEFORE ROUTING
-      if (apiTypeToUse !== 'marzban' && apiTypeToUse !== 'marzneshin') {
-        console.error('🔥🔥🔥 CRITICAL ERROR: Invalid API type from database:', apiTypeToUse);
-        throw new Error(`🔥🔥🔥 CRITICAL: Invalid API type from database: ${apiTypeToUse}. Database corruption detected.`);
-      }
+      // STEP 2: Create VPN user based on hardcoded routing
+      console.log(`=== CREATING VPN USER USING ${apiTypeToUse.toUpperCase()} ===`);
       
       let vpnResponse;
       let edgeFunctionName;
       
-      // EXPLICIT CONDITIONAL BLOCKS - NO CHAINING
       if (apiTypeToUse === 'marzban') {
         edgeFunctionName = 'marzban-create-user';
-        console.log('🔥🔥🔥 ROUTING TO MARZBAN - Calling marzban-create-user edge function');
-        console.log('🔥🔥🔥 Edge function: marzban-create-user');
-        console.log('🔥🔥🔥 This should create a Marzban user, NOT Marzneshin');
+        console.log('🔥 ROUTING TO MARZBAN - Calling marzban-create-user');
         
         const requestPayload = {
           username: savedSubscription.username,
@@ -384,26 +340,21 @@ const MarzbanSubscriptionForm = () => {
           durationDays: formData.duration,
           notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
         };
-        
-        console.log('🔥🔥🔥 MARZBAN REQUEST PAYLOAD:', JSON.stringify(requestPayload, null, 2));
         
         const { data, error } = await supabase.functions.invoke('marzban-create-user', {
           body: requestPayload
         });
         
         if (error) {
-          console.error('🔥🔥🔥 MARZBAN EDGE FUNCTION ERROR:', error);
+          console.error('🔥 MARZBAN EDGE FUNCTION ERROR:', error);
           throw new Error(`Marzban service error: ${error.message}`);
         }
         
         vpnResponse = data;
-        console.log('🔥🔥🔥 MARZBAN API RESPONSE:', JSON.stringify(vpnResponse, null, 2));
         
       } else if (apiTypeToUse === 'marzneshin') {
         edgeFunctionName = 'marzneshin-create-user';
-        console.log('🔥🔥🔥 ROUTING TO MARZNESHIN - Calling marzneshin-create-user edge function');
-        console.log('🔥🔥🔥 Edge function: marzneshin-create-user');
-        console.log('🔥🔥🔥 This should create a Marzneshin user, NOT Marzban');
+        console.log('🔥 ROUTING TO MARZNESHIN - Calling marzneshin-create-user');
         
         const requestPayload = {
           username: savedSubscription.username,
@@ -412,32 +363,26 @@ const MarzbanSubscriptionForm = () => {
           notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
         };
         
-        console.log('🔥🔥🔥 MARZNESHIN REQUEST PAYLOAD:', JSON.stringify(requestPayload, null, 2));
-        
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
           body: requestPayload
         });
         
         if (error) {
-          console.error('🔥🔥🔥 MARZNESHIN EDGE FUNCTION ERROR:', error);
+          console.error('🔥 MARZNESHIN EDGE FUNCTION ERROR:', error);
           throw new Error(`Marzneshin service error: ${error.message}`);
         }
         
         vpnResponse = data;
-        console.log('🔥🔥🔥 MARZNESHIN API RESPONSE:', JSON.stringify(vpnResponse, null, 2));
         
       } else {
-        // This should never execute due to validation above, but adding for completeness
-        console.error('🔥🔥🔥 CRITICAL ERROR: Unhandled API type in routing logic:', apiTypeToUse);
-        throw new Error(`🔥🔥🔥 CRITICAL: Unhandled API type in routing logic: ${apiTypeToUse}. This should never happen.`);
+        throw new Error(`🔥 CRITICAL: Invalid API type: ${apiTypeToUse}`);
       }
 
       // STEP 3: Validate VPN response
-      console.log('🔥🔥🔥 VPN Response validation:', {
+      console.log('VPN Response validation:', {
         hasResponse: !!vpnResponse,
         responseSuccess: vpnResponse?.success,
-        responseError: vpnResponse?.error,
-        responseData: vpnResponse?.data
+        responseError: vpnResponse?.error
       });
 
       if (!vpnResponse?.success) {
@@ -448,14 +393,14 @@ const MarzbanSubscriptionForm = () => {
           .from('subscriptions')
           .update({ 
             status: 'failed',
-            notes: `${subscriptionData.notes} - VPN creation failed using ${edgeFunctionName}: ${vpnResponse?.error}`
+            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResponse?.error}`
           })
           .eq('id', savedSubscription.id);
         
-        throw new Error(`Failed to create VPN user using ${edgeFunctionName}: ${vpnResponse?.error}`);
+        throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
       }
 
-      console.log(`SUBSCRIPTION: ✅✅✅ VPN user created successfully using ${edgeFunctionName}:`, vpnResponse.data);
+      console.log(`SUBSCRIPTION: ✅ VPN user created successfully using ${edgeFunctionName}`);
 
       // STEP 4: Update subscription with VPN details
       const updateData = {
@@ -465,8 +410,6 @@ const MarzbanSubscriptionForm = () => {
         expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire * 1000).toISOString() : null
       };
 
-      console.log('SUBSCRIPTION: Updating subscription with VPN details:', updateData);
-
       const { error: updateError } = await supabase
         .from('subscriptions')
         .update(updateData)
@@ -474,18 +417,15 @@ const MarzbanSubscriptionForm = () => {
 
       if (updateError) {
         console.error('SUBSCRIPTION: Failed to update subscription with VPN details:', updateError);
-        // Don't throw error here as VPN user was created successfully
       }
 
       console.log('SUBSCRIPTION: ✅ Successfully updated subscription with VPN details');
 
       // STEP 5: Check if this is a lite plan and handle differently
-      const isLitePlan = selectedPlan.id.toLowerCase().includes('lite') || 
-                        planVerification.plan_id?.toLowerCase().includes('lite');
+      const isLitePlan = selectedPlan.planId === 'lite';
       
       console.log('SUBSCRIPTION: Plan type check:', { 
-        selectedPlanId: selectedPlan.id, 
-        planVerificationId: planVerification.plan_id,
+        selectedPlanId: selectedPlan.planId, 
         isLitePlan 
       });
 
@@ -504,15 +444,12 @@ const MarzbanSubscriptionForm = () => {
       };
 
       if (isLitePlan) {
-        console.log('SUBSCRIPTION: ✅ Lite plan detected - showing success component instead of redirecting');
+        console.log('SUBSCRIPTION: ✅ Lite plan detected - showing success component');
         setLiteSuccessData(subscriptionResult);
         setShowLiteSuccess(true);
       } else {
         console.log('SUBSCRIPTION: ✅ Pro plan detected - redirecting to delivery page');
-        // Store data for delivery page
         localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscriptionResult));
-        
-        // Navigate to delivery page with data
         navigate('/delivery', { 
           state: { subscriptionData: subscriptionResult }
         });
@@ -595,7 +532,6 @@ const MarzbanSubscriptionForm = () => {
                 onClick={() => {
                   setShowLiteSuccess(false);
                   setLiteSuccessData(null);
-                  // Reset form
                   setFormData({
                     mobile: '',
                     dataLimit: 0,
@@ -679,11 +615,11 @@ const MarzbanSubscriptionForm = () => {
                         </p>
                         <div className="mt-2">
                           <span className={`text-xs px-2 py-1 rounded-full ${
-                            plan.apiType === 'marzban' 
+                            plan.planId === 'lite'
                               ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
                               : 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400'
                           }`}>
-                            {plan.apiType === 'marzban' ? 'Marzban API' : 'Marzneshin API'}
+                            {plan.planId === 'lite' ? 'Lite (Marzban)' : 'Pro (Marzneshin)'}
                           </span>
                         </div>
                       </CardContent>
