@@ -11,7 +11,7 @@ import { UserCreationService } from '@/services/userCreationService';
 import FreeTrialResult from './FreeTrialResult';
 
 interface TrialPlan {
-  id: 'lite' | 'pro';
+  id: 'lite' | 'plus';
   name: string;
   nameEn: string;
   nameFa: string;
@@ -51,10 +51,10 @@ const FreeTrialButton = () => {
       icon: Shield
     },
     {
-      id: 'pro',
-      name: 'Boundless Network Pro',
-      nameEn: 'Boundless Network Pro',
-      nameFa: 'شبکه بدون مرز پرو',
+      id: 'plus',
+      name: 'Boundless Network Plus',
+      nameEn: 'Boundless Network Plus',
+      nameFa: 'شبکه بدون مرز پلاس',
       description: 'High performance, full server list',
       descriptionEn: 'High performance, full server list',
       descriptionFa: 'کارایی بالا، لیست کامل سرورها',
