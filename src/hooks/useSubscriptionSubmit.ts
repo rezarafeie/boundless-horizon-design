@@ -33,7 +33,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get plan configuration from database (removed all status checks)
+      // Get plan configuration from database
       const { data: planConfig, error: planError } = await supabase
         .from('subscription_plans')
         .select(`
@@ -67,7 +67,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       console.log('SUBSCRIPTION_SUBMIT: Using panel:', {
         panelId: primaryPanel?.id || 'default',
         panelName: primaryPanel?.name || 'default',
-        panelType: primaryPanel?.type || (data.selectedPlan.id === 'pro' ? 'marzneshin' : 'marzban')
+        panelType: primaryPanel?.type || 'marzban'
       });
       
       // Calculate price
@@ -113,16 +113,17 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         try {
           console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using new service');
           
-          // Use panel type from configuration or fallback to plan-based logic
-          const panelType = primaryPanel?.type || (data.selectedPlan.id === 'pro' ? 'marzneshin' : 'marzban');
+          // All panels are now marzban
+          const panelType = 'marzban';
           
           const result = await UserCreationService.createSubscription(
             uniqueUsername,
             data.dataLimit,
             data.duration,
-            panelType as 'marzban' | 'marzneshin',
+            panelType,
             subscription.id,
-            `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig?.name_en || data.selectedPlan.name}`
+            `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig?.name_en || data.selectedPlan.name}`,
+            data.selectedPlan.id
           );
           
           console.log('SUBSCRIPTION_SUBMIT: VPN creation response:', result);

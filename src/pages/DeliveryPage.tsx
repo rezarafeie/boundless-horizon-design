@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -20,7 +19,7 @@ interface SubscriptionData {
   data_limit: number;
   status: string;
   used_traffic?: number;
-  apiType?: 'marzban' | 'marzneshin'; // Add API type tracking
+  apiType?: 'marzban'; // Updated to only support marzban
 }
 
 const DeliveryPage = () => {
@@ -82,18 +81,10 @@ const DeliveryPage = () => {
             }
 
             if (subscription) {
-              // Try to determine API type from subscription notes or default fallback
-              let apiType: 'marzban' | 'marzneshin' = 'marzneshin'; // Default fallback
+              // All subscriptions now use marzban
+              const apiType: 'marzban' = 'marzban';
               
-              if (subscription.notes) {
-                if (subscription.notes.includes('API: marzban')) {
-                  apiType = 'marzban';
-                } else if (subscription.notes.includes('API: marzneshin')) {
-                  apiType = 'marzneshin';
-                }
-              }
-              
-              console.log('DELIVERY: Determined API type from database subscription:', apiType);
+              console.log('DELIVERY: Using marzban API type for all subscriptions');
               
               data = {
                 username: subscription.username,
@@ -120,61 +111,38 @@ const DeliveryPage = () => {
 
         console.log('DELIVERY: Using subscription data:', { 
           username: data.username, 
-          apiType: data.apiType || 'unknown' 
+          apiType: data.apiType || 'marzban' 
         });
 
         // Try to fetch fresh data from the panel if we have a username
         try {
-          // Use the stored API type if available, otherwise determine from panel
-          let targetApiType = data.apiType;
-          let panelType: 'marzban' | 'marzneshin' | null = null;
+          // All panels are now marzban
+          const panelType: 'marzban' = 'marzban';
           
-          if (targetApiType) {
-            console.log(`DELIVERY: Using stored API type: ${targetApiType}`);
-            panelType = targetApiType;
-          } else {
-            console.log('DELIVERY: No stored API type, determining from panel...');
-            const determinedType = await PanelApiService.determineSubscriptionPanelType(data.username);
-            // Type guard to ensure we have a valid API type
-            if (determinedType === 'marzban' || determinedType === 'marzneshin') {
-              panelType = determinedType;
-            }
-          }
+          console.log('DELIVERY: Using marzban panel type for all subscriptions');
           
-          if (panelType) {
-            console.log(`DELIVERY: Found user in ${panelType} panel`);
-            
-            // Fetch fresh data from the correct panel
-            const panelData = await PanelApiService.getSubscriptionFromPanel(data.username, panelType);
-            
-            // Merge panel data with existing data, preferring panel data for critical fields
-            const mergedData = {
-              ...data,
-              subscription_url: panelData.subscription_url || data.subscription_url,
-              expire: panelData.expire || data.expire,
-              data_limit: panelData.data_limit || data.data_limit,
-              status: panelData.status || data.status,
-              used_traffic: panelData.used_traffic || data.used_traffic || 0,
-              apiType: panelType
-            };
-            
-            setSubscriptionData(mergedData);
-            setPanelStatus('online');
-            
-            // Store updated data in localStorage
-            localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
-            
-            if (mergedData.subscription_url) {
-              await generateQRCode(mergedData.subscription_url);
-            }
-          } else {
-            console.log('DELIVERY: User not found in any panel, using fallback data');
-            setSubscriptionData(data);
-            setPanelStatus('offline');
-            
-            if (data.subscription_url) {
-              await generateQRCode(data.subscription_url);
-            }
+          // Fetch fresh data from the marzban panel
+          const panelData = await PanelApiService.getSubscriptionFromPanel(data.username, panelType);
+          
+          // Merge panel data with existing data, preferring panel data for critical fields
+          const mergedData = {
+            ...data,
+            subscription_url: panelData.subscription_url || data.subscription_url,
+            expire: panelData.expire || data.expire,
+            data_limit: panelData.data_limit || data.data_limit,
+            status: panelData.status || data.status,
+            used_traffic: panelData.used_traffic || data.used_traffic || 0,
+            apiType: panelType
+          };
+          
+          setSubscriptionData(mergedData);
+          setPanelStatus('online');
+          
+          // Store updated data in localStorage
+          localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
+          
+          if (mergedData.subscription_url) {
+            await generateQRCode(mergedData.subscription_url);
           }
         } catch (panelError) {
           console.error('DELIVERY: Failed to fetch from panel, using fallback data:', panelError);
@@ -244,56 +212,37 @@ const DeliveryPage = () => {
     setIsRefreshing(true);
     try {
       console.log('DELIVERY: Refreshing subscription data from panel...');
-      console.log('DELIVERY: Current subscription API type:', subscriptionData.apiType);
       
-      // Use the stored API type if available, otherwise determine from panel
-      let panelType = subscriptionData.apiType;
+      // All panels are now marzban
+      const panelType: 'marzban' = 'marzban';
       
-      if (!panelType) {
-        console.log('DELIVERY: No stored API type, determining from panel...');
-        const determinedType = await PanelApiService.determineSubscriptionPanelType(subscriptionData.username);
-        // Type guard to ensure we have a valid API type
-        if (determinedType === 'marzban' || determinedType === 'marzneshin') {
-          panelType = determinedType;
-        }
+      console.log('DELIVERY: Refreshing from marzban panel');
+      const panelData = await PanelApiService.getSubscriptionFromPanel(subscriptionData.username, panelType);
+      
+      const updatedData = {
+        ...subscriptionData,
+        subscription_url: panelData.subscription_url || subscriptionData.subscription_url,
+        expire: panelData.expire || subscriptionData.expire,
+        data_limit: panelData.data_limit || subscriptionData.data_limit,
+        status: panelData.status || subscriptionData.status,
+        used_traffic: panelData.used_traffic || subscriptionData.used_traffic || 0,
+        apiType: panelType
+      };
+      
+      setSubscriptionData(updatedData);
+      setPanelStatus('online');
+      localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
+      
+      if (updatedData.subscription_url) {
+        await generateQRCode(updatedData.subscription_url);
       }
       
-      if (panelType) {
-        console.log(`DELIVERY: Refreshing from ${panelType} panel`);
-        const panelData = await PanelApiService.getSubscriptionFromPanel(subscriptionData.username, panelType);
-        
-        const updatedData = {
-          ...subscriptionData,
-          subscription_url: panelData.subscription_url || subscriptionData.subscription_url,
-          expire: panelData.expire || subscriptionData.expire,
-          data_limit: panelData.data_limit || subscriptionData.data_limit,
-          status: panelData.status || subscriptionData.status,
-          used_traffic: panelData.used_traffic || subscriptionData.used_traffic || 0,
-          apiType: panelType
-        };
-        
-        setSubscriptionData(updatedData);
-        setPanelStatus('online');
-        localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
-        
-        if (updatedData.subscription_url) {
-          await generateQRCode(updatedData.subscription_url);
-        }
-        
-        toast({
-          title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
-          description: language === 'fa' ? 
-            'اطلاعات اشتراک بروزرسانی شد' : 
-            'Subscription data updated',
-        });
-      } else {
-        setPanelStatus('offline');
-        toast({
-          title: language === 'fa' ? 'خطا' : 'Error',
-          description: language === 'fa' ? 'پنل در دسترس نیست' : 'Panel not accessible',
-          variant: 'destructive'
-        });
-      }
+      toast({
+        title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
+        description: language === 'fa' ? 
+          'اطلاعات اشتراک بروزرسانی شد' : 
+          'Subscription data updated',
+      });
     } catch (error) {
       console.error('DELIVERY: Error refreshing subscription:', error);
       setPanelStatus('offline');
