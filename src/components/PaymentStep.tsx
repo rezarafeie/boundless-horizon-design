@@ -81,6 +81,7 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
     debugLog('info', 'Subscription status updated', { status, subscriptionUrl });
     
     if (status === 'active' && subscriptionId) {
+      debugLog('success', 'Subscription activated, calling onSuccess');
       // Call onSuccess to trigger redirection in parent component
       onSuccess(subscriptionUrl);
     } else if (status === 'rejected') {
@@ -96,7 +97,7 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
   };
 
   const handlePaymentSuccess = (subscriptionUrl?: string) => {
-    debugLog('success', 'Payment successful, calling onSuccess callback');
+    debugLog('success', 'Payment successful via automated method, calling onSuccess callback');
     // Call onSuccess to trigger redirection in parent component
     onSuccess(subscriptionUrl);
   };
@@ -133,6 +134,11 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
         <p className="text-muted-foreground">
           {language === 'fa' ? 'روش پرداخت خود را انتخاب کنید' : 'Choose your payment method'}
         </p>
+        <div className="mt-2 text-lg font-semibold text-blue-600">
+          {language === 'fa' ? 'مبلغ قابل پرداخت: ' : 'Amount to pay: '}
+          {amount.toLocaleString()} 
+          {language === 'fa' ? ' تومان' : ' Toman'}
+        </div>
       </div>
 
       <PaymentMethodSelector

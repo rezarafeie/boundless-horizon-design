@@ -4,7 +4,7 @@ import UserInfoStep from '@/components/UserInfoStep';
 import PaymentStep from '@/components/PaymentStep';
 import SubscriptionSuccess from '@/components/SubscriptionSuccess';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
-import { DiscountCode } from '@/types/subscription';
+import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
 
 interface StepContentRendererProps {
   currentStep: StepNumber;
@@ -37,10 +37,10 @@ const StepContentRenderer = ({
       return (
         <PlanSelector
           selectedPlan={formData.selectedPlan?.id || formData.selectedPlan?.plan_id || ''}
-          onPlanSelect={(planId: string) => {
-            console.log('Plan selected:', planId);
-            // Pass the plan ID to be handled by the parent component
-            onUpdateFormData('selectedPlan', { id: planId, plan_id: planId });
+          onPlanSelect={(plan: SubscriptionPlan) => {
+            console.log('StepContentRenderer - Plan selected:', plan);
+            // Pass the complete plan object directly
+            onUpdateFormData('selectedPlan', plan);
           }}
           dataLimit={formData.dataLimit}
         />

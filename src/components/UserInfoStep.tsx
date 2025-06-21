@@ -45,21 +45,31 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
       return 0;
     }
     
-    // Use both possible price field names for compatibility
-    const pricePerGB = formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0;
+    // Use both possible price field names for compatibility - prioritize new format
+    const pricePerGB = formData.selectedPlan.price_per_gb || formData.selectedPlan.pricePerGB || 0;
+    console.log('UserInfoStep - Price per GB:', pricePerGB, 'Data limit:', formData.dataLimit);
+    
     const basePrice = formData.dataLimit * pricePerGB;
     
     if (appliedDiscount) {
       const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
-      return Math.max(0, basePrice - discountAmount);
+      const finalPrice = Math.max(0, basePrice - discountAmount);
+      console.log('UserInfoStep - Price calculation with discount:', {
+        basePrice,
+        discountPercentage: appliedDiscount.percentage,
+        discountAmount,
+        finalPrice
+      });
+      return finalPrice;
     }
     
+    console.log('UserInfoStep - Price calculation without discount:', basePrice);
     return basePrice;
   };
 
   const calculateDiscount = () => {
     if (!formData.selectedPlan || !appliedDiscount) return 0;
-    const pricePerGB = formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0;
+    const pricePerGB = formData.selectedPlan.price_per_gb || formData.selectedPlan.pricePerGB || 0;
     const basePrice = formData.dataLimit * pricePerGB;
     return (basePrice * appliedDiscount.percentage) / 100;
   };
@@ -74,6 +84,9 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
       </div>
     );
   }
+
+  const currentPrice = calculatePrice();
+  const pricePerGB = formData.selectedPlan.price_per_gb || formData.selectedPlan.pricePerGB || 0;
 
   return (
     <div className="space-y-6">
@@ -167,56 +180,68 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
         </div>
 
         {/* Price Calculation */}
-        {formData.selectedPlan && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-semibold text-blue-800 dark:text-blue-200">
-                    {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
-                  </h4>
-                  <p className="text-sm text-blue-600 dark:text-blue-400">
-                    {language === 'fa' ? 
-                      `${formData.dataLimit} گیگابایت × ${(formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0).toLocaleString()} تومان` : 
-                      `${formData.dataLimit} GB × ${(formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0).toLocaleString()} Toman`
-                    }
-                  </p>
-                </div>
-                <div className="text-right">
-                  {appliedDiscount && (
-                    <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
-                      {(formData.dataLimit * (formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0)).toLocaleString()}
-                      {language === 'fa' ? ' تومان' : ' Toman'}
-                    </div>
-                  )}
-                  <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
-                    {calculatePrice().toLocaleString()} 
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-semibold text-blue-800 dark:text-blue-200">
+                  {language === 'fa' ? 'محاسبه قیمت' : 'Price Calculation'}
+                </h4>
+                <p className="text-sm text-blue-600 dark:text-blue-400">
+                  {language === 'fa' ? 
+                    `${formData.dataLimit} گیگابایت × ${pricePerGB.toLocaleString()} تومان` : 
+                    `${formData.dataLimit} GB × ${pricePerGB.toLocaleString()} Toman`
+                  }
+                </p>
+              </div>
+              <div className="text-right">
+                {appliedDiscount && (
+                  <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
+                    {(formData.dataLimit * pricePerGB).toLocaleString()}
                     {language === 'fa' ? ' تومان' : ' Toman'}
                   </div>
-                  {appliedDiscount && (
-                    <div className="text-sm text-green-600 dark:text-green-400">
-                      {language === 'fa' ? 'صرفه‌جویی: ' : 'You save: '}
-                      {calculateDiscount().toLocaleString()}
-                      {language === 'fa' ? ' تومان' : ' Toman'}
-                    </div>
-                  )}
+                )}
+                <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
+                  {currentPrice.toLocaleString()} 
+                  {language === 'fa' ? ' تومان' : ' Toman'}
                 </div>
+                {appliedDiscount && (
+                  <div className="text-sm text-green-600 dark:text-green-400">
+                    {language === 'fa' ? 'صرفه‌جویی: ' : 'You save: '}
+                    {calculateDiscount().toLocaleString()}
+                    {language === 'fa' ? ' تومان' : ' Toman'}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Plan Info */}
-        {formData.selectedPlan && (
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+        <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+          <div className="space-y-2">
+            <h4 className="font-medium text-green-800 dark:text-green-200">
+              {language === 'fa' ? 
+                formData.selectedPlan.name_fa || formData.selectedPlan.name : 
+                formData.selectedPlan.name_en || formData.selectedPlan.name
+              }
+            </h4>
             <p className="text-sm text-green-600 dark:text-green-400">
               {language === 'fa' ? 
-                `${formData.selectedPlan.name_fa || formData.selectedPlan.name} - ${formData.selectedPlan.description_fa || formData.selectedPlan.description}` : 
-                `${formData.selectedPlan.name_en || formData.selectedPlan.name} - ${formData.selectedPlan.description_en || formData.selectedPlan.description}`
+                formData.selectedPlan.description_fa || formData.selectedPlan.description : 
+                formData.selectedPlan.description_en || formData.selectedPlan.description
               }
             </p>
+            {currentPrice === 0 && (
+              <p className="text-sm font-medium text-green-700 dark:text-green-300">
+                {language === 'fa' ? 
+                  '🎉 این اشتراک رایگان است!' : 
+                  '🎉 This subscription is free!'
+                }
+              </p>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

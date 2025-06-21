@@ -7,6 +7,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { CheckCircle, Globe } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Country } from '@/data/countries';
+import { SubscriptionPlan } from '@/types/subscription';
 
 interface Plan {
   id: string;
@@ -21,7 +22,7 @@ interface Plan {
 
 interface PlanSelectorProps {
   selectedPlan: string | null;
-  onPlanSelect: (planId: string) => void;
+  onPlanSelect: (plan: SubscriptionPlan) => void; // Changed to pass full plan object
   dataLimit: number;
 }
 
@@ -121,7 +122,26 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
 
   const handlePlanSelect = (plan: Plan) => {
     console.log('PlanSelector - Plan selected:', plan);
-    onPlanSelect(plan.id);
+    
+    // Create a complete SubscriptionPlan object
+    const subscriptionPlan: SubscriptionPlan = {
+      id: plan.id,
+      plan_id: plan.plan_id,
+      name: plan.name_en,
+      name_en: plan.name_en,
+      name_fa: plan.name_fa,
+      description: plan.description_en || '',
+      description_en: plan.description_en,
+      description_fa: plan.description_fa,
+      pricePerGB: plan.price_per_gb,
+      price_per_gb: plan.price_per_gb,
+      apiType: plan.plan_id === 'pro' ? 'marzneshin' : 'marzban',
+      api_type: plan.plan_id === 'pro' ? 'marzneshin' : 'marzban',
+      available_countries: plan.available_countries
+    };
+    
+    console.log('PlanSelector - Passing complete plan object:', subscriptionPlan);
+    onPlanSelect(subscriptionPlan);
   };
 
   return (

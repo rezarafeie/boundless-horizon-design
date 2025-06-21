@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -103,41 +104,15 @@ export const useMultiStepForm = () => {
   };
 
   const updateFormData = (field: keyof FormData, value: any) => {
-    console.log('Updating form data:', field, value);
+    console.log('MULTI STEP FORM: Updating form data:', field, value);
     
     if (field === 'selectedPlan') {
-      // Handle plan selection properly
-      if (typeof value === 'string') {
-        // If we received a plan ID, find the full plan object
-        const fullPlan = availablePlans.find(p => p.id === value || p.plan_id === value);
-        if (fullPlan) {
-          const planObject: SubscriptionPlan = {
-            id: fullPlan.id,
-            plan_id: fullPlan.plan_id,
-            name: fullPlan.name_en,
-            name_en: fullPlan.name_en,
-            name_fa: fullPlan.name_fa,
-            description: fullPlan.description_en || '',
-            description_en: fullPlan.description_en,
-            description_fa: fullPlan.description_fa,
-            pricePerGB: fullPlan.price_per_gb,
-            price_per_gb: fullPlan.price_per_gb,
-            apiType: fullPlan.api_type as 'marzban' | 'marzneshin',
-            api_type: fullPlan.api_type as 'marzban' | 'marzneshin',
-            durationDays: fullPlan.default_duration_days,
-            default_duration_days: fullPlan.default_duration_days,
-            default_data_limit_gb: fullPlan.default_data_limit_gb
-          };
-          
-          setFormData(prev => ({ ...prev, [field]: planObject }));
-          console.log('Plan object set:', planObject);
-        } else {
-          console.warn('Plan not found for ID:', value);
-          setFormData(prev => ({ ...prev, [field]: { id: value, plan_id: value } as SubscriptionPlan }));
-        }
-      } else {
-        // Direct object assignment
+      // Handle plan selection - value should already be a complete SubscriptionPlan object
+      if (value && typeof value === 'object' && value.id) {
+        console.log('MULTI STEP FORM: Setting complete plan object:', value);
         setFormData(prev => ({ ...prev, [field]: value }));
+      } else {
+        console.warn('MULTI STEP FORM: Invalid plan object received:', value);
       }
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
@@ -147,7 +122,7 @@ export const useMultiStepForm = () => {
   // Auto-advance from plan selection step when plan is selected
   useEffect(() => {
     if (currentStep === 1 && formData.selectedPlan) {
-      console.log('Auto-advancing to step 2 with selected plan:', formData.selectedPlan);
+      console.log('MULTI STEP FORM: Auto-advancing to step 2 with selected plan:', formData.selectedPlan);
       const timer = setTimeout(() => {
         setCurrentStep(2);
       }, 300);
@@ -159,11 +134,11 @@ export const useMultiStepForm = () => {
     switch (step) {
       case 1:
         const canProceed1 = !!formData.selectedPlan;
-        console.log('Can proceed from step 1:', canProceed1, formData.selectedPlan);
+        console.log('MULTI STEP FORM: Can proceed from step 1:', canProceed1, formData.selectedPlan);
         return canProceed1;
       case 2:
         const canProceed2 = !!(formData.username && formData.mobile && formData.dataLimit && formData.duration);
-        console.log('Can proceed from step 2:', canProceed2, {
+        console.log('MULTI STEP FORM: Can proceed from step 2:', canProceed2, {
           username: formData.username,
           mobile: formData.mobile,
           dataLimit: formData.dataLimit,
@@ -199,15 +174,17 @@ export const useMultiStepForm = () => {
     }
 
     // Get full plan configuration from the loaded plans
-    const planConfig = availablePlans.find(p => p.id === formData.selectedPlan?.id || p.plan_id === formData.selectedPlan?.plan_id);
-    if (!planConfig) {
-      console.log('MULTI STEP FORM: Plan not found in availablePlans, proceeding anyway');
-    }
+    const planConfig = availablePlans.find(p => 
+      p.id === formData.selectedPlan?.id || 
+      p.plan_id === formData.selectedPlan?.plan_id
+    );
+    
+    console.log('MULTI STEP FORM: Plan config found:', planConfig);
 
     setIsCreatingSubscription(true);
     
     try {
-      console.log('MULTI STEP FORM: Creating subscription record with plan:', planConfig?.name_en || formData.selectedPlan.name);
+      console.log('MULTI STEP FORM: Creating subscription record with plan:', formData.selectedPlan);
       
       const totalPrice = calculateTotalPrice();
       const newSubscriptionId = generateSubscriptionId();
@@ -224,9 +201,11 @@ export const useMultiStepForm = () => {
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        notes: formData.notes?.trim() || `Plan: ${planConfig?.name_en || formData.selectedPlan.name}`,
+        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name}`,
         status: 'pending'
       };
+
+      console.log('MULTI STEP FORM: Creating subscription with data:', subscriptionData);
 
       const { data, error } = await supabase
         .from('subscriptions')
@@ -244,38 +223,40 @@ export const useMultiStepForm = () => {
       // If price is 0, create VPN user immediately using new service
       if (totalPrice === 0) {
         try {
-          console.log('MULTI STEP FORM: Creating VPN user for free subscription using new service');
+          console.log('MULTI STEP FORM: Creating VPN user for free subscription');
           
-          // Find primary panel for this plan or use first available
-          let primaryPanel = null;
+          // Determine panel type from plan configuration or fallback
+          let panelType: 'marzban' | 'marzneshin' = 'marzban';
           if (planConfig && planConfig.plan_panel_mappings && planConfig.plan_panel_mappings.length > 0) {
-            const primaryPanelMapping = planConfig.plan_panel_mappings.find((mapping: any) => mapping.is_primary);
-            primaryPanel = primaryPanelMapping ? primaryPanelMapping.panel_servers : planConfig.plan_panel_mappings[0].panel_servers;
+            const primaryPanel = planConfig.plan_panel_mappings.find(mapping => mapping.is_primary);
+            const selectedPanel = primaryPanel ? primaryPanel.panel_servers : planConfig.plan_panel_mappings[0].panel_servers;
+            panelType = selectedPanel.type as 'marzban' | 'marzneshin';
+          } else if (formData.selectedPlan.apiType || formData.selectedPlan.api_type) {
+            panelType = (formData.selectedPlan.apiType || formData.selectedPlan.api_type) as 'marzban' | 'marzneshin';
           }
           
-          // If no panel found, use default based on plan type
-          const panelType = primaryPanel?.type || (formData.selectedPlan.id === 'pro' ? 'marzneshin' : 'marzban');
+          console.log('MULTI STEP FORM: Using panel type:', panelType);
           
-          const result = await UserCreationService.createSubscription(
+          const vpnResult = await UserCreationService.createSubscription(
             uniqueUsername,
             formData.dataLimit,
             formData.duration,
-            panelType as 'marzban' | 'marzneshin',
+            panelType,
             data.id,
-            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${planConfig?.name_en || formData.selectedPlan.name}`
+            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name}`
           );
           
-          console.log('MULTI STEP FORM: VPN creation response:', result);
+          console.log('MULTI STEP FORM: VPN creation response:', vpnResult);
           
-          if (result.success && result.data) {
+          if (vpnResult.success && vpnResult.data) {
             console.log('MULTI STEP FORM: Free subscription completed successfully');
             
             // Set result to skip payment step
             const subscriptionResult: SubscriptionResponse = {
-              username: result.data.username,
-              subscription_url: result.data.subscription_url,
-              expire: result.data.expire,
-              data_limit: result.data.data_limit
+              username: vpnResult.data.username,
+              subscription_url: vpnResult.data.subscription_url,
+              expire: vpnResult.data.expire,
+              data_limit: vpnResult.data.data_limit
             };
             
             setResult(subscriptionResult);
@@ -287,9 +268,14 @@ export const useMultiStepForm = () => {
                 'Free subscription created successfully'
             });
             
+            // Navigate directly to delivery page for free subscriptions
+            setTimeout(() => {
+              navigate(`/subscription-delivery?id=${data.id}`);
+            }, 1500);
+            
             return data.id;
           } else {
-            console.warn('MULTI STEP FORM: VPN user creation failed:', result.error);
+            console.warn('MULTI STEP FORM: VPN user creation failed:', vpnResult.error);
             
             toast({
               title: language === 'fa' ? 'موفق جزئی' : 'Partial Success',
@@ -351,10 +337,10 @@ export const useMultiStepForm = () => {
   };
 
   const handleNext = async () => {
-    console.log('Handle next called for step:', currentStep);
+    console.log('MULTI STEP FORM: Handle next called for step:', currentStep);
     
     if (!canProceedFromStep(currentStep)) {
-      console.warn('Cannot proceed from current step:', currentStep);
+      console.warn('MULTI STEP FORM: Cannot proceed from current step:', currentStep);
       return;
     }
 
@@ -362,26 +348,25 @@ export const useMultiStepForm = () => {
     if (currentStep === 2) {
       const newSubscriptionId = await createSubscriptionRecord();
       if (!newSubscriptionId) {
-        console.error('Failed to create subscription record, cannot proceed');
+        console.error('MULTI STEP FORM: Failed to create subscription record, cannot proceed');
         return;
       }
       setSubscriptionId(newSubscriptionId);
       
-      // If we got a result (free subscription), redirect directly to delivery page
+      // If we got a result (free subscription), the navigation is handled in createSubscriptionRecord
       if (result) {
-        navigate(`/subscription-delivery?id=${newSubscriptionId}`);
         return;
       }
     }
 
     const nextStep = Math.min(currentStep + 1, 4) as StepNumber;
-    console.log(`Moving from step ${currentStep} to step ${nextStep}`);
+    console.log(`MULTI STEP FORM: Moving from step ${currentStep} to step ${nextStep}`);
     setCurrentStep(nextStep);
   };
 
   const handlePrevious = () => {
     const prevStep = Math.max(currentStep - 1, 1) as StepNumber;
-    console.log(`Moving from step ${currentStep} to step ${prevStep}`);
+    console.log(`MULTI STEP FORM: Moving from step ${currentStep} to step ${prevStep}`);
     setCurrentStep(prevStep);
   };
 
@@ -405,10 +390,8 @@ export const useMultiStepForm = () => {
       return 0;
     }
     
-    // Use the selected plan's price per GB from the database or fallback to selectedPlan
-    const planConfig = availablePlans.find(p => p.id === formData.selectedPlan?.id || p.plan_id === formData.selectedPlan?.plan_id);
-    const pricePerGB = planConfig?.price_per_gb || formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0;
-    
+    // Use the selected plan's price per GB - prioritize the new format
+    const pricePerGB = formData.selectedPlan.price_per_gb || formData.selectedPlan.pricePerGB || 0;
     const basePrice = pricePerGB * formData.dataLimit;
     const discountAmount = appliedDiscount ? 
       (basePrice * appliedDiscount.percentage) / 100 : 0;
