@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -176,13 +175,15 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       const timestamp = Date.now();
       const uniqueUsername = `${formData.username}_trial_${timestamp}`;
       
-      // Use the UUID directly, not the plan_id text field
-      const result = await PanelUserCreationService.createFreeTrial(
-        uniqueUsername,
-        selectedPlan, // This is now the UUID
-        1, // 1 GB for free trial
-        1  // 1 day for free trial
-      );
+      // Use the centralized service with the plan UUID directly
+      const result = await PanelUserCreationService.createUserFromPanel({
+        planId: selectedPlan, // Pass the UUID directly
+        username: uniqueUsername,
+        dataLimitGB: 1, // 1 GB for free trial
+        durationDays: 1, // 1 day for free trial
+        isFreeTriaL: true,
+        notes: 'Free trial user'
+      });
 
       console.log('FREE_TRIAL: Creation result:', result);
 
