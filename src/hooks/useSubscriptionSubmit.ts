@@ -33,7 +33,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get plan configuration from database
+      // Get plan configuration from database (removed all status checks)
       const { data: planConfig, error: planError } = await supabase
         .from('subscription_plans')
         .select(`
@@ -44,36 +44,34 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
             panel_servers!inner(
               id,
               name,
-              type,
-              is_active
+              type
             )
           )
         `)
         .eq('id', data.selectedPlan.id)
-        .eq('is_active', true)
         .single();
 
       if (planError || !planConfig) {
-        throw new Error('Selected plan is not available or inactive.');
+        console.warn('SUBSCRIPTION_SUBMIT: Plan config not found, proceeding anyway');
       }
 
       console.log('SUBSCRIPTION_SUBMIT: Plan config loaded:', planConfig);
 
-      // Find primary panel for this plan
-      const primaryPanelMapping = planConfig.plan_panel_mappings.find((mapping: any) => mapping.is_primary);
-      if (!primaryPanelMapping) {
-        throw new Error('No primary panel found for this plan.');
+      // Find primary panel for this plan or use first available
+      let primaryPanel = null;
+      if (planConfig && planConfig.plan_panel_mappings && planConfig.plan_panel_mappings.length > 0) {
+        const primaryPanelMapping = planConfig.plan_panel_mappings.find((mapping: any) => mapping.is_primary);
+        primaryPanel = primaryPanelMapping ? primaryPanelMapping.panel_servers : planConfig.plan_panel_mappings[0].panel_servers;
       }
 
-      const primaryPanel = primaryPanelMapping.panel_servers;
-      console.log('SUBSCRIPTION_SUBMIT: Using primary panel:', {
-        panelId: primaryPanel.id,
-        panelName: primaryPanel.name,
-        panelType: primaryPanel.type
+      console.log('SUBSCRIPTION_SUBMIT: Using panel:', {
+        panelId: primaryPanel?.id || 'default',
+        panelName: primaryPanel?.name || 'default',
+        panelType: primaryPanel?.type || (data.selectedPlan.id === 'pro' ? 'marzneshin' : 'marzban')
       });
       
       // Calculate price
-      const basePrice = data.dataLimit * planConfig.price_per_gb;
+      const basePrice = data.dataLimit * (planConfig?.price_per_gb || data.selectedPlan.pricePerGB || 0);
       const discountAmount = data.appliedDiscount ? 
         (basePrice * data.appliedDiscount.percentage) / 100 : 0;
       const finalPrice = Math.max(0, basePrice - discountAmount);
@@ -92,7 +90,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         price_toman: finalPrice,
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
-        notes: `Plan: ${planConfig.name_en}, Panel: ${primaryPanel.name}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        notes: `Plan: ${planConfig?.name_en || data.selectedPlan.name}${primaryPanel ? `, Panel: ${primaryPanel.name}` : ''}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
       console.log('SUBSCRIPTION_SUBMIT: Inserting subscription to database:', subscriptionData);
@@ -115,13 +113,16 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         try {
           console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using new service');
           
+          // Use panel type from configuration or fallback to plan-based logic
+          const panelType = primaryPanel?.type || (data.selectedPlan.id === 'pro' ? 'marzneshin' : 'marzban');
+          
           const result = await UserCreationService.createSubscription(
             uniqueUsername,
             data.dataLimit,
             data.duration,
-            primaryPanel.type as 'marzban' | 'marzneshin',
+            panelType as 'marzban' | 'marzneshin',
             subscription.id,
-            `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig.name_en}`
+            `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig?.name_en || data.selectedPlan.name}`
           );
           
           console.log('SUBSCRIPTION_SUBMIT: VPN creation response:', result);

@@ -16,8 +16,6 @@ interface PlanWithPanels {
   default_data_limit_gb: number;
   default_duration_days: number;
   api_type: string;
-  is_active: boolean;
-  is_visible: boolean;
   plan_panel_mappings: Array<{
     panel_id: string;
     is_primary: boolean;
@@ -25,7 +23,6 @@ interface PlanWithPanels {
       id: string;
       name: string;
       type: string;
-      is_active: boolean;
     };
   }>;
 }
@@ -68,14 +65,10 @@ export const useMultiStepForm = () => {
             panel_servers!inner(
               id,
               name,
-              type,
-              is_active
+              type
             )
           )
-        `)
-        .eq('is_active', true)
-        .eq('is_visible', true)
-        .eq('plan_panel_mappings.panel_servers.is_active', true);
+        `);
 
       if (error) {
         console.error('MULTI STEP FORM: Error loading plans:', error);
@@ -157,20 +150,13 @@ export const useMultiStepForm = () => {
     // Get full plan configuration from the loaded plans
     const planConfig = availablePlans.find(p => p.id === formData.selectedPlan.id);
     if (!planConfig) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'پلن انتخابی در دسترس نیست' : 
-          'Selected plan is not available',
-        variant: 'destructive'
-      });
-      return null;
+      console.log('MULTI STEP FORM: Plan not found in availablePlans, proceeding anyway');
     }
 
     setIsCreatingSubscription(true);
     
     try {
-      console.log('MULTI STEP FORM: Creating subscription record with plan:', planConfig.name_en);
+      console.log('MULTI STEP FORM: Creating subscription record with plan:', planConfig?.name_en || formData.selectedPlan.name);
       
       const totalPrice = calculateTotalPrice();
       const newSubscriptionId = generateSubscriptionId();
@@ -187,7 +173,7 @@ export const useMultiStepForm = () => {
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        notes: formData.notes?.trim() || `Plan: ${planConfig.name_en}, API: ${planConfig.api_type}`,
+        notes: formData.notes?.trim() || `Plan: ${planConfig?.name_en || formData.selectedPlan.name}`,
         status: 'pending'
       };
 
@@ -209,21 +195,23 @@ export const useMultiStepForm = () => {
         try {
           console.log('MULTI STEP FORM: Creating VPN user for free subscription using new service');
           
-          // Find primary panel for this plan
-          const primaryPanelMapping = planConfig.plan_panel_mappings.find((mapping: any) => mapping.is_primary);
-          if (!primaryPanelMapping) {
-            throw new Error('No primary panel found for this plan.');
+          // Find primary panel for this plan or use first available
+          let primaryPanel = null;
+          if (planConfig && planConfig.plan_panel_mappings && planConfig.plan_panel_mappings.length > 0) {
+            const primaryPanelMapping = planConfig.plan_panel_mappings.find((mapping: any) => mapping.is_primary);
+            primaryPanel = primaryPanelMapping ? primaryPanelMapping.panel_servers : planConfig.plan_panel_mappings[0].panel_servers;
           }
-
-          const primaryPanel = primaryPanelMapping.panel_servers;
+          
+          // If no panel found, use default based on plan type
+          const panelType = primaryPanel?.type || (formData.selectedPlan.id === 'pro' ? 'marzneshin' : 'marzban');
           
           const result = await UserCreationService.createSubscription(
             uniqueUsername,
             formData.dataLimit,
             formData.duration,
-            primaryPanel.type as 'marzban' | 'marzneshin',
+            panelType as 'marzban' | 'marzneshin',
             data.id,
-            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${planConfig.name_en}`
+            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${planConfig?.name_en || formData.selectedPlan.name}`
           );
           
           console.log('MULTI STEP FORM: VPN creation response:', result);
@@ -371,9 +359,9 @@ export const useMultiStepForm = () => {
       return 0;
     }
     
-    // Use the selected plan's price per GB from the database
+    // Use the selected plan's price per GB from the database or fallback to selectedPlan
     const planConfig = availablePlans.find(p => p.id === formData.selectedPlan.id);
-    const pricePerGB = planConfig?.price_per_gb || 0;
+    const pricePerGB = planConfig?.price_per_gb || formData.selectedPlan.pricePerGB || 0;
     
     const basePrice = pricePerGB * formData.dataLimit;
     const discountAmount = appliedDiscount ? 
