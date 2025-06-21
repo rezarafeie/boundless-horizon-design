@@ -107,9 +107,10 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       // Determine enabled protocols from the proxies structure
       const enabledProtocols = Object.keys(proxies);
       
-      // Count total configs
-      const totalConfigs = Object.values(inbounds).reduce((sum: number, protocols: any) => {
-        return sum + (Array.isArray(protocols) ? protocols.length : 0);
+      // Count total configs - ensure we get a number
+      const totalConfigs: number = Object.values(inbounds).reduce((sum: number, protocols: any) => {
+        const count = Array.isArray(protocols) ? protocols.length : 0;
+        return sum + count;
       }, 0);
 
       console.log('PANEL REFRESH: Extracted data:', {
@@ -139,8 +140,8 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         throw new Error(`Database update failed: ${updateError.message}`);
       }
 
-      // Log the refresh
-      await supabase
+      // Log the refresh - ensure all types match
+      const { error: logError } = await supabase
         .from('panel_refresh_logs')
         .insert({
           panel_id: panel.id,
@@ -148,6 +149,10 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           configs_fetched: totalConfigs,
           response_data: { inbounds, proxies, enabledProtocols }
         });
+
+      if (logError) {
+        console.error('Failed to log refresh:', logError);
+      }
 
       console.log('PANEL REFRESH: Success');
       toast.success(`Panel config refreshed successfully! Found ${totalConfigs} configs across ${enabledProtocols.length} protocols.`);
@@ -159,7 +164,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       console.error('PANEL REFRESH: Error:', error);
       
       // Log the failed refresh
-      await supabase
+      const { error: logError } = await supabase
         .from('panel_refresh_logs')
         .insert({
           panel_id: panel.id,
@@ -167,6 +172,10 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           configs_fetched: 0,
           error_message: error.message
         });
+
+      if (logError) {
+        console.error('Failed to log refresh error:', logError);
+      }
 
       toast.error(`Failed to refresh panel config: ${error.message}`);
       await fetchRefreshLogs();
