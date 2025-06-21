@@ -30,11 +30,38 @@ export class UserCreationService {
     console.log('USER_CREATION_SERVICE: Creating user with request:', request);
     
     try {
-      // Use the same edge function pattern as the admin panel test
+      // Get the appropriate panel based on panel type
+      const { data: panels, error: panelError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('type', request.panelType)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+
+      if (panelError || !panels || panels.length === 0) {
+        console.error('USER_CREATION_SERVICE: No active panels found for type:', request.panelType);
+        throw new Error(`No active ${request.panelType} panels available`);
+      }
+
+      // Prefer online panels, but use any active panel if none are online
+      let selectedPanel = panels.find(p => p.health_status === 'online');
+      if (!selectedPanel) {
+        selectedPanel = panels[0];
+        console.warn('USER_CREATION_SERVICE: No online panels found, using first available panel');
+      }
+
+      console.log('USER_CREATION_SERVICE: Using panel:', {
+        id: selectedPanel.id,
+        name: selectedPanel.name,
+        url: selectedPanel.panel_url,
+        type: selectedPanel.type
+      });
+
+      // Use the test-panel-connection function for actual user creation
       const { data, error } = await supabase.functions.invoke('test-panel-connection', {
         body: {
-          panelId: null, // Let the function auto-select panel
-          createUser: true, // Flag to create actual user instead of test
+          panelId: selectedPanel.id,
+          createUser: true,
           userData: {
             username: request.username,
             dataLimitGB: request.dataLimitGB,
@@ -54,34 +81,54 @@ export class UserCreationService {
         throw new Error(error.message || 'Failed to call user creation service');
       }
 
-      if (!data) {
-        console.error('USER_CREATION_SERVICE: No data returned from edge function');
-        throw new Error('No response data from user creation service');
+      if (!data || !data.success) {
+        console.error('USER_CREATION_SERVICE: Service returned error:', data?.error || 'Unknown error');
+        throw new Error(data?.error || 'User creation service failed');
       }
 
-      if (!data.success) {
-        console.error('USER_CREATION_SERVICE: Service returned error:', data.error);
-        throw new Error(data.error || 'User creation service failed');
-      }
+      // Check if user creation was successful
+      const userCreation = data.userCreation;
+      if (userCreation && userCreation.success) {
+        console.log('USER_CREATION_SERVICE: User created successfully:', userCreation);
+        
+        // Update subscription record if subscription ID is provided
+        if (request.subscriptionId && userCreation.subscriptionUrl) {
+          console.log('USER_CREATION_SERVICE: Updating subscription record');
+          const { error: updateError } = await supabase
+            .from('subscriptions')
+            .update({
+              status: 'active',
+              subscription_url: userCreation.subscriptionUrl,
+              marzban_user_created: true,
+              expire_at: userCreation.expire ? 
+                new Date(userCreation.expire * 1000).toISOString() : 
+                new Date(Date.now() + request.durationDays * 24 * 60 * 60 * 1000).toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', request.subscriptionId);
 
-      // Transform test response to user creation response format
-      const userData = data.userCreation;
-      if (userData && userData.success) {
-        console.log('USER_CREATION_SERVICE: User created successfully:', userData);
+          if (updateError) {
+            console.error('USER_CREATION_SERVICE: Failed to update subscription:', updateError);
+            // Don't throw error here as the user was created successfully
+          } else {
+            console.log('USER_CREATION_SERVICE: Subscription updated successfully');
+          }
+        }
+        
         return {
           success: true,
           data: {
-            username: userData.username,
-            subscription_url: userData.subscriptionUrl,
-            expire: userData.expire || Math.floor(Date.now() / 1000) + (request.durationDays * 24 * 60 * 60),
+            username: userCreation.username,
+            subscription_url: userCreation.subscriptionUrl,
+            expire: userCreation.expire || Math.floor(Date.now() / 1000) + (request.durationDays * 24 * 60 * 60),
             data_limit: request.dataLimitGB * 1073741824, // Convert GB to bytes
-            panel_type: data.panel.type,
-            panel_name: data.panel.name,
-            panel_id: data.panel.id
+            panel_type: selectedPanel.type,
+            panel_name: selectedPanel.name,
+            panel_id: selectedPanel.id
           }
         };
       } else {
-        throw new Error(userData?.error || 'User creation failed');
+        throw new Error(userCreation?.error || 'User creation failed in panel');
       }
     } catch (error) {
       console.error('USER_CREATION_SERVICE: Error:', error);

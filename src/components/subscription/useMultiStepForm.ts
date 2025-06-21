@@ -224,17 +224,23 @@ export const useMultiStepForm = () => {
         try {
           console.log('MULTI STEP FORM: Creating VPN user for free subscription');
           
-          // Determine panel type from plan configuration or fallback
+          // Determine panel type from plan configuration
           let panelType: 'marzban' | 'marzneshin' = 'marzban';
-          if (planConfig && planConfig.plan_panel_mappings && planConfig.plan_panel_mappings.length > 0) {
-            const primaryPanel = planConfig.plan_panel_mappings.find(mapping => mapping.is_primary);
-            const selectedPanel = primaryPanel ? primaryPanel.panel_servers : planConfig.plan_panel_mappings[0].panel_servers;
-            panelType = selectedPanel.type as 'marzban' | 'marzneshin';
-          } else if (formData.selectedPlan.apiType || formData.selectedPlan.api_type) {
-            panelType = (formData.selectedPlan.apiType || formData.selectedPlan.api_type) as 'marzban' | 'marzneshin';
-          }
           
-          console.log('MULTI STEP FORM: Using panel type:', panelType);
+          // Check plan configuration first
+          if (planConfig) {
+            panelType = planConfig.api_type as 'marzban' | 'marzneshin';
+            console.log('MULTI STEP FORM: Using panel type from plan config:', panelType);
+          } else {
+            // Fallback to plan ID based logic
+            const planId = formData.selectedPlan.id || formData.selectedPlan.plan_id;
+            if (planId === 'pro' || formData.selectedPlan.name?.toLowerCase().includes('pro')) {
+              panelType = 'marzneshin';
+            } else if (planId === 'lite' || formData.selectedPlan.name?.toLowerCase().includes('lite')) {
+              panelType = 'marzban';
+            }
+            console.log('MULTI STEP FORM: Using fallback panel type logic:', panelType);
+          }
           
           const vpnResult = await UserCreationService.createSubscription(
             uniqueUsername,
@@ -290,7 +296,7 @@ export const useMultiStepForm = () => {
           toast({
             title: language === 'fa' ? 'خطای جزئی' : 'Partial Error',
             description: language === 'fa' ? 
-              'سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد. پس از پرداخت، VPN شما ایجاد خواهد ش د.' :
+              'سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد. پس از پرداخت، VPN شما ایجاد خواهد شد.' :
               'Order saved but VPN creation failed. Your VPN will be created after payment.',
             variant: 'destructive'
           });
