@@ -1,228 +1,200 @@
 
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Zap, Star, Globe, Loader } from 'lucide-react';
-import { SubscriptionPlan } from '@/types/subscription';
+import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { CheckCircle, Globe } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Country } from '@/data/countries';
 
-interface PlanSelectorProps {
-  selectedPlan: SubscriptionPlan | null;
-  onPlanSelect: (plan: SubscriptionPlan) => void;
-  dataLimit: number;
-}
-
-interface DatabasePlan {
+interface Plan {
   id: string;
   plan_id: string;
-  name_fa: string;
   name_en: string;
-  description_fa: string;
-  description_en: string;
+  name_fa: string;
+  description_en?: string;
+  description_fa?: string;
   price_per_gb: number;
-  api_type: string;
-  is_active: boolean;
-  is_visible: boolean;
+  available_countries?: Country[];
+}
+
+interface PlanSelectorProps {
+  selectedPlan: string | null;
+  onPlanSelect: (planId: string) => void;
+  dataLimit: number;
 }
 
 const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorProps) => {
   const { language } = useLanguage();
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const { data: databasePlans, isLoading, error } = useQuery({
-    queryKey: ['subscription-plans'],
-    queryFn: async () => {
-      console.log('=== PLANS: Fetching plans from database ===');
-      
-      const { data, error } = await supabase
-        .from('subscription_plans')
-        .select('*')
-        .eq('is_active', true)
-        .eq('is_visible', true)
-        .order('price_per_gb', { ascending: true });
-      
-      console.log('PLANS: Database query result:', { data, error });
-      
-      if (error) {
-        console.error('PLANS: Error fetching plans:', error);
-        throw error;
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('subscription_plans')
+          .select('*')
+          .eq('is_active', true)
+          .eq('is_visible', true)
+          .order('price_per_gb', { ascending: true });
+
+        if (error) throw error;
+        setPlans(data || []);
+      } catch (error) {
+        console.error('Error fetching plans:', error);
+      } finally {
+        setLoading(false);
       }
-      
-      return data as DatabasePlan[];
-    },
-    retry: 1
-  });
+    };
 
-  // Convert database plans to SubscriptionPlan format
-  const plans: SubscriptionPlan[] = databasePlans?.map(dbPlan => ({
-    id: dbPlan.plan_id as 'lite' | 'pro',
-    name: language === 'fa' ? dbPlan.name_fa : dbPlan.name_en,
-    description: language === 'fa' ? 
-      (dbPlan.description_fa || dbPlan.description_en) : 
-      (dbPlan.description_en || dbPlan.description_fa),
-    pricePerGB: dbPlan.price_per_gb,
-    apiType: dbPlan.api_type as 'marzban' | 'marzneshin'
-  })) || [];
+    fetchPlans();
+  }, []);
 
-  const getLocationsList = (planId: string) => {
-    if (planId === 'lite') {
-      return language === 'fa' ? 
-        ['🇩🇪 آلمان', '🇫🇮 فنلاند', '🇳🇱 هلند'] :
-        ['🇩🇪 Germany', '🇫🇮 Finland', '🇳🇱 Netherlands'];
-    } else {
-      return language === 'fa' ? 
-        ['🇺🇸 آمریکا', '🇬🇧 انگلیس', '🇩🇪 آلمان', '🇫🇮 فنلاند', '🇳🇱 هلند'] :
-        ['🇺🇸 USA', '🇬🇧 UK', '🇩🇪 Germany', '🇫🇮 Finland', '🇳🇱 Netherlands'];
-    }
-  };
-
-  const calculatePrice = (plan: SubscriptionPlan) => {
-    return dataLimit * plan.pricePerGB;
-  };
-
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Star className="w-5 h-5 text-primary" />
-          {language === 'fa' ? 'انتخاب پلن' : 'Choose Plan'}
-        </h3>
-        <div className="flex items-center justify-center p-8">
-          <Loader className="w-6 h-6 animate-spin text-primary" />
-          <span className="ml-2">
-            {language === 'fa' ? 'در حال بارگذاری پلن‌ها...' : 'Loading plans...'}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Star className="w-5 h-5 text-primary" />
-          {language === 'fa' ? 'انتخاب پلن' : 'Choose Plan'}
-        </h3>
-        <div className="text-center p-8 text-red-600">
-          {language === 'fa' ? 
-            'خطا در بارگذاری پلن‌ها. لطفاً صفحه را تازه کنید.' : 
-            'Error loading plans. Please refresh the page.'
-          }
-        </div>
-      </div>
-    );
-  }
-
-  if (!plans || plans.length === 0) {
-    return (
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Star className="w-5 h-5 text-primary" />
-          {language === 'fa' ? 'انتخاب پلن' : 'Choose Plan'}
-        </h3>
-        <div className="text-center p-8 text-muted-foreground">
-          {language === 'fa' ? 
-            'هیچ پلنی در دسترس نیست.' : 
-            'No plans available.'
-          }
+        <h2 className="text-2xl font-bold">
+          {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
+        </h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader>
+                <div className="h-6 bg-gray-200 rounded"></div>
+                <div className="h-4 bg-gray-200 rounded"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-20 bg-gray-200 rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold flex items-center gap-2">
-        <Star className="w-5 h-5 text-primary" />
-        {language === 'fa' ? 'انتخاب پلن' : 'Choose Plan'}
-      </h3>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {plans.map((plan) => (
-          <Card 
-            key={plan.id}
-            className={`cursor-pointer transition-all duration-200 ${
-              selectedPlan?.id === plan.id 
-                ? 'ring-2 ring-primary bg-primary/5' 
-                : 'hover:shadow-md'
-            }`}
-            onClick={() => onPlanSelect(plan)}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  {plan.id === 'pro' ? (
-                    <Zap className="w-5 h-5 text-orange-500" />
-                  ) : (
-                    <CheckCircle className="w-5 h-5 text-green-500" />
-                  )}
-                  {plan.name}
-                </CardTitle>
-                {selectedPlan?.id === plan.id && (
-                  <Badge variant="default">
-                    {language === 'fa' ? 'انتخاب شده' : 'Selected'}
-                  </Badge>
-                )}
-              </div>
-              <CardDescription className="text-sm">
-                {plan.description}
-              </CardDescription>
-            </CardHeader>
-            
-            <CardContent className="space-y-4">
-              {/* Server Locations */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Globe className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">
-                    {language === 'fa' ? 'مکان‌های سرور' : 'Server Locations'}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {getLocationsList(plan.id).map((location, index) => (
-                    <Badge key={index} variant="outline" className="text-xs">
-                      {location}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  {language === 'fa' ? 'قیمت هر گیگابایت' : 'Price per GB'}
-                </span>
-                <span className="font-semibold">
-                  {plan.pricePerGB.toLocaleString()} 
-                  {language === 'fa' ? ' تومان' : ' Toman'}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  {language === 'fa' ? 'قیمت کل' : 'Total Price'}
-                </span>
-                <span className="text-lg font-bold text-primary">
-                  {calculatePrice(plan).toLocaleString()} 
-                  {language === 'fa' ? ' تومان' : ' Toman'}
-                </span>
-              </div>
-
-              <Button 
-                variant={selectedPlan?.id === plan.id ? "default" : "outline"}
-                className="w-full"
-                onClick={() => onPlanSelect(plan)}
-              >
-                {selectedPlan?.id === plan.id 
-                  ? (language === 'fa' ? 'انتخاب شده' : 'Selected')
-                  : (language === 'fa' ? 'انتخاب پلن' : 'Select Plan')
-                }
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-2">
+          {language === 'fa' ? 'انتخاب پلن اشتراک' : 'Select Subscription Plan'}
+        </h2>
+        <p className="text-gray-600">
+          {language === 'fa' 
+            ? 'پلن مناسب خود را انتخاب کنید' 
+            : 'Choose the plan that best fits your needs'
+          }
+        </p>
       </div>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {plans.map((plan) => {
+          const totalPrice = plan.price_per_gb * dataLimit;
+          const isSelected = selectedPlan === plan.plan_id;
+          
+          return (
+            <Card 
+              key={plan.id} 
+              className={`cursor-pointer transition-all duration-200 hover:shadow-lg ${
+                isSelected 
+                  ? 'ring-2 ring-blue-500 shadow-lg' 
+                  : 'hover:shadow-md'
+              }`}
+              onClick={() => onPlanSelect(plan.plan_id)}
+            >
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    {language === 'fa' ? plan.name_fa : plan.name_en}
+                    {isSelected && <CheckCircle className="w-5 h-5 text-blue-500" />}
+                  </CardTitle>
+                </div>
+                <CardDescription>
+                  {language === 'fa' ? plan.description_fa : plan.description_en}
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">
+                      {language === 'fa' ? 'قیمت هر گیگابایت:' : 'Price per GB:'}
+                    </span>
+                    <span className="font-semibold">
+                      {plan.price_per_gb.toLocaleString()} 
+                      {language === 'fa' ? ' تومان' : ' Toman'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">
+                      {language === 'fa' ? 'قیمت کل:' : 'Total Price:'}
+                    </span>
+                    <span className="text-lg font-bold text-blue-600">
+                      {totalPrice.toLocaleString()} 
+                      {language === 'fa' ? ' تومان' : ' Toman'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Available Countries */}
+                {plan.available_countries && plan.available_countries.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <Globe className="w-4 h-4" />
+                      <span>
+                        {language === 'fa' ? 'کشورهای در دسترس:' : 'Available Countries:'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {plan.available_countries.slice(0, 6).map((country: Country) => (
+                        <Badge key={country.code} variant="outline" className="text-xs">
+                          <span className="mr-1">{country.flag}</span>
+                          {country.name}
+                        </Badge>
+                      ))}
+                      {plan.available_countries.length > 6 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{plan.available_countries.length - 6} more
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <Button 
+                  variant={isSelected ? "default" : "outline"} 
+                  className="w-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPlanSelect(plan.plan_id);
+                  }}
+                >
+                  {isSelected 
+                    ? (language === 'fa' ? 'انتخاب شده' : 'Selected')
+                    : (language === 'fa' ? 'انتخاب پلن' : 'Select Plan')
+                  }
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {plans.length === 0 && (
+        <Card>
+          <CardContent className="text-center py-8">
+            <p className="text-gray-500">
+              {language === 'fa' 
+                ? 'هیچ پلنی در دسترس نیست' 
+                : 'No plans available at the moment'
+              }
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

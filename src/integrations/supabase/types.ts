@@ -395,6 +395,7 @@ export type Database = {
       subscription_plans: {
         Row: {
           api_type: string
+          available_countries: Json | null
           created_at: string
           default_data_limit_gb: number
           default_duration_days: number
@@ -411,6 +412,7 @@ export type Database = {
         }
         Insert: {
           api_type: string
+          available_countries?: Json | null
           created_at?: string
           default_data_limit_gb?: number
           default_duration_days?: number
@@ -427,6 +429,7 @@ export type Database = {
         }
         Update: {
           api_type?: string
+          available_countries?: Json | null
           created_at?: string
           default_data_limit_gb?: number
           default_duration_days?: number

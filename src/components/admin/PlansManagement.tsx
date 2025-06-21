@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Pencil, Plus, Trash2, Settings, AlertTriangle, Loader2, TestTube } from 'lucide-react';
 import { toast } from 'sonner';
 import { PlanTestConnection } from './PlanTestConnection';
+import { CountrySelector } from './CountrySelector';
+import { Country } from '@/data/countries';
 
 interface Plan {
   id: string;
@@ -27,6 +29,7 @@ interface Plan {
   default_duration_days: number;
   is_active: boolean;
   is_visible: boolean;
+  available_countries?: Country[];
 }
 
 interface Panel {
@@ -121,14 +124,19 @@ export const PlansManagement = () => {
       console.log('=== PLANS: Starting save mutation ===');
       console.log('PLANS: Full plan data received:', planData);
       
-      const { selectedPanels, ...planFields } = planData;
+      const { selectedPanels, available_countries, ...planFields } = planData;
       let planId = planData.id;
       
       try {
+        const saveData = {
+          ...planFields,
+          available_countries: available_countries || []
+        };
+
         if (planData.id) {
           // Update existing plan
           console.log('PLANS: Updating existing plan with ID:', planData.id);
-          const { id, ...updateData } = planFields;
+          const { id, ...updateData } = saveData;
           const { data: updatedPlan, error } = await supabase
             .from('subscription_plans')
             .update(updateData)
@@ -146,17 +154,18 @@ export const PlansManagement = () => {
           // Create new plan
           console.log('PLANS: Creating new plan');
           const insertData = {
-            plan_id: planFields.plan_id!,
-            name_en: planFields.name_en!,
-            name_fa: planFields.name_fa!,
-            description_en: planFields.description_en || '',
-            description_fa: planFields.description_fa || '',
-            price_per_gb: planFields.price_per_gb!,
-            api_type: planFields.api_type!,
-            default_data_limit_gb: planFields.default_data_limit_gb!,
-            default_duration_days: planFields.default_duration_days!,
-            is_active: planFields.is_active ?? true,
-            is_visible: planFields.is_visible ?? true,
+            plan_id: saveData.plan_id!,
+            name_en: saveData.name_en!,
+            name_fa: saveData.name_fa!,
+            description_en: saveData.description_en || '',
+            description_fa: saveData.description_fa || '',
+            price_per_gb: saveData.price_per_gb!,
+            api_type: saveData.api_type!,
+            default_data_limit_gb: saveData.default_data_limit_gb!,
+            default_duration_days: saveData.default_duration_days!,
+            is_active: saveData.is_active ?? true,
+            is_visible: saveData.is_visible ?? true,
+            available_countries: saveData.available_countries || []
           };
           
           console.log('PLANS: Inserting plan with data:', insertData);
@@ -292,6 +301,7 @@ export const PlansManagement = () => {
       is_visible: plan?.is_visible ?? true,
     });
 
+    const [selectedCountries, setSelectedCountries] = useState<Country[]>(plan?.available_countries || []);
     const [selectedPanels, setSelectedPanels] = useState<{ panelId: string; isPrimary: boolean; inboundIds: string[] }[]>([]);
 
     // Load existing panel mappings when editing
@@ -344,6 +354,7 @@ export const PlansManagement = () => {
       console.log('PLANS: Form submitted');
       console.log('PLANS: Form data:', formData);
       console.log('PLANS: Selected panels:', selectedPanels);
+      console.log('PLANS: Selected countries:', selectedCountries);
       
       if (!panels || panels.length === 0) {
         toast.error('No active panels available. Add panels first before creating plans.');
@@ -371,13 +382,15 @@ export const PlansManagement = () => {
       console.log('PLANS: Final submission data:', { 
         ...formData, 
         id: plan?.id,
-        selectedPanels: finalSelectedPanels
+        selectedPanels: finalSelectedPanels,
+        available_countries: selectedCountries
       });
 
       onSave({ 
         ...formData, 
         id: plan?.id,
-        selectedPanels: finalSelectedPanels
+        selectedPanels: finalSelectedPanels,
+        available_countries: selectedCountries
       });
     };
 
@@ -518,6 +531,30 @@ export const PlansManagement = () => {
                       required
                     />
                   </div>
+                </div>
+
+                {/* Available Countries Section */}
+                <div className="space-y-3 border-t pt-6">
+                  <div>
+                    <Label className="text-lg font-semibold">Available Countries</Label>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Select which countries are available for this plan. Users will see these countries with flags in the plan details.
+                    </p>
+                  </div>
+                  
+                  <CountrySelector
+                    selectedCountries={selectedCountries}
+                    onCountriesChange={setSelectedCountries}
+                    placeholder="Select countries for this plan..."
+                  />
+                  
+                  {selectedCountries.length > 0 && (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <p className="text-sm text-green-800 dark:text-green-200">
+                        ✅ {selectedCountries.length} countries selected for this plan
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Panel Selection */}
@@ -804,6 +841,27 @@ export const PlansManagement = () => {
                     <p>{plan.default_data_limit_gb}GB / {plan.default_duration_days} days</p>
                   </div>
                 </div>
+                
+                {/* Available Countries Display */}
+                {plan.available_countries && plan.available_countries.length > 0 ? (
+                  <div className="mb-4">
+                    <span className="font-medium text-sm">Available Countries:</span>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {plan.available_countries.map((country: Country) => (
+                        <Badge key={country.code} variant="outline" className="flex items-center gap-1">
+                          <span>{country.flag}</span>
+                          <span>{country.name}</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      ⚠️ No countries configured for this plan. Edit the plan to add available countries.
+                    </p>
+                  </div>
+                )}
                 
                 {/* Show Associated Panels */}
                 {planPanels.length > 0 ? (
