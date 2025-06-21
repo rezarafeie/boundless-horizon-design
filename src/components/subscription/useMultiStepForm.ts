@@ -4,11 +4,12 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
-import { DiscountCode } from '@/types/subscription';
+import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
 import { UserCreationService } from '@/services/userCreationService';
 
 interface PlanWithPanels {
   id: string;
+  plan_id: string;
   name_en: string;
   name_fa: string;
   description_en?: string;
@@ -102,12 +103,51 @@ export const useMultiStepForm = () => {
   };
 
   const updateFormData = (field: keyof FormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    console.log('Updating form data:', field, value);
+    
+    if (field === 'selectedPlan') {
+      // Handle plan selection properly
+      if (typeof value === 'string') {
+        // If we received a plan ID, find the full plan object
+        const fullPlan = availablePlans.find(p => p.id === value || p.plan_id === value);
+        if (fullPlan) {
+          const planObject: SubscriptionPlan = {
+            id: fullPlan.id,
+            plan_id: fullPlan.plan_id,
+            name: fullPlan.name_en,
+            name_en: fullPlan.name_en,
+            name_fa: fullPlan.name_fa,
+            description: fullPlan.description_en || '',
+            description_en: fullPlan.description_en,
+            description_fa: fullPlan.description_fa,
+            pricePerGB: fullPlan.price_per_gb,
+            price_per_gb: fullPlan.price_per_gb,
+            apiType: fullPlan.api_type as 'marzban' | 'marzneshin',
+            api_type: fullPlan.api_type as 'marzban' | 'marzneshin',
+            durationDays: fullPlan.default_duration_days,
+            default_duration_days: fullPlan.default_duration_days,
+            default_data_limit_gb: fullPlan.default_data_limit_gb
+          };
+          
+          setFormData(prev => ({ ...prev, [field]: planObject }));
+          console.log('Plan object set:', planObject);
+        } else {
+          console.warn('Plan not found for ID:', value);
+          setFormData(prev => ({ ...prev, [field]: { id: value, plan_id: value } as SubscriptionPlan }));
+        }
+      } else {
+        // Direct object assignment
+        setFormData(prev => ({ ...prev, [field]: value }));
+      }
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
   };
 
   // Auto-advance from plan selection step when plan is selected
   useEffect(() => {
     if (currentStep === 1 && formData.selectedPlan) {
+      console.log('Auto-advancing to step 2 with selected plan:', formData.selectedPlan);
       const timer = setTimeout(() => {
         setCurrentStep(2);
       }, 300);
@@ -118,9 +158,18 @@ export const useMultiStepForm = () => {
   const canProceedFromStep = (step: StepNumber): boolean => {
     switch (step) {
       case 1:
-        return !!formData.selectedPlan;
+        const canProceed1 = !!formData.selectedPlan;
+        console.log('Can proceed from step 1:', canProceed1, formData.selectedPlan);
+        return canProceed1;
       case 2:
-        return !!(formData.username && formData.mobile && formData.dataLimit && formData.duration);
+        const canProceed2 = !!(formData.username && formData.mobile && formData.dataLimit && formData.duration);
+        console.log('Can proceed from step 2:', canProceed2, {
+          username: formData.username,
+          mobile: formData.mobile,
+          dataLimit: formData.dataLimit,
+          duration: formData.duration
+        });
+        return canProceed2;
       case 3:
         return !!result;
       default:
@@ -150,7 +199,7 @@ export const useMultiStepForm = () => {
     }
 
     // Get full plan configuration from the loaded plans
-    const planConfig = availablePlans.find(p => p.id === formData.selectedPlan.id);
+    const planConfig = availablePlans.find(p => p.id === formData.selectedPlan?.id || p.plan_id === formData.selectedPlan?.plan_id);
     if (!planConfig) {
       console.log('MULTI STEP FORM: Plan not found in availablePlans, proceeding anyway');
     }
@@ -302,6 +351,8 @@ export const useMultiStepForm = () => {
   };
 
   const handleNext = async () => {
+    console.log('Handle next called for step:', currentStep);
+    
     if (!canProceedFromStep(currentStep)) {
       console.warn('Cannot proceed from current step:', currentStep);
       return;
@@ -355,8 +406,8 @@ export const useMultiStepForm = () => {
     }
     
     // Use the selected plan's price per GB from the database or fallback to selectedPlan
-    const planConfig = availablePlans.find(p => p.id === formData.selectedPlan.id);
-    const pricePerGB = planConfig?.price_per_gb || formData.selectedPlan.pricePerGB || 0;
+    const planConfig = availablePlans.find(p => p.id === formData.selectedPlan?.id || p.plan_id === formData.selectedPlan?.plan_id);
+    const pricePerGB = planConfig?.price_per_gb || formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0;
     
     const basePrice = pricePerGB * formData.dataLimit;
     const discountAmount = appliedDiscount ? 

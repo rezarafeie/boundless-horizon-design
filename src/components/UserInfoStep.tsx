@@ -25,6 +25,8 @@ interface UserInfoStepProps {
 const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps) => {
   const { language } = useLanguage();
 
+  console.log('UserInfoStep - Rendering with formData:', formData);
+
   const generateUsername = () => {
     const prefix = 'bnets_';
     const timestamp = Date.now().toString().slice(-6);
@@ -38,8 +40,14 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
   };
 
   const calculatePrice = () => {
-    if (!formData.selectedPlan) return 0;
-    const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
+    if (!formData.selectedPlan) {
+      console.warn('UserInfoStep - No plan selected for price calculation');
+      return 0;
+    }
+    
+    // Use both possible price field names for compatibility
+    const pricePerGB = formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0;
+    const basePrice = formData.dataLimit * pricePerGB;
     
     if (appliedDiscount) {
       const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
@@ -51,9 +59,21 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
 
   const calculateDiscount = () => {
     if (!formData.selectedPlan || !appliedDiscount) return 0;
-    const basePrice = formData.dataLimit * formData.selectedPlan.pricePerGB;
+    const pricePerGB = formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0;
+    const basePrice = formData.dataLimit * pricePerGB;
     return (basePrice * appliedDiscount.percentage) / 100;
   };
+
+  if (!formData.selectedPlan) {
+    console.error('UserInfoStep - No plan selected, cannot render step');
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-500">
+          {language === 'fa' ? 'خطا: هیچ پلنی انتخاب نشده است' : 'Error: No plan selected'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -157,15 +177,15 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
                   </h4>
                   <p className="text-sm text-blue-600 dark:text-blue-400">
                     {language === 'fa' ? 
-                      `${formData.dataLimit} گیگابایت × ${formData.selectedPlan.pricePerGB.toLocaleString()} تومان` : 
-                      `${formData.dataLimit} GB × ${formData.selectedPlan.pricePerGB.toLocaleString()} Toman`
+                      `${formData.dataLimit} گیگابایت × ${(formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0).toLocaleString()} تومان` : 
+                      `${formData.dataLimit} GB × ${(formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0).toLocaleString()} Toman`
                     }
                   </p>
                 </div>
                 <div className="text-right">
                   {appliedDiscount && (
                     <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
-                      {(formData.dataLimit * formData.selectedPlan.pricePerGB).toLocaleString()}
+                      {(formData.dataLimit * (formData.selectedPlan.pricePerGB || formData.selectedPlan.price_per_gb || 0)).toLocaleString()}
                       {language === 'fa' ? ' تومان' : ' Toman'}
                     </div>
                   )}
@@ -191,8 +211,8 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
           <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
             <p className="text-sm text-green-600 dark:text-green-400">
               {language === 'fa' ? 
-                `${formData.selectedPlan.name} - ${formData.selectedPlan.description}` : 
-                `${formData.selectedPlan.name} - ${formData.selectedPlan.description}`
+                `${formData.selectedPlan.name_fa || formData.selectedPlan.name} - ${formData.selectedPlan.description_fa || formData.selectedPlan.description}` : 
+                `${formData.selectedPlan.name_en || formData.selectedPlan.name} - ${formData.selectedPlan.description_en || formData.selectedPlan.description}`
               }
             </p>
           </div>

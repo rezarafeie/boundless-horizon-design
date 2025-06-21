@@ -31,8 +31,14 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('PlanSelector - Selected plan:', selectedPlan);
+    console.log('PlanSelector - Data limit:', dataLimit);
+  }, [selectedPlan, dataLimit]);
+
+  useEffect(() => {
     const fetchPlans = async () => {
       try {
+        console.log('PlanSelector - Fetching plans...');
         const { data, error } = await supabase
           .from('subscription_plans')
           .select('*')
@@ -40,7 +46,12 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
           .eq('is_visible', true)
           .order('price_per_gb', { ascending: true });
 
-        if (error) throw error;
+        if (error) {
+          console.error('PlanSelector - Error fetching plans:', error);
+          throw error;
+        }
+        
+        console.log('PlanSelector - Raw plans data:', data);
         
         // Transform the data to ensure available_countries is properly typed
         const transformedPlans: Plan[] = (data || []).map(plan => {
@@ -73,9 +84,10 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
           };
         });
         
+        console.log('PlanSelector - Transformed plans:', transformedPlans);
         setPlans(transformedPlans);
       } catch (error) {
-        console.error('Error fetching plans:', error);
+        console.error('PlanSelector - Error fetching plans:', error);
       } finally {
         setLoading(false);
       }
@@ -107,6 +119,11 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
     );
   }
 
+  const handlePlanSelect = (plan: Plan) => {
+    console.log('PlanSelector - Plan selected:', plan);
+    onPlanSelect(plan.id);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -124,7 +141,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {plans.map((plan) => {
           const totalPrice = plan.price_per_gb * dataLimit;
-          const isSelected = selectedPlan === plan.plan_id;
+          const isSelected = selectedPlan === plan.id || selectedPlan === plan.plan_id;
           
           return (
             <Card 
@@ -134,7 +151,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
                   ? 'ring-2 ring-blue-500 shadow-lg' 
                   : 'hover:shadow-md'
               }`}
-              onClick={() => onPlanSelect(plan.plan_id)}
+              onClick={() => handlePlanSelect(plan)}
             >
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -201,7 +218,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
                   className="w-full"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onPlanSelect(plan.plan_id);
+                    handlePlanSelect(plan);
                   }}
                 >
                   {isSelected 

@@ -29,21 +29,25 @@ const StepContentRenderer = ({
   onPaymentSuccess,
   onPrevious
 }: StepContentRendererProps) => {
+  console.log('StepContentRenderer - Current step:', currentStep);
+  console.log('StepContentRenderer - Form data:', formData);
+  
   switch (currentStep) {
     case 1:
       return (
         <PlanSelector
-          selectedPlan={formData.selectedPlan?.id || ''}
+          selectedPlan={formData.selectedPlan?.id || formData.selectedPlan?.plan_id || ''}
           onPlanSelect={(planId: string) => {
-            // Find the plan object by ID and pass the entire plan object
-            // This assumes plans are available in context or passed down
-            onUpdateFormData('selectedPlan', planId);
+            console.log('Plan selected:', planId);
+            // Pass the plan ID to be handled by the parent component
+            onUpdateFormData('selectedPlan', { id: planId, plan_id: planId });
           }}
           dataLimit={formData.dataLimit}
         />
       );
 
     case 2:
+      console.log('Rendering UserInfoStep with formData:', formData);
       return (
         <UserInfoStep
           formData={formData}
@@ -71,6 +75,7 @@ const StepContentRenderer = ({
       ) : null;
 
     default:
+      console.warn('Unknown step:', currentStep);
       return null;
   }
 };
