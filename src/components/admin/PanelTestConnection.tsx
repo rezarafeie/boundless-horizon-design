@@ -1,8 +1,9 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { TestDebugLog } from './TestDebugLog';
@@ -60,12 +61,11 @@ interface PanelTestConnectionProps {
 
 export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnectionProps) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [showDebugLogs, setShowDebugLogs] = useState(false);
 
   const testConnection = async () => {
     setIsLoading(true);
-    setTestResult(null);
     
     try {
       console.log('Testing panel connection:', panel.id);
@@ -80,12 +80,15 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
       }
 
       console.log('Test connection result:', data);
-      setTestResult(data);
+      
+      // Add the new test result to the beginning of the array
+      setTestResults(prev => [data, ...prev]);
       
       if (data.success) {
         toast.success(`Panel ${panel.name} is working correctly!`);
       } else {
         toast.error(`Panel ${panel.name} test failed. Check the details below.`);
+        setShowDebugLogs(true); // Auto-show logs on failure
       }
       
       if (onTestComplete) {
@@ -114,11 +117,17 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
         ],
         timestamp: new Date().toISOString()
       };
-      setTestResult(errorResult);
+      setTestResults(prev => [errorResult, ...prev]);
+      setShowDebugLogs(true); // Auto-show logs on error
       toast.error(`Failed to test panel ${panel.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const clearResults = () => {
+    setTestResults([]);
+    setShowDebugLogs(false);
   };
 
   const getStatusIcon = (success: boolean) => {
@@ -131,34 +140,68 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
     return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
   };
 
+  const latestResult = testResults[0];
+
   return (
     <div className="space-y-4">
-      <Button 
-        onClick={testConnection} 
-        disabled={isLoading}
-        className="w-full"
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Testing Connection...
-          </>
-        ) : (
-          <>
-            <TestTube className="w-4 h-4 mr-2" />
-            Test Panel Connection
-          </>
+      <div className="flex gap-2">
+        <Button 
+          onClick={testConnection} 
+          disabled={isLoading}
+          className="flex-1"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Testing Connection...
+            </>
+          ) : (
+            <>
+              <TestTube className="w-4 h-4 mr-2" />
+              Test Panel Connection
+            </>
+          )}
+        </Button>
+        
+        {testResults.length > 0 && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={clearResults}
+            className="flex-shrink-0"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
         )}
-      </Button>
+      </div>
 
-      {testResult && (
-        <>
+      {/* Current Test Status */}
+      {isLoading && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-blue-800">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="font-medium">Testing in progress...</span>
+            </div>
+            <p className="text-sm text-blue-600 mt-1">
+              Please wait while we test the panel connection and functionality.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Test Results History */}
+      {testResults.map((testResult, index) => (
+        <div key={`${testResult.timestamp}-${index}`}>
           <Card className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 {getStatusIcon(testResult.success)}
                 Connection Test Results
                 {getStatusBadge(testResult.success)}
+                {index === 0 && (
+                  <Badge variant="outline" className="text-xs">Latest</Badge>
+                )}
               </CardTitle>
               <CardDescription>
                 Test completed at {new Date(testResult.timestamp).toLocaleString()}
@@ -249,13 +292,15 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
           </Card>
 
           {/* Debug Logs Component */}
-          <TestDebugLog
-            logs={testResult.detailedLogs || []}
-            title="Panel Connection Debug Logs"
-            isVisible={showDebugLogs}
-          />
-        </>
-      )}
+          {index === 0 && (
+            <TestDebugLog
+              logs={testResult.detailedLogs || []}
+              title="Panel Connection Debug Logs"
+              isVisible={showDebugLogs}
+            />
+          )}
+        </div>
+      ))}
     </div>
   );
 };

@@ -1,8 +1,9 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube, Trash2 } from 'lucide-react';
 import { PlanService } from '@/services/planService';
 import { toast } from 'sonner';
 import { TestDebugLog } from './TestDebugLog';
@@ -35,6 +36,7 @@ interface PlanTestResult {
     details?: any;
     timestamp: string;
   }>;
+  timestamp: string;
 }
 
 interface PlanTestConnectionProps {
@@ -44,12 +46,11 @@ interface PlanTestConnectionProps {
 
 export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionProps) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [testResult, setTestResult] = useState<PlanTestResult | null>(null);
+  const [testResults, setTestResults] = useState<PlanTestResult[]>([]);
   const [showDebugLogs, setShowDebugLogs] = useState(false);
 
   const testPlanConfiguration = async () => {
     setIsLoading(true);
-    setTestResult(null);
     
     try {
       console.log('Testing plan configuration:', plan.id);
@@ -200,10 +201,12 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
         } : undefined,
         availablePanels: planConfig.panels.length,
         errors,
-        detailedLogs
+        detailedLogs,
+        timestamp: new Date().toISOString()
       };
 
-      setTestResult(result);
+      // Add the new test result to the beginning of the array
+      setTestResults(prev => [result, ...prev]);
       
       if (result.success) {
         toast.success(`Plan ${plan.name_en} configuration is valid!`);
@@ -230,14 +233,20 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
           message: `Plan configuration test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
           details: { error },
           timestamp: new Date().toISOString()
-        }]
+        }],
+        timestamp: new Date().toISOString()
       };
-      setTestResult(errorResult);
+      setTestResults(prev => [errorResult, ...prev]);
       setShowDebugLogs(true); // Auto-show logs when there are errors
       toast.error(`Failed to test plan ${plan.name_en}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const clearResults = () => {
+    setTestResults([]);
+    setShowDebugLogs(false);
   };
 
   const getStatusIcon = (success: boolean) => {
@@ -252,35 +261,67 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
 
   return (
     <div className="space-y-4">
-      <Button 
-        onClick={testPlanConfiguration} 
-        disabled={isLoading}
-        className="w-full"
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Testing Plan Configuration...
-          </>
-        ) : (
-          <>
-            <TestTube className="w-4 h-4 mr-2" />
-            Test Plan Configuration
-          </>
+      <div className="flex gap-2">
+        <Button 
+          onClick={testPlanConfiguration} 
+          disabled={isLoading}
+          className="flex-1"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Testing Plan Configuration...
+            </>
+          ) : (
+            <>
+              <TestTube className="w-4 h-4 mr-2" />
+              Test Plan Configuration
+            </>
+          )}
+        </Button>
+        
+        {testResults.length > 0 && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={clearResults}
+            className="flex-shrink-0"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
         )}
-      </Button>
+      </div>
 
-      {testResult && (
-        <>
+      {/* Current Test Status */}
+      {isLoading && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-blue-800">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="font-medium">Testing plan configuration...</span>
+            </div>
+            <p className="text-sm text-blue-600 mt-1">
+              Please wait while we validate the plan configuration and panel connectivity.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Test Results History */}
+      {testResults.map((testResult, index) => (
+        <div key={`${testResult.timestamp}-${index}`}>
           <Card className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 {getStatusIcon(testResult.success)}
                 Plan Configuration Test
                 {getStatusBadge(testResult.success)}
+                {index === 0 && (
+                  <Badge variant="outline" className="text-xs">Latest</Badge>
+                )}
               </CardTitle>
               <CardDescription>
-                Configuration test for plan: {testResult.planName}
+                Configuration test for plan: {testResult.planName} - {new Date(testResult.timestamp).toLocaleString()}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -301,8 +342,8 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
                 <div>
                   <h4 className="font-medium text-red-700">Issues Found:</h4>
                   <ul className="text-sm text-red-600 ml-4 mt-1">
-                    {testResult.errors.map((error, index) => (
-                      <li key={index} className="list-disc">
+                    {testResult.errors.map((error, errorIndex) => (
+                      <li key={errorIndex} className="list-disc">
                         {error}
                       </li>
                     ))}
@@ -334,13 +375,15 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
           </Card>
 
           {/* Debug Logs Component */}
-          <TestDebugLog
-            logs={testResult.detailedLogs || []}
-            title="Plan Configuration Debug Logs"
-            isVisible={showDebugLogs}
-          />
-        </>
-      )}
+          {index === 0 && (
+            <TestDebugLog
+              logs={testResult.detailedLogs || []}
+              title="Plan Configuration Debug Logs"
+              isVisible={showDebugLogs}
+            />
+          )}
+        </div>
+      ))}
     </div>
   );
 };
