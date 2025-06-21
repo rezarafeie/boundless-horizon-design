@@ -119,7 +119,7 @@ export const useMultiStepForm = () => {
     }
 
     // Validate that the plan has available panels
-    if (formData.selectedPlan.panels.length === 0) {
+    if (!formData.selectedPlan.panels || formData.selectedPlan.panels.length === 0) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
@@ -348,10 +348,7 @@ export const useMultiStepForm = () => {
     setCurrentStep(nextStep);
   };
 
-  const handlePrevious = ()
-
-
- => {
+  const handlePrevious = () => {
     if (currentStep > 1) {
       const prevStep = Math.max(currentStep - 1, 1) as StepNumber;
       console.log(`MULTI STEP FORM: Moving from step ${currentStep} to step ${prevStep}`);

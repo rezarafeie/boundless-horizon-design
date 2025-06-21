@@ -4,7 +4,8 @@ import UserInfoStep from '@/components/UserInfoStep';
 import PaymentStep from '@/components/PaymentStep';
 import SubscriptionSuccess from '@/components/SubscriptionSuccess';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
-import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
+import { DiscountCode } from '@/types/subscription';
+import { PlanWithPanels } from '@/services/planService';
 
 interface StepContentRendererProps {
   currentStep: StepNumber;
@@ -38,9 +39,9 @@ const StepContentRenderer = ({
       return (
         <PlanSelector
           selectedPlan={formData.selectedPlan?.id || formData.selectedPlan?.plan_id || ''}
-          onPlanSelect={(plan: SubscriptionPlan) => {
+          onPlanSelect={(plan: any) => {
             console.log('StepContentRenderer - Plan selected:', plan);
-            // Ensure we pass a complete plan object
+            // Convert the plan to PlanWithPanels format if needed
             onUpdateFormData('selectedPlan', plan);
           }}
           dataLimit={formData.dataLimit}

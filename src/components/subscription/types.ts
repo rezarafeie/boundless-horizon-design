@@ -1,5 +1,6 @@
 
-import { SubscriptionPlan, DiscountCode } from '@/types/subscription';
+import { DiscountCode } from '@/types/subscription';
+import { PlanWithPanels } from '@/services/planService';
 
 export interface FormData {
   username: string;
@@ -7,7 +8,7 @@ export interface FormData {
   duration: number;
   notes: string;
   mobile: string;
-  selectedPlan: SubscriptionPlan | null;
+  selectedPlan: PlanWithPanels | null;
 }
 
 export interface SubscriptionResponse {
