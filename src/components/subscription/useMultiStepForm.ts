@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -224,23 +223,9 @@ export const useMultiStepForm = () => {
         try {
           console.log('MULTI STEP FORM: Creating VPN user for free subscription');
           
-          // Determine panel type from plan configuration with validation
-          let panelType: 'marzban' | 'marzneshin' = 'marzban';
-          
-          // Check plan configuration first
-          if (planConfig) {
-            panelType = planConfig.api_type as 'marzban' | 'marzneshin';
-            console.log('MULTI STEP FORM: Using panel type from plan config:', panelType);
-          } else {
-            // Fallback to plan ID based logic
-            const planId = formData.selectedPlan.id || formData.selectedPlan.plan_id;
-            if (planId === 'pro' || formData.selectedPlan.name?.toLowerCase().includes('pro')) {
-              panelType = 'marzneshin';
-            } else if (planId === 'lite' || formData.selectedPlan.name?.toLowerCase().includes('lite')) {
-              panelType = 'marzban';
-            }
-            console.log('MULTI STEP FORM: Using fallback panel type logic:', panelType);
-          }
+          // All plans now use marzban
+          const panelType: 'marzban' = 'marzban';
+          console.log('MULTI STEP FORM: Using Marzban panel type for all plans');
           
           // Get the plan ID for validation
           const selectedPlanId = formData.selectedPlan.id || formData.selectedPlan.plan_id;
@@ -331,10 +316,6 @@ export const useMultiStepForm = () => {
           errorMessage = language === 'fa' ? 
             'مشکل در اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید.' :
             'Connection problem. Please check your internet connection.';
-        } else if (error.message.includes('Plan-panel mismatch')) {
-          errorMessage = language === 'fa' ? 
-            'خطا در تنظیمات پلن. لطفاً با پشتیبانی تماس بگیرید.' :
-            'Plan configuration error. Please contact support.';
         } else {
           errorMessage = error.message;
         }

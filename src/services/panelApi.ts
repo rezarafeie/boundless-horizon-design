@@ -11,14 +11,14 @@ export interface PanelSubscriptionData {
 }
 
 export class PanelApiService {
-  static async getSubscriptionFromPanel(username: string, panelType: 'marzban' | 'marzneshin'): Promise<PanelSubscriptionData> {
+  static async getSubscriptionFromPanel(username: string, panelType: 'marzban'): Promise<PanelSubscriptionData> {
     try {
       console.log(`Fetching subscription for ${username} from ${panelType} panel`);
       
       const { data, error } = await supabase.functions.invoke('get-subscription-from-panel', {
         body: {
           username,
-          panelType
+          panelType: 'marzban' // Force marzban
         }
       });
 
@@ -41,7 +41,7 @@ export class PanelApiService {
     }
   }
 
-  static async determineSubscriptionPanelType(username: string): Promise<'marzban' | 'marzneshin' | null> {
+  static async determineSubscriptionPanelType(username: string): Promise<'marzban' | null> {
     try {
       // First try to get from database subscription record
       const { data: subscription } = await supabase
@@ -53,29 +53,16 @@ export class PanelApiService {
         .single();
 
       if (subscription) {
-        // Check which API was used to create this subscription
-        // Look for indicators in the notes or other fields
-        if (subscription.notes?.includes('marzneshin') || subscription.notes?.includes('Marzneshin')) {
-          return 'marzneshin';
-        }
-        if (subscription.notes?.includes('marzban') || subscription.notes?.includes('Marzban')) {
-          return 'marzban';
-        }
+        // All subscriptions now use marzban
+        return 'marzban';
       }
 
-      // Try both panels to see which one has the user
-      try {
-        await PanelApiService.getSubscriptionFromPanel(username, 'marzneshin');
-        return 'marzneshin';
-      } catch (error) {
-        console.log('User not found in Marzneshin, trying Marzban');
-      }
-
+      // Try marzban panel directly
       try {
         await PanelApiService.getSubscriptionFromPanel(username, 'marzban');
         return 'marzban';
       } catch (error) {
-        console.log('User not found in Marzban either');
+        console.log('User not found in Marzban panel');
       }
 
       return null;

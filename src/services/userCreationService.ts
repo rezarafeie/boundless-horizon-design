@@ -6,10 +6,10 @@ export interface CreateUserRequest {
   dataLimitGB: number;
   durationDays: number;
   notes?: string;
-  panelType: 'marzban' | 'marzneshin';
+  panelType: 'marzban';
   subscriptionId?: string;
   isFreeTriaL?: boolean;
-  selectedPlanId?: string; // Add plan ID for validation
+  selectedPlanId?: string;
 }
 
 export interface CreateUserResponse {
@@ -31,29 +31,29 @@ export class UserCreationService {
     console.log('USER_CREATION_SERVICE: Creating user with request:', request);
     
     try {
-      // Validate plan-to-panel mapping
+      // Validate plan-to-panel mapping (now all should be marzban)
       if (request.selectedPlanId) {
-        const correctPanelType = await this.validatePlanPanelMapping(request.selectedPlanId, request.panelType);
+        const correctPanelType = await this.validatePlanPanelMapping(request.selectedPlanId, 'marzban');
         if (!correctPanelType) {
           console.error('USER_CREATION_SERVICE: Plan-panel mismatch detected', {
             planId: request.selectedPlanId,
-            requestedPanel: request.panelType
+            requestedPanel: 'marzban'
           });
-          throw new Error(`Plan-panel mismatch: ${request.selectedPlanId} should not use ${request.panelType} panel`);
+          throw new Error(`Plan-panel mismatch: ${request.selectedPlanId} should use marzban panel`);
         }
       }
 
-      // Get the appropriate panel based on panel type with additional validation
+      // Get active Marzban panels
       const { data: panels, error: panelError } = await supabase
         .from('panel_servers')
         .select('*')
-        .eq('type', request.panelType)
+        .eq('type', 'marzban')
         .eq('is_active', true)
         .order('created_at', { ascending: true });
 
       if (panelError || !panels || panels.length === 0) {
-        console.error('USER_CREATION_SERVICE: No active panels found for type:', request.panelType);
-        throw new Error(`No active ${request.panelType} panels available`);
+        console.error('USER_CREATION_SERVICE: No active Marzban panels found');
+        throw new Error('No active Marzban panels available');
       }
 
       // Prefer online panels, but use any active panel if none are online
@@ -70,16 +70,7 @@ export class UserCreationService {
         type: selectedPanel.type
       });
 
-      // Validate panel URL is correct
-      if (request.panelType === 'marzneshin' && !selectedPanel.panel_url.includes('cp.rain.rest')) {
-        console.error('USER_CREATION_SERVICE: Marzneshin panel URL mismatch', {
-          expected: 'cp.rain.rest',
-          actual: selectedPanel.panel_url
-        });
-        throw new Error('Marzneshin panel URL configuration error');
-      }
-
-      // Use the test-panel-connection function for actual user creation
+      // Use the test-panel-connection function for user creation (exactly as it works in tests)
       const { data, error } = await supabase.functions.invoke('test-panel-connection', {
         body: {
           panelId: selectedPanel.id,
@@ -89,7 +80,7 @@ export class UserCreationService {
             dataLimitGB: request.dataLimitGB,
             durationDays: request.durationDays,
             notes: request.notes || '',
-            panelType: request.panelType,
+            panelType: 'marzban',
             subscriptionId: request.subscriptionId,
             isFreeTriaL: request.isFreeTriaL
           }
@@ -143,7 +134,6 @@ export class UserCreationService {
 
           if (updateError) {
             console.error('USER_CREATION_SERVICE: Failed to update subscription:', updateError);
-            // Don't throw error here as the user was created successfully
           } else {
             console.log('USER_CREATION_SERVICE: Subscription updated successfully');
           }
@@ -184,7 +174,7 @@ export class UserCreationService {
       } else if (errorMessage.includes('timeout')) {
         errorMessage = 'Connection timeout. Please try again.';
       } else if (errorMessage.includes('Plan-panel mismatch')) {
-        errorMessage = 'Configuration error: Selected plan and panel type do not match. Please contact support.';
+        errorMessage = 'Configuration error: Selected plan should use Marzban panel. Please contact support.';
       }
       
       return {
@@ -194,7 +184,7 @@ export class UserCreationService {
     }
   }
 
-  // Validate plan-to-panel mapping
+  // Validate plan-to-panel mapping (now all should be marzban)
   static async validatePlanPanelMapping(planId: string, requestedPanelType: string): Promise<boolean> {
     try {
       console.log('USER_CREATION_SERVICE: Validating plan-panel mapping', { planId, requestedPanelType });
@@ -211,7 +201,8 @@ export class UserCreationService {
         return true; // Allow if we can't validate
       }
 
-      const expectedPanelType = plan.api_type;
+      // All plans should now be marzban
+      const expectedPanelType = 'marzban';
       const isValid = expectedPanelType === requestedPanelType;
       
       console.log('USER_CREATION_SERVICE: Plan-panel validation result:', {
@@ -241,8 +232,6 @@ export class UserCreationService {
         warnings.push(`Subscription URL does not contain expected username: ${expectedUsername}`);
       }
       
-      // Additional validations can be added here based on URL structure
-      
       return {
         isValid: warnings.length === 0,
         warnings
@@ -264,7 +253,8 @@ export class UserCreationService {
   ): Promise<CreateUserResponse> {
     console.log('USER_CREATION_SERVICE: Creating free trial:', { username, planType, dataLimitGB, durationDays });
     
-    const panelType = planType === 'lite' ? 'marzban' : 'marzneshin';
+    // All plans now use marzban
+    const panelType = 'marzban';
     
     return this.createUser({
       username,
@@ -281,7 +271,7 @@ export class UserCreationService {
     username: string,
     dataLimitGB: number,
     durationDays: number,
-    panelType: 'marzban' | 'marzneshin',
+    panelType: 'marzban',
     subscriptionId: string,
     notes?: string,
     selectedPlanId?: string
@@ -295,7 +285,7 @@ export class UserCreationService {
       dataLimitGB,
       durationDays,
       notes,
-      panelType,
+      panelType: 'marzban', // Force marzban
       subscriptionId,
       isFreeTriaL: false,
       selectedPlanId
