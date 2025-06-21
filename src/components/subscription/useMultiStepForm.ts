@@ -224,7 +224,7 @@ export const useMultiStepForm = () => {
         try {
           console.log('MULTI STEP FORM: Creating VPN user for free subscription');
           
-          // Determine panel type from plan configuration
+          // Determine panel type from plan configuration with validation
           let panelType: 'marzban' | 'marzneshin' = 'marzban';
           
           // Check plan configuration first
@@ -242,13 +242,17 @@ export const useMultiStepForm = () => {
             console.log('MULTI STEP FORM: Using fallback panel type logic:', panelType);
           }
           
+          // Get the plan ID for validation
+          const selectedPlanId = formData.selectedPlan.id || formData.selectedPlan.plan_id;
+          
           const vpnResult = await UserCreationService.createSubscription(
             uniqueUsername,
             formData.dataLimit,
             formData.duration,
             panelType,
             data.id,
-            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`
+            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`,
+            selectedPlanId
           );
           
           console.log('MULTI STEP FORM: VPN creation response:', vpnResult);
@@ -327,6 +331,10 @@ export const useMultiStepForm = () => {
           errorMessage = language === 'fa' ? 
             'مشکل در اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید.' :
             'Connection problem. Please check your internet connection.';
+        } else if (error.message.includes('Plan-panel mismatch')) {
+          errorMessage = language === 'fa' ? 
+            'خطا در تنظیمات پلن. لطفاً با پشتیبانی تماس بگیرید.' :
+            'Plan configuration error. Please contact support.';
         } else {
           errorMessage = error.message;
         }

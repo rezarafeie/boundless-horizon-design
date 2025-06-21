@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface SubscriptionStatusMonitorProps {
@@ -16,47 +17,57 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
   const navigate = useNavigate();
   const [status, setStatus] = useState<'pending' | 'active' | 'rejected'>('pending');
   const [isMonitoring, setIsMonitoring] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const checkStatus = async () => {
+    try {
+      console.log('STATUS_MONITOR: Checking subscription status for ID:', subscriptionId);
+      
+      const { data: subscription, error } = await supabase
+        .from('subscriptions')
+        .select('status, subscription_url, admin_decision')
+        .eq('id', subscriptionId)
+        .single();
+
+      if (error) {
+        console.error('STATUS_MONITOR: Error fetching subscription:', error);
+        return;
+      }
+
+      console.log('STATUS_MONITOR: Current subscription data:', subscription);
+
+      if (subscription.status === 'active' && subscription.admin_decision === 'approved') {
+        console.log('STATUS_MONITOR: Subscription is now active, redirecting to delivery page');
+        setStatus('active');
+        setIsMonitoring(false);
+        
+        // Redirect to delivery page with subscription ID
+        navigate(`/delivery?id=${subscriptionId}`, { replace: true });
+        
+        // Also call the callback
+        onStatusUpdate('active', subscription.subscription_url);
+      } else if (subscription.admin_decision === 'rejected') {
+        console.log('STATUS_MONITOR: Subscription was rejected');
+        setStatus('rejected');
+        setIsMonitoring(false);
+        onStatusUpdate('rejected');
+      }
+    } catch (error) {
+      console.error('STATUS_MONITOR: Error in checkStatus:', error);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    console.log('STATUS_MONITOR: Manual refresh triggered');
+    await checkStatus();
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 1000);
+  };
 
   useEffect(() => {
     if (!subscriptionId || !isMonitoring) return;
-
-    const checkStatus = async () => {
-      try {
-        console.log('STATUS_MONITOR: Checking subscription status for ID:', subscriptionId);
-        
-        const { data: subscription, error } = await supabase
-          .from('subscriptions')
-          .select('status, subscription_url, admin_decision')
-          .eq('id', subscriptionId)
-          .single();
-
-        if (error) {
-          console.error('STATUS_MONITOR: Error fetching subscription:', error);
-          return;
-        }
-
-        console.log('STATUS_MONITOR: Current subscription data:', subscription);
-
-        if (subscription.status === 'active' && subscription.admin_decision === 'approved') {
-          console.log('STATUS_MONITOR: Subscription is now active, redirecting to delivery page');
-          setStatus('active');
-          setIsMonitoring(false);
-          
-          // Redirect to delivery page with subscription ID
-          navigate(`/delivery?id=${subscriptionId}`, { replace: true });
-          
-          // Also call the callback
-          onStatusUpdate('active', subscription.subscription_url);
-        } else if (subscription.admin_decision === 'rejected') {
-          console.log('STATUS_MONITOR: Subscription was rejected');
-          setStatus('rejected');
-          setIsMonitoring(false);
-          onStatusUpdate('rejected');
-        }
-      } catch (error) {
-        console.error('STATUS_MONITOR: Error in checkStatus:', error);
-      }
-    };
 
     // Check immediately
     checkStatus();
@@ -128,12 +139,35 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
             <p className="text-sm text-muted-foreground">{getStatusDescription()}</p>
           </div>
 
-          {isMonitoring && status === 'pending' && (
-            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-              <Clock className="w-4 h-4" />
-              <span>
-                {language === 'fa' ? 'بررسی هر 3 ثانیه...' : 'Checking every 3 seconds...'}
-              </span>
+          {status === 'pending' && (
+            <div className="space-y-4">
+              <Button 
+                onClick={handleManualRefresh} 
+                disabled={isRefreshing}
+                variant="outline"
+                className="w-full"
+              >
+                {isRefreshing ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    {language === 'fa' ? 'بررسی...' : 'Checking...'}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    {language === 'fa' ? 'بررسی مجدد وضعیت' : 'Refresh Status'}
+                  </>
+                )}
+              </Button>
+              
+              {isMonitoring && (
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <Clock className="w-4 h-4" />
+                  <span>
+                    {language === 'fa' ? 'بررسی خودکار هر 3 ثانیه...' : 'Auto-checking every 3 seconds...'}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

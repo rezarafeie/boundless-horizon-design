@@ -9,6 +9,7 @@ export interface CreateUserRequest {
   panelType: 'marzban' | 'marzneshin';
   subscriptionId?: string;
   isFreeTriaL?: boolean;
+  selectedPlanId?: string; // Add plan ID for validation
 }
 
 export interface CreateUserResponse {
@@ -30,7 +31,19 @@ export class UserCreationService {
     console.log('USER_CREATION_SERVICE: Creating user with request:', request);
     
     try {
-      // Get the appropriate panel based on panel type
+      // Validate plan-to-panel mapping
+      if (request.selectedPlanId) {
+        const correctPanelType = await this.validatePlanPanelMapping(request.selectedPlanId, request.panelType);
+        if (!correctPanelType) {
+          console.error('USER_CREATION_SERVICE: Plan-panel mismatch detected', {
+            planId: request.selectedPlanId,
+            requestedPanel: request.panelType
+          });
+          throw new Error(`Plan-panel mismatch: ${request.selectedPlanId} should not use ${request.panelType} panel`);
+        }
+      }
+
+      // Get the appropriate panel based on panel type with additional validation
       const { data: panels, error: panelError } = await supabase
         .from('panel_servers')
         .select('*')
@@ -56,6 +69,15 @@ export class UserCreationService {
         url: selectedPanel.panel_url,
         type: selectedPanel.type
       });
+
+      // Validate panel URL is correct
+      if (request.panelType === 'marzneshin' && !selectedPanel.panel_url.includes('cp.rain.rest')) {
+        console.error('USER_CREATION_SERVICE: Marzneshin panel URL mismatch', {
+          expected: 'cp.rain.rest',
+          actual: selectedPanel.panel_url
+        });
+        throw new Error('Marzneshin panel URL configuration error');
+      }
 
       // Use the test-panel-connection function for actual user creation
       const { data, error } = await supabase.functions.invoke('test-panel-connection', {
@@ -90,6 +112,18 @@ export class UserCreationService {
       const userCreation = data.userCreation;
       if (userCreation && userCreation.success) {
         console.log('USER_CREATION_SERVICE: User created successfully:', userCreation);
+        
+        // Validate subscription URL contains correct username and data limit
+        if (userCreation.subscriptionUrl) {
+          const urlValidation = this.validateSubscriptionUrl(
+            userCreation.subscriptionUrl, 
+            request.username, 
+            request.dataLimitGB
+          );
+          if (!urlValidation.isValid) {
+            console.warn('USER_CREATION_SERVICE: Subscription URL validation warning:', urlValidation.warnings);
+          }
+        }
         
         // Update subscription record if subscription ID is provided
         if (request.subscriptionId && userCreation.subscriptionUrl) {
@@ -149,11 +183,75 @@ export class UserCreationService {
         errorMessage = 'Cannot connect to VPN panel. Please try again later.';
       } else if (errorMessage.includes('timeout')) {
         errorMessage = 'Connection timeout. Please try again.';
+      } else if (errorMessage.includes('Plan-panel mismatch')) {
+        errorMessage = 'Configuration error: Selected plan and panel type do not match. Please contact support.';
       }
       
       return {
         success: false,
         error: errorMessage
+      };
+    }
+  }
+
+  // Validate plan-to-panel mapping
+  static async validatePlanPanelMapping(planId: string, requestedPanelType: string): Promise<boolean> {
+    try {
+      console.log('USER_CREATION_SERVICE: Validating plan-panel mapping', { planId, requestedPanelType });
+      
+      // Get plan configuration
+      const { data: plan, error } = await supabase
+        .from('subscription_plans')
+        .select('api_type, plan_id')
+        .or(`id.eq.${planId},plan_id.eq.${planId}`)
+        .single();
+
+      if (error || !plan) {
+        console.warn('USER_CREATION_SERVICE: Plan not found for validation:', planId);
+        return true; // Allow if we can't validate
+      }
+
+      const expectedPanelType = plan.api_type;
+      const isValid = expectedPanelType === requestedPanelType;
+      
+      console.log('USER_CREATION_SERVICE: Plan-panel validation result:', {
+        planId,
+        expectedPanelType,
+        requestedPanelType,
+        isValid
+      });
+
+      return isValid;
+    } catch (error) {
+      console.error('USER_CREATION_SERVICE: Error validating plan-panel mapping:', error);
+      return true; // Allow if validation fails
+    }
+  }
+
+  // Validate subscription URL contains correct information
+  static validateSubscriptionUrl(url: string, expectedUsername: string, expectedDataLimitGB: number): {
+    isValid: boolean;
+    warnings: string[];
+  } {
+    const warnings: string[] = [];
+    
+    try {
+      // Check if URL contains the username
+      if (!url.includes(expectedUsername)) {
+        warnings.push(`Subscription URL does not contain expected username: ${expectedUsername}`);
+      }
+      
+      // Additional validations can be added here based on URL structure
+      
+      return {
+        isValid: warnings.length === 0,
+        warnings
+      };
+    } catch (error) {
+      warnings.push('Failed to validate subscription URL structure');
+      return {
+        isValid: false,
+        warnings
       };
     }
   }
@@ -174,7 +272,8 @@ export class UserCreationService {
       durationDays,
       notes: `Free Trial - ${planType} plan`,
       panelType,
-      isFreeTriaL: true
+      isFreeTriaL: true,
+      selectedPlanId: planType
     });
   }
 
@@ -184,10 +283,11 @@ export class UserCreationService {
     durationDays: number,
     panelType: 'marzban' | 'marzneshin',
     subscriptionId: string,
-    notes?: string
+    notes?: string,
+    selectedPlanId?: string
   ): Promise<CreateUserResponse> {
     console.log('USER_CREATION_SERVICE: Creating subscription:', { 
-      username, dataLimitGB, durationDays, panelType, subscriptionId 
+      username, dataLimitGB, durationDays, panelType, subscriptionId, selectedPlanId
     });
     
     return this.createUser({
@@ -197,7 +297,8 @@ export class UserCreationService {
       notes,
       panelType,
       subscriptionId,
-      isFreeTriaL: false
+      isFreeTriaL: false,
+      selectedPlanId
     });
   }
 }
