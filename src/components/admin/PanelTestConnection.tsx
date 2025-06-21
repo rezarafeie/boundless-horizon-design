@@ -1,10 +1,10 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 import { TestDebugLog } from './TestDebugLog';
 
 interface Panel {
@@ -61,7 +61,6 @@ interface PanelTestConnectionProps {
 export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnectionProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
-  const [showDebugLogs, setShowDebugLogs] = useState(false);
 
   const testConnection = async () => {
     setIsLoading(true);
@@ -82,10 +81,6 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
       
       // Add the new test result to the beginning of the array
       setTestResults(prev => [data, ...prev]);
-      
-      if (!data.success) {
-        setShowDebugLogs(true); // Auto-show logs on failure
-      }
       
       if (onTestComplete) {
         onTestComplete(data);
@@ -114,7 +109,6 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
         timestamp: new Date().toISOString()
       };
       setTestResults(prev => [errorResult, ...prev]);
-      setShowDebugLogs(true); // Auto-show logs on error
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +116,6 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
 
   const clearResults = () => {
     setTestResults([]);
-    setShowDebugLogs(false);
   };
 
   const getStatusIcon = (success: boolean) => {
@@ -139,6 +132,7 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
 
   return (
     <div className="space-y-4">
+      {/* Test Controls */}
       <div className="flex gap-2">
         <Button 
           onClick={testConnection} 
@@ -187,115 +181,98 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
 
       {/* Test Results History */}
       {testResults.map((testResult, index) => (
-        <div key={`${testResult.timestamp}-${index}`}>
-          <Card className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                {getStatusIcon(testResult.success)}
-                Connection Test Results
-                {getStatusBadge(testResult.success)}
-                {index === 0 && (
-                  <Badge variant="outline" className="text-xs">Latest</Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                Test completed at {new Date(testResult.timestamp).toLocaleString()}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h4 className="font-medium flex items-center gap-2">
-                  {getStatusIcon(testResult.authentication.success)}
-                  Authentication Test
-                </h4>
-                <div className="text-sm text-gray-600 ml-6">
-                  {testResult.authentication.success ? (
-                    <div>
-                      <p>✅ Successfully authenticated with panel</p>
-                      {testResult.authentication.tokenReceived && (
-                        <p>✅ Access token received</p>
-                      )}
-                      {testResult.authentication.tokenType && (
-                        <p>Token type: {testResult.authentication.tokenType}</p>
-                      )}
-                      {testResult.authentication.isSudo !== undefined && (
-                        <p>Sudo privileges: {testResult.authentication.isSudo ? 'Yes' : 'No'}</p>
-                      )}
-                    </div>
-                  ) : (
-                    <div>
-                      <p>❌ Authentication failed</p>
-                      {testResult.authentication.error && (
-                        <p className="text-red-600">Error: {testResult.authentication.error}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-medium flex items-center gap-2">
-                  {getStatusIcon(testResult.userCreation.success)}
-                  User Creation Test
-                </h4>
-                <div className="text-sm text-gray-600 ml-6">
-                  {testResult.userCreation.success ? (
-                    <div>
-                      <p>✅ Successfully created and deleted test user</p>
-                      {testResult.userCreation.username && (
-                        <p>Test username: {testResult.userCreation.username}</p>
-                      )}
-                      {testResult.userCreation.subscriptionUrl && (
-                        <p>✅ Subscription URL generated</p>
-                      )}
-                    </div>
-                  ) : (
-                    <div>
-                      <p>❌ User creation failed</p>
-                      {testResult.userCreation.error && (
-                        <p className="text-red-600">Error: {testResult.userCreation.error}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-2 border-t">
-                <h4 className="font-medium">Panel Information</h4>
-                <div className="text-sm text-gray-600">
-                  <p>Name: {testResult.panel.name}</p>
-                  <p>Type: {testResult.panel.type}</p>
-                  <p>URL: {testResult.panel.url}</p>
-                </div>
-              </div>
-
-              {/* Debug Logs Toggle */}
-              {testResult.detailedLogs && testResult.detailedLogs.length > 0 && (
-                <div className="pt-2 border-t">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDebugLogs(!showDebugLogs)}
-                    className="w-full"
-                  >
-                    <TestTube className="w-4 h-4 mr-2" />
-                    {showDebugLogs ? 'Hide' : 'Show'} Detailed Debug Logs
-                  </Button>
-                </div>
+        <Card key={`${testResult.timestamp}-${index}`} className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {getStatusIcon(testResult.success)}
+              Connection Test Results
+              {getStatusBadge(testResult.success)}
+              {index === 0 && (
+                <Badge variant="outline" className="text-xs">Latest</Badge>
               )}
-            </CardContent>
-          </Card>
+            </CardTitle>
+            <CardDescription>
+              Test completed at {new Date(testResult.timestamp).toLocaleString()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <h4 className="font-medium flex items-center gap-2">
+                {getStatusIcon(testResult.authentication.success)}
+                Authentication Test
+              </h4>
+              <div className="text-sm text-gray-600 ml-6">
+                {testResult.authentication.success ? (
+                  <div>
+                    <p>✅ Successfully authenticated with panel</p>
+                    {testResult.authentication.tokenReceived && (
+                      <p>✅ Access token received</p>
+                    )}
+                    {testResult.authentication.tokenType && (
+                      <p>Token type: {testResult.authentication.tokenType}</p>
+                    )}
+                    {testResult.authentication.isSudo !== undefined && (
+                      <p>Sudo privileges: {testResult.authentication.isSudo ? 'Yes' : 'No'}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <p>❌ Authentication failed</p>
+                    {testResult.authentication.error && (
+                      <p className="text-red-600">Error: {testResult.authentication.error}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
 
-          {/* Debug Logs Component */}
-          {index === 0 && (
-            <TestDebugLog
-              logs={testResult.detailedLogs || []}
-              title="Panel Connection Debug Logs"
-              isVisible={showDebugLogs}
-            />
-          )}
-        </div>
+            <div>
+              <h4 className="font-medium flex items-center gap-2">
+                {getStatusIcon(testResult.userCreation.success)}
+                User Creation Test
+              </h4>
+              <div className="text-sm text-gray-600 ml-6">
+                {testResult.userCreation.success ? (
+                  <div>
+                    <p>✅ Successfully created and deleted test user</p>
+                    {testResult.userCreation.username && (
+                      <p>Test username: {testResult.userCreation.username}</p>
+                    )}
+                    {testResult.userCreation.subscriptionUrl && (
+                      <p>✅ Subscription URL generated</p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <p>❌ User creation failed</p>
+                    {testResult.userCreation.error && (
+                      <p className="text-red-600">Error: {testResult.userCreation.error}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-2 border-t">
+              <h4 className="font-medium">Panel Information</h4>
+              <div className="text-sm text-gray-600">
+                <p>Name: {testResult.panel.name}</p>
+                <p>Type: {testResult.panel.type}</p>
+                <p>URL: {testResult.panel.url}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       ))}
+
+      {/* Always show debug logs for the latest test */}
+      {latestResult && latestResult.detailedLogs && latestResult.detailedLogs.length > 0 && (
+        <TestDebugLog
+          logs={latestResult.detailedLogs}
+          title="Panel Connection Debug Logs"
+          isVisible={true}
+        />
+      )}
     </div>
   );
 };

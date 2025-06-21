@@ -1,10 +1,10 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, CheckCircle, XCircle, AlertCircle, TestTube, Trash2 } from 'lucide-react';
 import { PlanService } from '@/services/planService';
-import { toast } from 'sonner';
 import { TestDebugLog } from './TestDebugLog';
 
 interface Plan {
@@ -46,7 +46,6 @@ interface PlanTestConnectionProps {
 export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [testResults, setTestResults] = useState<PlanTestResult[]>([]);
-  const [showDebugLogs, setShowDebugLogs] = useState(false);
 
   const testPlanConfiguration = async () => {
     setIsLoading(true);
@@ -140,7 +139,6 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
         addLog('Health Check', 'error', warning, {
           recommendation: 'Test individual panels using the panel test feature to diagnose connectivity issues'
         });
-        // Don't mark as failure since we now allow unknown status panels
       } else {
         addLog('Health Check', 'success', `${healthyPanels.length} panel(s) are online and ready`);
       }
@@ -168,7 +166,6 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
       if (success && primaryPanel) {
         addLog('Subscription Test', 'info', 'Simulating subscription creation process');
         try {
-          // This is a simulation - we won't actually create a user
           addLog('Subscription Test', 'success', 'Subscription creation simulation completed successfully', {
             planName: planConfig.name_en,
             apiType: PlanService.getApiType(planConfig),
@@ -207,10 +204,6 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
       // Add the new test result to the beginning of the array
       setTestResults(prev => [result, ...prev]);
       
-      if (!result.success) {
-        setShowDebugLogs(true); // Auto-show logs when there are errors
-      }
-      
       if (onTestComplete) {
         onTestComplete(result);
       }
@@ -233,7 +226,6 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
         timestamp: new Date().toISOString()
       };
       setTestResults(prev => [errorResult, ...prev]);
-      setShowDebugLogs(true); // Auto-show logs when there are errors
     } finally {
       setIsLoading(false);
     }
@@ -241,7 +233,6 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
 
   const clearResults = () => {
     setTestResults([]);
-    setShowDebugLogs(false);
   };
 
   const getStatusIcon = (success: boolean) => {
@@ -254,8 +245,11 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
     return <Badge className="bg-red-100 text-red-800">Issues Found</Badge>;
   };
 
+  const latestResult = testResults[0];
+
   return (
     <div className="space-y-4">
+      {/* Test Controls */}
       <div className="flex gap-2">
         <Button 
           onClick={testPlanConfiguration} 
@@ -304,81 +298,64 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
 
       {/* Test Results History */}
       {testResults.map((testResult, index) => (
-        <div key={`${testResult.timestamp}-${index}`}>
-          <Card className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                {getStatusIcon(testResult.success)}
-                Plan Configuration Test
-                {getStatusBadge(testResult.success)}
-                {index === 0 && (
-                  <Badge variant="outline" className="text-xs">Latest</Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                Configuration test for plan: {testResult.planName} - {new Date(testResult.timestamp).toLocaleString()}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-medium">Available Panels:</span>
-                  <p>{testResult.availablePanels}</p>
-                </div>
-                {testResult.primaryPanel && (
-                  <div>
-                    <span className="font-medium">Primary Panel:</span>
-                    <p>{testResult.primaryPanel.name} ({testResult.primaryPanel.type})</p>
-                  </div>
-                )}
+        <Card key={`${testResult.timestamp}-${index}`} className={`${testResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {getStatusIcon(testResult.success)}
+              Plan Configuration Test
+              {getStatusBadge(testResult.success)}
+              {index === 0 && (
+                <Badge variant="outline" className="text-xs">Latest</Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              Configuration test for plan: {testResult.planName} - {new Date(testResult.timestamp).toLocaleString()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="font-medium">Available Panels:</span>
+                <p>{testResult.availablePanels}</p>
               </div>
-
-              {testResult.errors.length > 0 && (
+              {testResult.primaryPanel && (
                 <div>
-                  <h4 className="font-medium text-red-700">Issues Found:</h4>
-                  <ul className="text-sm text-red-600 ml-4 mt-1">
-                    {testResult.errors.map((error, errorIndex) => (
-                      <li key={errorIndex} className="list-disc">
-                        {error}
-                      </li>
-                    ))}
-                  </ul>
+                  <span className="font-medium">Primary Panel:</span>
+                  <p>{testResult.primaryPanel.name} ({testResult.primaryPanel.type})</p>
                 </div>
               )}
+            </div>
 
-              {testResult.success && (
-                <div className="text-sm text-green-700">
-                  <p>✅ Plan configuration is valid and ready for subscriptions</p>
-                </div>
-              )}
+            {testResult.errors.length > 0 && (
+              <div>
+                <h4 className="font-medium text-red-700">Issues Found:</h4>
+                <ul className="text-sm text-red-600 ml-4 mt-1">
+                  {testResult.errors.map((error, errorIndex) => (
+                    <li key={errorIndex} className="list-disc">
+                      {error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-              {/* Debug Logs Toggle */}
-              {testResult.detailedLogs && testResult.detailedLogs.length > 0 && (
-                <div className="pt-2 border-t">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDebugLogs(!showDebugLogs)}
-                    className="w-full"
-                  >
-                    <TestTube className="w-4 h-4 mr-2" />
-                    {showDebugLogs ? 'Hide' : 'Show'} Detailed Debug Logs
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Debug Logs Component */}
-          {index === 0 && (
-            <TestDebugLog
-              logs={testResult.detailedLogs || []}
-              title="Plan Configuration Debug Logs"
-              isVisible={showDebugLogs}
-            />
-          )}
-        </div>
+            {testResult.success && (
+              <div className="text-sm text-green-700">
+                <p>✅ Plan configuration is valid and ready for subscriptions</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       ))}
+
+      {/* Always show debug logs for the latest test */}
+      {latestResult && latestResult.detailedLogs && latestResult.detailedLogs.length > 0 && (
+        <TestDebugLog
+          logs={latestResult.detailedLogs}
+          title="Plan Configuration Debug Logs"
+          isVisible={true}
+        />
+      )}
     </div>
   );
 };
