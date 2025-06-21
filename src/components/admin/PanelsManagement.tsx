@@ -65,7 +65,7 @@ export const PanelsManagement = () => {
         ...panel,
         type: panel.type as 'marzban' | 'marzneshin',
         health_status: panel.health_status as 'online' | 'offline' | 'unknown',
-        default_inbounds: panel.default_inbounds || []
+        default_inbounds: Array.isArray(panel.default_inbounds) ? panel.default_inbounds : []
       }));
 
       setPanels(typedPanels);
