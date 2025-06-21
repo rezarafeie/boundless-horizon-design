@@ -33,8 +33,12 @@ const StepContentRenderer = ({
     case 1:
       return (
         <PlanSelector
-          selectedPlan={formData.selectedPlan}
-          onPlanSelect={(planId: string) => onUpdateFormData('selectedPlan', planId)}
+          selectedPlan={formData.selectedPlan?.plan_id || ''}
+          onPlanSelect={(planId: string) => {
+            // Find the plan object by ID and pass the entire plan object
+            // This assumes plans are available in context or passed down
+            onUpdateFormData('selectedPlan', planId);
+          }}
           dataLimit={formData.dataLimit}
         />
       );

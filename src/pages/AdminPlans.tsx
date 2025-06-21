@@ -1,6 +1,6 @@
 
 import { AdminLayout } from '@/components/admin/AdminLayout';
-import { PlansManagement } from '@/components/admin/PlansManagement';
+import PlansManagement from '@/components/admin/PlansManagement';
 
 const AdminPlans = () => {
   return (

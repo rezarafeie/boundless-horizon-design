@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -65,7 +64,7 @@ const PlansManagement = () => {
 
       if (error) throw error;
 
-      // Transform the data to properly handle available_countries
+      // Transform the data to properly handle available_countries and api_type
       const transformedPlans: Plan[] = (data || []).map(plan => {
         let availableCountries: Country[] = [];
         
@@ -88,6 +87,7 @@ const PlansManagement = () => {
         
         return {
           ...plan,
+          api_type: plan.api_type as 'marzban' | 'marzneshin',
           available_countries: availableCountries
         };
       });
@@ -123,7 +123,11 @@ const PlansManagement = () => {
         default_duration_days: formData.default_duration_days,
         is_active: formData.is_active,
         is_visible: formData.is_visible,
-        available_countries: formData.available_countries as any // Cast to Json type
+        available_countries: formData.available_countries.map(country => ({
+          code: country.code,
+          name: country.name,
+          flag: country.flag
+        })) as any // Cast to Json type
       };
 
       if (editingPlan) {
