@@ -86,7 +86,7 @@ const Navigation = () => {
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
                   <div className="w-full p-2">
-                    <FreeTrialButton />
+                    <FreeTrialButton planType="lite" />
                   </div>
                 </DropdownMenuItem>
                 
@@ -136,7 +136,7 @@ const Navigation = () => {
             </Link>
             
             <div className="px-2">
-              <FreeTrialButton />
+              <FreeTrialButton planType="lite" />
             </div>
             
             <Link to="/renewal">
