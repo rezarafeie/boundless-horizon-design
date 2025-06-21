@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -71,7 +70,7 @@ const PlansManagement = () => {
     default_duration_days: 30,
     is_active: true,
     is_visible: true,
-    assigned_panel_id: '',
+    assigned_panel_id: 'none',
     available_countries: [] as Country[]
   });
 
@@ -181,7 +180,7 @@ const PlansManagement = () => {
         default_duration_days: formData.default_duration_days,
         is_active: formData.is_active,
         is_visible: formData.is_visible,
-        assigned_panel_id: formData.assigned_panel_id || null,
+        assigned_panel_id: formData.assigned_panel_id === 'none' ? null : formData.assigned_panel_id || null,
         available_countries: formData.available_countries.map(country => ({
           code: country.code,
           name: country.name,
@@ -243,7 +242,7 @@ const PlansManagement = () => {
       default_duration_days: plan.default_duration_days,
       is_active: plan.is_active,
       is_visible: plan.is_visible,
-      assigned_panel_id: plan.assigned_panel_id || '',
+      assigned_panel_id: plan.assigned_panel_id || 'none',
       available_countries: plan.available_countries || []
     });
     setIsDialogOpen(true);
@@ -289,7 +288,7 @@ const PlansManagement = () => {
       default_duration_days: 30,
       is_active: true,
       is_visible: true,
-      assigned_panel_id: '',
+      assigned_panel_id: 'none',
       available_countries: []
     });
   };
@@ -367,7 +366,7 @@ const PlansManagement = () => {
                       <SelectValue placeholder="Select a panel for this plan" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No panel assigned</SelectItem>
+                      <SelectItem value="none">No panel assigned</SelectItem>
                       {panels.map((panel) => (
                         <SelectItem key={panel.id} value={panel.id}>
                           <div className="flex items-center gap-2">
@@ -381,7 +380,7 @@ const PlansManagement = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  {!formData.assigned_panel_id && (
+                  {formData.assigned_panel_id === 'none' && (
                     <p className="text-sm text-amber-600 mt-1">
                       ⚠️ Plans without assigned panels cannot create subscriptions
                     </p>
