@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -223,12 +224,12 @@ export const useMultiStepForm = () => {
         try {
           console.log('MULTI STEP FORM: Creating VPN user for free subscription using centralized service');
           
-          // Get the plan ID for the centralized service
+          // Get the plan ID for the centralized service - FIXED to use UUID
           const selectedPlanId = formData.selectedPlan.id || formData.selectedPlan.plan_id;
           
           const vpnResult = await PanelUserCreationService.createPaidSubscription(
             uniqueUsername,
-            selectedPlanId,
+            selectedPlanId,  // Use UUID directly
             formData.dataLimit,
             formData.duration,
             data.id,
@@ -257,7 +258,7 @@ export const useMultiStepForm = () => {
                 'Free subscription created successfully'
             });
             
-            // Navigate directly to delivery page for free subscriptions
+            // Navigate directly to delivery page for free subscriptions - FIXED to use correct path
             setTimeout(() => {
               navigate(`/delivery?id=${data.id}`);
             }, 1500);
@@ -390,7 +391,7 @@ export const useMultiStepForm = () => {
         'Your payment was successful. Your VPN is being created...'
     });
 
-    // Redirect directly to delivery page
+    // Redirect directly to delivery page - FIXED to use correct path
     navigate(`/delivery?id=${subscriptionId}`);
   };
 

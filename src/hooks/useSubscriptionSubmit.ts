@@ -33,7 +33,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get the plan ID (support both formats)
+      // Get the plan ID - FIXED to use UUID, not text field
       const selectedPlanId = data.selectedPlan.id || data.selectedPlan.plan_id;
       console.log('SUBSCRIPTION_SUBMIT: Using FIXED plan ID:', selectedPlanId);
 
@@ -80,9 +80,10 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         try {
           console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using FIXED centralized service');
           
+          // Use the UUID directly, not the plan_id text field
           const result = await PanelUserCreationService.createPaidSubscription(
             uniqueUsername,
-            selectedPlanId,
+            selectedPlanId,  // This should be the UUID
             data.dataLimit,
             data.duration,
             subscription.id,

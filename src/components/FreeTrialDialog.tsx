@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -67,6 +68,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         plansCount: plans?.length || 0,
         plans: plans?.map(p => ({
           id: p.id,
+          plan_id: p.plan_id,
           name: p.name_en,
           panelMappings: p.plan_panel_mappings?.length || 0
         }))
@@ -90,13 +92,14 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         totalPlans: validPlans.length,
         validPlanDetails: validPlans.map(p => ({
           id: p.id,
+          plan_id: p.plan_id,
           name: p.name_en,
           panels: p.plan_panel_mappings?.map(m => ({
             panelId: m.panel_servers?.id,
             panelName: m.panel_servers?.name,
             panelType: m.panel_servers?.type,
             isActive: m.panel_servers?.is_active,
-            healthStatus: m.panel_servers?.health_status
+            healthStatus: m.plan_servers?.health_status
           }))
         }))
       });
@@ -107,10 +110,14 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         step: 'plans_loaded'
       });
       
-      // Auto-select first available plan
+      // Auto-select first available plan using its UUID ID
       if (validPlans.length > 0) {
-        setSelectedPlan(validPlans[0].id);
-        console.log('FREE_TRIAL: Auto-selected plan:', validPlans[0].id);
+        setSelectedPlan(validPlans[0].id);  // Use UUID, not plan_id
+        console.log('FREE_TRIAL: Auto-selected plan:', { 
+          uuid: validPlans[0].id, 
+          plan_id: validPlans[0].plan_id,
+          name: validPlans[0].name_en 
+        });
       } else {
         console.warn('FREE_TRIAL: No valid marzban plans found');
         toast({
@@ -163,15 +170,16 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
     try {
       console.log('FREE_TRIAL: Starting free trial creation with FIXED centralized service');
-      console.log('FREE_TRIAL: Selected plan ID:', selectedPlan);
+      console.log('FREE_TRIAL: Selected plan UUID:', selectedPlan);
       
       // Generate unique username
       const timestamp = Date.now();
       const uniqueUsername = `${formData.username}_trial_${timestamp}`;
       
+      // Use the UUID directly, not the plan_id text field
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
-        selectedPlan, // Use selected plan ID - FIXED
+        selectedPlan, // This is now the UUID
         1, // 1 GB for free trial
         1  // 1 day for free trial
       );

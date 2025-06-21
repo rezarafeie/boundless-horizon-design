@@ -31,7 +31,9 @@ export class PanelUserCreationService {
     console.log('PANEL_USER_CREATION: Starting user creation with request:', request);
     
     try {
-      // Step 1: Get plan configuration with panel mappings - FIXED QUERY
+      // Step 1: Get plan configuration with panel mappings - FIXED TO USE ACTUAL UUID
+      console.log('PANEL_USER_CREATION: Looking up plan by ID:', request.planId);
+      
       const { data: planConfig, error: planError } = await supabase
         .from('subscription_plans')
         .select(`
@@ -54,22 +56,59 @@ export class PanelUserCreationService {
             )
           )
         `)
-        .eq('id', request.planId)
+        .eq('id', request.planId)  // Use actual UUID ID, not plan_id text field
         .eq('is_active', true)
         .eq('plan_panel_mappings.panel_servers.is_active', true)
         .eq('plan_panel_mappings.panel_servers.type', 'marzban')
         .single();
 
       if (planError || !planConfig) {
-        console.error('PANEL_USER_CREATION: Plan not found:', planError);
-        return {
-          success: false,
-          error: `Plan configuration not found. Error: ${planError?.message || 'Unknown error'}`
-        };
+        console.error('PANEL_USER_CREATION: Plan not found by UUID, trying by plan_id:', planError);
+        
+        // Fallback: try to find by plan_id field if UUID lookup fails
+        const { data: fallbackPlan, error: fallbackError } = await supabase
+          .from('subscription_plans')
+          .select(`
+            *,
+            plan_panel_mappings!inner(
+              panel_id,
+              is_primary,
+              inbound_ids,
+              panel_servers!inner(
+                id,
+                name,
+                panel_url,
+                type,
+                username,
+                password,
+                is_active,
+                health_status,
+                enabled_protocols,
+                default_inbounds
+              )
+            )
+          `)
+          .eq('plan_id', request.planId)  // Try text field
+          .eq('is_active', true)
+          .eq('plan_panel_mappings.panel_servers.is_active', true)
+          .eq('plan_panel_mappings.panel_servers.type', 'marzban')
+          .single();
+          
+        if (fallbackError || !fallbackPlan) {
+          console.error('PANEL_USER_CREATION: Plan not found by plan_id either:', fallbackError);
+          return {
+            success: false,
+            error: `Plan not found: ${request.planId}. Error: ${planError?.message || fallbackError?.message || 'Unknown error'}`
+          };
+        }
+        
+        // Use fallback plan
+        Object.assign(planConfig, fallbackPlan);
       }
 
       console.log('PANEL_USER_CREATION: Plan config loaded:', {
         planId: planConfig.id,
+        planName: planConfig.name_en,
         panelMappings: planConfig.plan_panel_mappings?.length || 0
       });
 
@@ -189,46 +228,114 @@ export class PanelUserCreationService {
     }
   }
 
-  // Create free trial using admin panel configuration
+  // Create free trial using admin panel configuration - FIXED to get actual plan UUIDs
   static async createFreeTrial(
     username: string, 
-    planId: string,
+    planIdOrName: string,  // Can be UUID or plan name like "lite"
     dataLimitGB: number = 1,
     durationDays: number = 1
   ): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Creating free trial:', { username, planId, dataLimitGB, durationDays });
+    console.log('PANEL_USER_CREATION: Creating free trial:', { username, planIdOrName, dataLimitGB, durationDays });
     
-    return this.createUserFromPanel({
-      planId,
-      username,
-      dataLimitGB,
-      durationDays,
-      notes: `Free Trial - Plan: ${planId}`,
-      isFreeTriaL: true
-    });
+    try {
+      // First, try to resolve the plan ID if it's a name
+      let actualPlanId = planIdOrName;
+      
+      // Check if it looks like a UUID (has dashes)
+      if (!planIdOrName.includes('-')) {
+        console.log('PANEL_USER_CREATION: Converting plan name to UUID:', planIdOrName);
+        
+        const { data: plan, error } = await supabase
+          .from('subscription_plans')
+          .select('id')
+          .eq('plan_id', planIdOrName)  // Look up by plan_id field
+          .eq('is_active', true)
+          .single();
+          
+        if (error || !plan) {
+          console.error('PANEL_USER_CREATION: Could not find plan by name:', planIdOrName, error);
+          return {
+            success: false,
+            error: `Plan "${planIdOrName}" not found or inactive`
+          };
+        }
+        
+        actualPlanId = plan.id;
+        console.log('PANEL_USER_CREATION: Resolved plan name to UUID:', { name: planIdOrName, uuid: actualPlanId });
+      }
+      
+      return this.createUserFromPanel({
+        planId: actualPlanId,
+        username,
+        dataLimitGB,
+        durationDays,
+        notes: `Free Trial - Plan: ${planIdOrName}`,
+        isFreeTriaL: true
+      });
+    } catch (error) {
+      console.error('PANEL_USER_CREATION: Error in createFreeTrial:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error in free trial creation'
+      };
+    }
   }
 
-  // Create paid subscription using admin panel configuration
+  // Create paid subscription using admin panel configuration - FIXED to get actual plan UUIDs
   static async createPaidSubscription(
     username: string,
-    planId: string,
+    planIdOrName: string,  // Can be UUID or plan name
     dataLimitGB: number,
     durationDays: number,
     subscriptionId: string,
     notes?: string
   ): Promise<PanelUserCreationResponse> {
     console.log('PANEL_USER_CREATION: Creating paid subscription:', { 
-      username, planId, dataLimitGB, durationDays, subscriptionId
+      username, planIdOrName, dataLimitGB, durationDays, subscriptionId
     });
     
-    return this.createUserFromPanel({
-      planId,
-      username,
-      dataLimitGB,
-      durationDays,
-      notes,
-      subscriptionId,
-      isFreeTriaL: false
-    });
+    try {
+      // First, try to resolve the plan ID if it's a name
+      let actualPlanId = planIdOrName;
+      
+      // Check if it looks like a UUID (has dashes)
+      if (!planIdOrName.includes('-')) {
+        console.log('PANEL_USER_CREATION: Converting plan name to UUID:', planIdOrName);
+        
+        const { data: plan, error } = await supabase
+          .from('subscription_plans')
+          .select('id')
+          .eq('plan_id', planIdOrName)  // Look up by plan_id field
+          .eq('is_active', true)
+          .single();
+          
+        if (error || !plan) {
+          console.error('PANEL_USER_CREATION: Could not find plan by name:', planIdOrName, error);
+          return {
+            success: false,
+            error: `Plan "${planIdOrName}" not found or inactive`
+          };
+        }
+        
+        actualPlanId = plan.id;
+        console.log('PANEL_USER_CREATION: Resolved plan name to UUID:', { name: planIdOrName, uuid: actualPlanId });
+      }
+      
+      return this.createUserFromPanel({
+        planId: actualPlanId,
+        username,
+        dataLimitGB,
+        durationDays,
+        notes,
+        subscriptionId,
+        isFreeTriaL: false
+      });
+    } catch (error) {
+      console.error('PANEL_USER_CREATION: Error in createPaidSubscription:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error in paid subscription creation'
+      };
+    }
   }
 }
