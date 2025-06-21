@@ -191,8 +191,14 @@ serve(async (req) => {
 
         console.log(`Payment approved and VPN user created successfully via ${apiUsed}`);
 
+        // Create the delivery page URL with subscription ID
+        const deliveryUrl = `https://feamvyruipxtafzhptkh.supabase.co/delivery?id=${subscription.id}`;
+
         return new Response(`
           <html>
+            <head>
+              <meta http-equiv="refresh" content="3;url=${deliveryUrl}">
+            </head>
             <body style="font-family: Arial; text-align: center; padding: 50px;">
               <h2 style="color: #22c55e;">✅ Payment Approved</h2>
               <p>The manual payment has been approved and the VPN subscription has been activated.</p>
@@ -204,6 +210,8 @@ serve(async (req) => {
                 <p><strong>Status:</strong> Active</p>
                 <p><strong>API Used:</strong> ${apiUsed}</p>
               </div>
+              <p style="color: #6b7280; margin-top: 20px;">Redirecting to subscription details in 3 seconds...</p>
+              <a href="${deliveryUrl}" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 5px;">View Subscription Details</a>
             </body>
           </html>
         `, {
