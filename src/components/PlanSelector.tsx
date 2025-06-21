@@ -41,7 +41,20 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
           .order('price_per_gb', { ascending: true });
 
         if (error) throw error;
-        setPlans(data || []);
+        
+        // Transform the data to ensure available_countries is properly typed
+        const transformedPlans: Plan[] = (data || []).map(plan => ({
+          id: plan.id,
+          plan_id: plan.plan_id,
+          name_en: plan.name_en,
+          name_fa: plan.name_fa,
+          description_en: plan.description_en,
+          description_fa: plan.description_fa,
+          price_per_gb: plan.price_per_gb,
+          available_countries: Array.isArray(plan.available_countries) ? plan.available_countries as Country[] : []
+        }));
+        
+        setPlans(transformedPlans);
       } catch (error) {
         console.error('Error fetching plans:', error);
       } finally {

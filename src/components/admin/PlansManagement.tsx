@@ -74,8 +74,25 @@ export const PlansManagement = () => {
         throw error;
       }
       
-      console.log('PLANS: Successfully fetched', data?.length || 0, 'plans');
-      return data as Plan[];
+      // Transform data to ensure proper typing
+      const transformedPlans: Plan[] = (data || []).map(plan => ({
+        id: plan.id,
+        plan_id: plan.plan_id,
+        name_en: plan.name_en,
+        name_fa: plan.name_fa,
+        description_en: plan.description_en,
+        description_fa: plan.description_fa,
+        price_per_gb: plan.price_per_gb,
+        api_type: plan.api_type as 'marzban' | 'marzneshin',
+        default_data_limit_gb: plan.default_data_limit_gb,
+        default_duration_days: plan.default_duration_days,
+        is_active: plan.is_active,
+        is_visible: plan.is_visible,
+        available_countries: Array.isArray(plan.available_countries) ? plan.available_countries as Country[] : []
+      }));
+      
+      console.log('PLANS: Successfully fetched', transformedPlans.length, 'plans');
+      return transformedPlans;
     },
     retry: 1
   });
@@ -128,6 +145,7 @@ export const PlansManagement = () => {
       let planId = planData.id;
       
       try {
+        // Convert available_countries to JSON format for database
         const saveData = {
           ...planFields,
           available_countries: available_countries || []
