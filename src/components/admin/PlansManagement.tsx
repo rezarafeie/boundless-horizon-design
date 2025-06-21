@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -181,7 +182,7 @@ const PlansManagement = () => {
         is_active: formData.is_active,
         is_visible: formData.is_visible,
         assigned_panel_id: formData.assigned_panel_id === 'none' ? null : formData.assigned_panel_id || null,
-        available_countries: formData.available_countries.map(country => ({
+        available_countries: (formData.available_countries || []).map(country => ({
           code: country.code,
           name: country.name,
           flag: country.flag
@@ -294,7 +295,7 @@ const PlansManagement = () => {
   };
 
   const handleCountryChange = (countries: Country[]) => {
-    setFormData(prev => ({ ...prev, available_countries: countries }));
+    setFormData(prev => ({ ...prev, available_countries: countries || [] }));
   };
 
   if (loading) {
@@ -462,7 +463,7 @@ const PlansManagement = () => {
                     Available Countries
                   </Label>
                   <CountrySelector
-                    selectedCountries={formData.available_countries}
+                    selectedCountries={formData.available_countries || []}
                     onCountriesChange={handleCountryChange}
                   />
                 </div>
