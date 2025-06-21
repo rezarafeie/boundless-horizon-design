@@ -35,6 +35,7 @@ const StepContentRenderer = ({
         <PlanSelector
           selectedPlan={formData.selectedPlan}
           onPlanSelect={(plan) => onUpdateFormData('selectedPlan', plan)}
+          dataLimit={formData.dataLimit}
         />
       );
 
@@ -43,8 +44,7 @@ const StepContentRenderer = ({
         <UserInfoStep
           formData={formData}
           appliedDiscount={appliedDiscount}
-          calculateTotalPrice={calculateTotalPrice}
-          onUpdateFormData={onUpdateFormData}
+          onUpdate={onUpdateFormData}
         />
       );
 

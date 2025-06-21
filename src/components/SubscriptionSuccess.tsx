@@ -21,7 +21,8 @@ interface SubscriptionSuccessProps {
 
 const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProps) => {
   const { language } = useLanguage();
-  const { toast } = use
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (subscriptionId) {
