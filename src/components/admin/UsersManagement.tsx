@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Search, User, Calendar, DollarSign, RefreshCw, Image, Receipt } from 'lucide-react';
+import { Search, User, Calendar, DollarSign, RefreshCw, Image, Receipt, Server, Package } from 'lucide-react';
 import { ManualPaymentActions } from './ManualPaymentActions';
 
 interface Subscription {
@@ -23,6 +24,11 @@ interface Subscription {
   notes?: string;
   admin_decision?: string;
   receipt_image_url?: string;
+  // New fields for plan and panel info
+  plan_name?: string;
+  plan_id?: string;
+  panel_name?: string;
+  panel_type?: string;
 }
 
 export const UsersManagement = () => {
@@ -32,11 +38,26 @@ export const UsersManagement = () => {
   const { data: subscriptions, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-subscriptions', searchTerm, statusFilter],
     queryFn: async () => {
-      console.log('=== USERS: Fetching subscriptions (RLS disabled) ===');
+      console.log('=== USERS: Fetching subscriptions with plan and panel info ===');
       
       let query = supabase
         .from('subscriptions')
-        .select('*')
+        .select(`
+          *,
+          subscription_plans!inner(
+            id,
+            plan_id,
+            name_en,
+            name_fa,
+            assigned_panel_id,
+            panel_servers(
+              id,
+              name,
+              type,
+              health_status
+            )
+          )
+        `)
         .order('created_at', { ascending: false });
 
       // Add status filter if not 'all'
@@ -58,8 +79,17 @@ export const UsersManagement = () => {
         throw error;
       }
       
-      console.log(`USERS: Successfully fetched ${data?.length || 0} subscriptions`);
-      return data as Subscription[];
+      // Transform data to include plan and panel information
+      const transformedData: Subscription[] = (data || []).map((sub: any) => ({
+        ...sub,
+        plan_name: sub.subscription_plans?.name_en || 'Unknown Plan',
+        plan_id: sub.subscription_plans?.plan_id || 'N/A',
+        panel_name: sub.subscription_plans?.panel_servers?.name || 'No Panel',
+        panel_type: sub.subscription_plans?.panel_servers?.type || 'N/A'
+      }));
+      
+      console.log(`USERS: Successfully fetched ${transformedData.length} subscriptions with plan/panel info`);
+      return transformedData;
     },
     retry: 1,
     refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
@@ -115,10 +145,10 @@ export const UsersManagement = () => {
   if (error) {
     console.error('USERS: Component error:', error);
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="container mx-auto p-4 space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Users & Orders</h1>
             <p className="text-gray-600">Error loading users and orders</p>
           </div>
           <Button onClick={handleRefresh} variant="outline">
@@ -141,9 +171,9 @@ export const UsersManagement = () => {
   if (isLoading) {
     console.log('USERS: Component loading state');
     return (
-      <div className="space-y-6">
+      <div className="container mx-auto p-4 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Users & Orders</h1>
           <p className="text-gray-600">Loading subscriptions...</p>
         </div>
       </div>
@@ -151,10 +181,10 @@ export const UsersManagement = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto p-4 space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Users & Orders</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Users & Orders</h1>
           <p className="text-gray-600">
             Manage user subscriptions and orders ({subscriptions?.length || 0} subscriptions found)
           </p>
@@ -166,7 +196,7 @@ export const UsersManagement = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center">
@@ -229,7 +259,7 @@ export const UsersManagement = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex space-x-4">
+      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
@@ -240,7 +270,7 @@ export const UsersManagement = () => {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -262,17 +292,34 @@ export const UsersManagement = () => {
           return (
             <Card key={subscription.id} className={subscription.status === 'pending' && subscription.admin_decision === 'pending' ? 'border-orange-200 bg-orange-50' : ''}>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      {subscription.username}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <CardTitle className="flex flex-wrap items-center gap-2">
+                      <span>{subscription.username}</span>
                       {getStatusBadge(subscription.status, subscription.admin_decision)}
                     </CardTitle>
-                    <CardDescription>
-                      Mobile: {subscription.mobile} • Created: {new Date(subscription.created_at).toLocaleDateString()}
+                    <CardDescription className="mt-1">
+                      <div className="flex flex-wrap gap-2 text-sm">
+                        <span>Mobile: {subscription.mobile}</span>
+                        <span>•</span>
+                        <span>Created: {new Date(subscription.created_at).toLocaleDateString()}</span>
+                      </div>
                     </CardDescription>
+                    
+                    {/* Plan and Panel Info */}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <Badge variant="outline" className="text-xs">
+                        <Package className="w-3 h-3 mr-1" />
+                        {subscription.plan_name} ({subscription.plan_id})
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        <Server className="w-3 h-3 mr-1" />
+                        {subscription.panel_name} ({subscription.panel_type})
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="text-right">
+                  
+                  <div className="text-left lg:text-right">
                     <p className="text-lg font-bold">{subscription.price_toman.toLocaleString()} Toman</p>
                     <p className="text-sm text-gray-500">{subscription.data_limit_gb}GB • {subscription.duration_days} days</p>
                   </div>
@@ -280,7 +327,7 @@ export const UsersManagement = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                     <div>
                       <span className="font-medium">Expiry:</span>
                       <p>{subscription.expire_at ? new Date(subscription.expire_at).toLocaleDateString() : 'Not set'}</p>

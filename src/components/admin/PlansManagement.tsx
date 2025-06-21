@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -228,6 +229,7 @@ const PlansManagement = () => {
   };
 
   const handleEdit = (plan: Plan) => {
+    console.log('Editing plan:', plan);
     setEditingPlan(plan);
     setFormData({
       plan_id: plan.plan_id,
@@ -297,259 +299,250 @@ const PlansManagement = () => {
   };
 
   if (loading) {
-    return <div>Loading plans...</div>;
+    return <div className="flex items-center justify-center min-h-screen">Loading plans...</div>;
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Plans Management</h1>
-          <p className="text-muted-foreground">Manage subscription plans and their panel assignments</p>
-        </div>
-        
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => { resetForm(); setEditingPlan(null); }}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Plan
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
-              <DialogDescription>
-                {editingPlan ? 'Update plan details' : 'Create a new subscription plan'}
-              </DialogDescription>
-            </DialogHeader>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto p-4 space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Plans Management</h1>
+            <p className="text-muted-foreground">Manage subscription plans and their panel assignments</p>
+          </div>
+          
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => { resetForm(); setEditingPlan(null); }} className="w-full sm:w-auto">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Plan
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4">
+              <DialogHeader>
+                <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
+                <DialogDescription>
+                  {editingPlan ? 'Update plan details' : 'Create a new subscription plan'}
+                </DialogDescription>
+              </DialogHeader>
 
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="plan_id">Plan ID</Label>
-                  <Input
-                    id="plan_id"
-                    value={formData.plan_id}
-                    onChange={(e) => setFormData(prev => ({ ...prev, plan_id: e.target.value }))}
-                    placeholder="e.g., pro, lite"
-                  />
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="plan_id">Plan ID</Label>
+                    <Input
+                      id="plan_id"
+                      value={formData.plan_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, plan_id: e.target.value }))}
+                      placeholder="e.g., pro, lite"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="api_type">API Type</Label>
+                    <Select value={formData.api_type} onValueChange={(value: 'marzban' | 'marzneshin') => 
+                      setFormData(prev => ({ ...prev, api_type: value }))
+                    }>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="marzban">Marzban</SelectItem>
+                        <SelectItem value="marzneshin">Marzneshin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+
+                {/* Panel Assignment Section */}
                 <div>
-                  <Label htmlFor="api_type">API Type</Label>
-                  <Select value={formData.api_type} onValueChange={(value: 'marzban' | 'marzneshin') => 
-                    setFormData(prev => ({ ...prev, api_type: value }))
-                  }>
+                  <Label htmlFor="assigned_panel" className="flex items-center gap-2">
+                    <Server className="w-4 h-4" />
+                    Assigned Panel
+                  </Label>
+                  <Select 
+                    value={formData.assigned_panel_id} 
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, assigned_panel_id: value }))}
+                  >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Select a panel for this plan" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="marzban">Marzban</SelectItem>
-                      <SelectItem value="marzneshin">Marzneshin</SelectItem>
+                      <SelectItem value="">No panel assigned</SelectItem>
+                      {panels.map((panel) => (
+                        <SelectItem key={panel.id} value={panel.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{panel.name}</span>
+                            <Badge variant={panel.health_status === 'online' ? 'default' : 'destructive'}>
+                              {panel.health_status}
+                            </Badge>
+                            <Badge variant="outline">{panel.type}</Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                  {!formData.assigned_panel_id && (
+                    <p className="text-sm text-amber-600 mt-1">
+                      ⚠️ Plans without assigned panels cannot create subscriptions
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name_en">Name (English)</Label>
+                    <Input
+                      id="name_en"
+                      value={formData.name_en}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name_en: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="name_fa">Name (Persian)</Label>
+                    <Input
+                      id="name_fa"
+                      value={formData.name_fa}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name_fa: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="description_en">Description (English)</Label>
+                    <Textarea
+                      id="description_en"
+                      value={formData.description_en}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description_en: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="description_fa">Description (Persian)</Label>
+                    <Textarea
+                      id="description_fa"
+                      value={formData.description_fa}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description_fa: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="price_per_gb">Price per GB (Toman)</Label>
+                    <Input
+                      id="price_per_gb"
+                      type="number"
+                      value={formData.price_per_gb}
+                      onChange={(e) => setFormData(prev => ({ ...prev, price_per_gb: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="default_data_limit_gb">Default Data Limit (GB)</Label>
+                    <Input
+                      id="default_data_limit_gb"
+                      type="number"
+                      value={formData.default_data_limit_gb}
+                      onChange={(e) => setFormData(prev => ({ ...prev, default_data_limit_gb: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="default_duration_days">Default Duration (Days)</Label>
+                    <Input
+                      id="default_duration_days"
+                      type="number"
+                      value={formData.default_duration_days}
+                      onChange={(e) => setFormData(prev => ({ ...prev, default_duration_days: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Country Selection */}
+                <div>
+                  <Label className="flex items-center gap-2 mb-2">
+                    <Globe className="w-4 h-4" />
+                    Available Countries
+                  </Label>
+                  <CountrySelector
+                    selectedCountries={formData.available_countries}
+                    onCountriesChange={handleCountryChange}
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
+                    />
+                    <Label htmlFor="is_active">Active</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_visible"
+                      checked={formData.is_visible}
+                      onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_visible: checked }))}
+                    />
+                    <Label htmlFor="is_visible">Visible</Label>
+                  </div>
                 </div>
               </div>
 
-              {/* Panel Assignment Section */}
-              <div>
-                <Label htmlFor="assigned_panel" className="flex items-center gap-2">
-                  <Server className="w-4 h-4" />
-                  Assigned Panel
-                </Label>
-                <Select 
-                  value={formData.assigned_panel_id} 
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, assigned_panel_id: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a panel for this plan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">No panel assigned</SelectItem>
-                    {panels.map((panel) => (
-                      <SelectItem key={panel.id} value={panel.id}>
-                        <div className="flex items-center gap-2">
-                          <span>{panel.name}</span>
-                          <Badge variant={panel.health_status === 'online' ? 'default' : 'destructive'}>
-                            {panel.health_status}
-                          </Badge>
-                          <Badge variant="outline">{panel.type}</Badge>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!formData.assigned_panel_id && (
-                  <p className="text-sm text-amber-600 mt-1">
-                    ⚠️ Plans without assigned panels cannot create subscriptions
-                  </p>
-                )}
+              <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} className="w-full sm:w-auto">
+                  {editingPlan ? 'Update' : 'Create'}
+                </Button>
               </div>
+            </DialogContent>
+          </Dialog>
+        </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name_en">Name (English)</Label>
-                  <Input
-                    id="name_en"
-                    value={formData.name_en}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name_en: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="name_fa">Name (Persian)</Label>
-                  <Input
-                    id="name_fa"
-                    value={formData.name_fa}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name_fa: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="description_en">Description (English)</Label>
-                  <Textarea
-                    id="description_en"
-                    value={formData.description_en}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description_en: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="description_fa">Description (Persian)</Label>
-                  <Textarea
-                    id="description_fa"
-                    value={formData.description_fa}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description_fa: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="price_per_gb">Price per GB (Toman)</Label>
-                  <Input
-                    id="price_per_gb"
-                    type="number"
-                    value={formData.price_per_gb}
-                    onChange={(e) => setFormData(prev => ({ ...prev, price_per_gb: Number(e.target.value) }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="default_data_limit_gb">Default Data Limit (GB)</Label>
-                  <Input
-                    id="default_data_limit_gb"
-                    type="number"
-                    value={formData.default_data_limit_gb}
-                    onChange={(e) => setFormData(prev => ({ ...prev, default_data_limit_gb: Number(e.target.value) }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="default_duration_days">Default Duration (Days)</Label>
-                  <Input
-                    id="default_duration_days"
-                    type="number"
-                    value={formData.default_duration_days}
-                    onChange={(e) => setFormData(prev => ({ ...prev, default_duration_days: Number(e.target.value) }))}
-                  />
-                </div>
-              </div>
-
-              {/* Country Selection */}
-              <div>
-                <Label className="flex items-center gap-2 mb-2">
-                  <Globe className="w-4 h-4" />
-                  Available Countries
-                </Label>
-                <CountrySelector
-                  selectedCountries={formData.available_countries}
-                  onCountriesChange={handleCountryChange}
-                />
-              </div>
-
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="is_active"
-                    checked={formData.is_active}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
-                  />
-                  <Label htmlFor="is_active">Active</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="is_visible"
-                    checked={formData.is_visible}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_visible: checked }))}
-                  />
-                  <Label htmlFor="is_visible">Visible</Label>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave}>
-                {editingPlan ? 'Update' : 'Create'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Subscription Plans
-          </CardTitle>
-          <CardDescription>
-            Configure and manage all subscription plans with their assigned panels
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Plan ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Assigned Panel</TableHead>
-                <TableHead>API Type</TableHead>
-                <TableHead>Price/GB</TableHead>
-                <TableHead>Countries</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Subscription Plans
+            </CardTitle>
+            <CardDescription>
+              Configure and manage all subscription plans with their assigned panels
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            {/* Mobile Card View */}
+            <div className="block sm:hidden space-y-4">
               {plans.map((plan) => (
-                <TableRow key={plan.id}>
-                  <TableCell className="font-mono">{plan.plan_id}</TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{plan.name_en}</div>
-                      <div className="text-sm text-muted-foreground">{plan.name_fa}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {plan.panel_servers ? (
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{plan.panel_servers.name}</span>
-                        <Badge variant={plan.panel_servers.health_status === 'online' ? 'default' : 'destructive'}>
-                          {plan.panel_servers.health_status}
+                <Card key={plan.id} className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-medium">{plan.name_en}</h3>
+                        <p className="text-sm text-muted-foreground">{plan.name_fa}</p>
+                        <p className="text-xs font-mono">{plan.plan_id}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">{plan.price_per_gb.toLocaleString()} T</p>
+                        <Badge variant={plan.api_type === 'marzban' ? 'default' : 'secondary'}>
+                          {plan.api_type}
                         </Badge>
                       </div>
-                    ) : (
-                      <Badge variant="destructive">No Panel</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={plan.api_type === 'marzban' ? 'default' : 'secondary'}>
-                      {plan.api_type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{plan.price_per_gb.toLocaleString()} T</TableCell>
-                  <TableCell>
+                    </div>
+                    
+                    <div>
+                      {plan.panel_servers ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{plan.panel_servers.name}</span>
+                          <Badge variant={plan.panel_servers.health_status === 'online' ? 'default' : 'destructive'}>
+                            {plan.panel_servers.health_status}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <Badge variant="destructive">No Panel</Badge>
+                      )}
+                    </div>
+
                     <div className="flex flex-wrap gap-1">
                       {plan.available_countries?.slice(0, 3).map((country) => (
                         <Badge key={country.code} variant="outline" className="text-xs">
@@ -562,8 +555,7 @@ const PlansManagement = () => {
                         </Badge>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>
+
                     <div className="flex gap-1">
                       <Badge variant={plan.is_active ? 'default' : 'destructive'}>
                         {plan.is_active ? 'Active' : 'Inactive'}
@@ -572,37 +564,131 @@ const PlansManagement = () => {
                         <Badge variant="outline">Visible</Badge>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>
+
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleEdit(plan)}
+                        className="flex-1"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleDelete(plan.id)}
+                        className="flex-1"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
                       </Button>
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </div>
+                </Card>
               ))}
-            </TableBody>
-          </Table>
-
-          {plans.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No plans found. Create your first plan to get started.</p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            {/* Desktop Table View */}
+            <div className="hidden sm:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plan ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Assigned Panel</TableHead>
+                    <TableHead>API Type</TableHead>
+                    <TableHead>Price/GB</TableHead>
+                    <TableHead>Countries</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plans.map((plan) => (
+                    <TableRow key={plan.id}>
+                      <TableCell className="font-mono">{plan.plan_id}</TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{plan.name_en}</div>
+                          <div className="text-sm text-muted-foreground">{plan.name_fa}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {plan.panel_servers ? (
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{plan.panel_servers.name}</span>
+                            <Badge variant={plan.panel_servers.health_status === 'online' ? 'default' : 'destructive'}>
+                              {plan.panel_servers.health_status}
+                            </Badge>
+                          </div>
+                        ) : (
+                          <Badge variant="destructive">No Panel</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={plan.api_type === 'marzban' ? 'default' : 'secondary'}>
+                          {plan.api_type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{plan.price_per_gb.toLocaleString()} T</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {plan.available_countries?.slice(0, 3).map((country) => (
+                            <Badge key={country.code} variant="outline" className="text-xs">
+                              {country.flag} {country.code}
+                            </Badge>
+                          ))}
+                          {(plan.available_countries?.length || 0) > 3 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{(plan.available_countries?.length || 0) - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Badge variant={plan.is_active ? 'default' : 'destructive'}>
+                            {plan.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                          {plan.is_visible && (
+                            <Badge variant="outline">Visible</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(plan)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(plan.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {plans.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">No plans found. Create your first plan to get started.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
