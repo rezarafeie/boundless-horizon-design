@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { UserCreationService } from '@/services/userCreationService';
+import { PanelUserCreationService } from '@/services/panelUserCreationService';
 import { supabase } from '@/integrations/supabase/client';
 
 interface SubscriptionData {
@@ -29,49 +29,16 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       console.log('SUBSCRIPTION_SUBMIT: Starting submission with plan:', data.selectedPlan?.name);
       
       // Validate that we have the required plan data
-      if (!data.selectedPlan?.id) {
+      if (!data.selectedPlan?.id && !data.selectedPlan?.plan_id) {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get plan configuration from database
-      const { data: planConfig, error: planError } = await supabase
-        .from('subscription_plans')
-        .select(`
-          *,
-          plan_panel_mappings!inner(
-            panel_id,
-            is_primary,
-            panel_servers!inner(
-              id,
-              name,
-              type
-            )
-          )
-        `)
-        .eq('id', data.selectedPlan.id)
-        .single();
+      // Get the plan ID (support both formats)
+      const selectedPlanId = data.selectedPlan.id || data.selectedPlan.plan_id;
+      console.log('SUBSCRIPTION_SUBMIT: Using plan ID:', selectedPlanId);
 
-      if (planError || !planConfig) {
-        console.warn('SUBSCRIPTION_SUBMIT: Plan config not found, proceeding anyway');
-      }
-
-      console.log('SUBSCRIPTION_SUBMIT: Plan config loaded:', planConfig);
-
-      // Find primary panel for this plan or use first available
-      let primaryPanel = null;
-      if (planConfig && planConfig.plan_panel_mappings && planConfig.plan_panel_mappings.length > 0) {
-        const primaryPanelMapping = planConfig.plan_panel_mappings.find((mapping: any) => mapping.is_primary);
-        primaryPanel = primaryPanelMapping ? primaryPanelMapping.panel_servers : planConfig.plan_panel_mappings[0].panel_servers;
-      }
-
-      console.log('SUBSCRIPTION_SUBMIT: Using panel:', {
-        panelId: primaryPanel?.id || 'default',
-        panelName: primaryPanel?.name || 'default',
-        panelType: primaryPanel?.type || 'marzban'
-      });
-      
       // Calculate price
-      const basePrice = data.dataLimit * (planConfig?.price_per_gb || data.selectedPlan.pricePerGB || 0);
+      const basePrice = data.dataLimit * (data.selectedPlan.price_per_gb || data.selectedPlan.pricePerGB || 0);
       const discountAmount = data.appliedDiscount ? 
         (basePrice * data.appliedDiscount.percentage) / 100 : 0;
       const finalPrice = Math.max(0, basePrice - discountAmount);
@@ -90,7 +57,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         price_toman: finalPrice,
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
-        notes: `Plan: ${planConfig?.name_en || data.selectedPlan.name}${primaryPanel ? `, Panel: ${primaryPanel.name}` : ''}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        notes: `Plan: ${data.selectedPlan.name || data.selectedPlan.name_en}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
       console.log('SUBSCRIPTION_SUBMIT: Inserting subscription to database:', subscriptionData);
@@ -108,22 +75,18 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       
       console.log('SUBSCRIPTION_SUBMIT: Subscription inserted successfully:', subscription);
       
-      // If price is 0, create VPN user immediately using new service
+      // If price is 0, create VPN user immediately using new centralized service
       if (finalPrice === 0) {
         try {
-          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using new service');
+          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using centralized service');
           
-          // All panels are now marzban
-          const panelType = 'marzban';
-          
-          const result = await UserCreationService.createSubscription(
+          const result = await PanelUserCreationService.createPaidSubscription(
             uniqueUsername,
+            selectedPlanId,
             data.dataLimit,
             data.duration,
-            panelType,
             subscription.id,
-            `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig?.name_en || data.selectedPlan.name}`,
-            data.selectedPlan.id
+            `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${data.selectedPlan.name || data.selectedPlan.name_en}`
           );
           
           console.log('SUBSCRIPTION_SUBMIT: VPN creation response:', result);

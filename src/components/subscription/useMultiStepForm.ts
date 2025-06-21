@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
 import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
-import { UserCreationService } from '@/services/userCreationService';
+import { PanelUserCreationService } from '@/services/panelUserCreationService';
 
 interface PlanWithPanels {
   id: string;
@@ -172,7 +172,7 @@ export const useMultiStepForm = () => {
       return null;
     }
 
-    // Get full plan configuration from the loaded plans
+    // Get plan configuration from the loaded plans
     const planConfig = availablePlans.find(p => 
       p.id === formData.selectedPlan?.id || 
       p.plan_id === formData.selectedPlan?.plan_id
@@ -218,26 +218,21 @@ export const useMultiStepForm = () => {
 
       console.log('MULTI STEP FORM: Subscription created with ID:', data.id);
 
-      // If price is 0, create VPN user immediately using new service
+      // If price is 0, create VPN user immediately using new centralized service
       if (totalPrice === 0) {
         try {
-          console.log('MULTI STEP FORM: Creating VPN user for free subscription');
+          console.log('MULTI STEP FORM: Creating VPN user for free subscription using centralized service');
           
-          // All plans now use marzban
-          const panelType: 'marzban' = 'marzban';
-          console.log('MULTI STEP FORM: Using Marzban panel type for all plans');
-          
-          // Get the plan ID for validation
+          // Get the plan ID for the centralized service
           const selectedPlanId = formData.selectedPlan.id || formData.selectedPlan.plan_id;
           
-          const vpnResult = await UserCreationService.createSubscription(
+          const vpnResult = await PanelUserCreationService.createPaidSubscription(
             uniqueUsername,
+            selectedPlanId,
             formData.dataLimit,
             formData.duration,
-            panelType,
             data.id,
-            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`,
-            selectedPlanId
+            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`
           );
           
           console.log('MULTI STEP FORM: VPN creation response:', vpnResult);

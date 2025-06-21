@@ -11,13 +11,14 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import SubscriptionSuccess from './SubscriptionSuccess';
 import { useNavigate } from 'react-router-dom';
+import { PanelUserCreationService } from '@/services/panelUserCreationService';
 
 interface SubscriptionPlan {
   id: string;
   name: string;
   description: string;
   pricePerGB: number;
-  apiType: 'marzban' | 'marzneshin';
+  apiType: 'marzban';
   durationDays?: number;
   planId: string;
 }
@@ -32,7 +33,7 @@ interface PlanPanel {
   panel_id: string;
   panel_name: string;
   panel_url: string;
-  panel_type: 'marzban' | 'marzneshin';
+  panel_type: 'marzban';
   is_primary: boolean;
   inbound_ids: string[];
 }
@@ -92,11 +93,11 @@ const MarzbanSubscriptionForm = () => {
             name: language === 'fa' ? plan.name_fa : plan.name_en,
             description: language === 'fa' ? plan.description_fa || '' : plan.description_en || '',
             pricePerGB: plan.price_per_gb,
-            apiType: plan.api_type as 'marzban' | 'marzneshin',
+            apiType: 'marzban' as const, // All plans now use marzban
             durationDays: plan.default_duration_days
           };
         });
-        console.log('SUBSCRIPTION FORM: ✅ Mapped plans with API types:', mappedPlans);
+        console.log('SUBSCRIPTION FORM: ✅ Mapped plans (all marzban):', mappedPlans);
         setPlans(mappedPlans);
       }
     };
@@ -137,7 +138,7 @@ const MarzbanSubscriptionForm = () => {
         panel_id: mapping.panel_id,
         panel_name: mapping.panel_servers?.name || 'Unknown Panel',
         panel_url: mapping.panel_servers?.panel_url || '',
-        panel_type: mapping.panel_servers?.type as 'marzban' | 'marzneshin',
+        panel_type: 'marzban' as const, // All panels are now marzban
         is_primary: mapping.is_primary,
         inbound_ids: Array.isArray(mapping.inbound_ids) 
           ? mapping.inbound_ids.map(id => String(id))
@@ -213,7 +214,7 @@ const MarzbanSubscriptionForm = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('=== SUBSCRIPTION FORM: Starting submission ===');
+    console.log('=== SUBSCRIPTION FORM: Starting submission with centralized service ===');
     console.log('SUBSCRIPTION FORM: Form data:', formData);
     
     // Enhanced validation
@@ -233,25 +234,6 @@ const MarzbanSubscriptionForm = () => {
         variant: 'destructive',
       });
       return;
-    }
-
-    // Hardcoded API routing based on plan_id
-    console.log('=== HARDCODED API ROUTING ===');
-    console.log('Selected Plan ID:', selectedPlan.planId);
-    console.log('Selected Plan API Type:', selectedPlan.apiType);
-    
-    // Simple hardcoded routing logic
-    let apiTypeToUse: 'marzban' | 'marzneshin';
-    if (selectedPlan.planId === 'lite') {
-      apiTypeToUse = 'marzban';
-      console.log('✅ LITE PLAN DETECTED - ROUTING TO MARZBAN');
-    } else if (selectedPlan.planId === 'pro') {
-      apiTypeToUse = 'marzneshin';
-      console.log('✅ PRO PLAN DETECTED - ROUTING TO MARZNESHIN');
-    } else {
-      // Fallback to plan's configured API type
-      apiTypeToUse = selectedPlan.apiType;
-      console.log('✅ USING PLAN CONFIGURED API TYPE:', apiTypeToUse);
     }
 
     // Validate panels are configured
@@ -276,7 +258,7 @@ const MarzbanSubscriptionForm = () => {
     setError('');
 
     try {
-      console.log('=== SUBSCRIPTION: Starting subscription creation process ===');
+      console.log('=== SUBSCRIPTION: Starting subscription creation with centralized service ===');
       
       // Calculate final price with discount
       let finalPrice = formData.dataLimit * selectedPlan.pricePerGB;
@@ -305,7 +287,7 @@ const MarzbanSubscriptionForm = () => {
         price_toman: finalPrice,
         status: 'pending',
         username: username,
-        notes: `Plan: ${selectedPlan.name} (${selectedPlan.planId}), Data: ${formData.dataLimit}GB, API: ${apiTypeToUse}`,
+        notes: `Plan: ${selectedPlan.name} (${selectedPlan.planId}), Data: ${formData.dataLimit}GB`,
         marzban_user_created: false
       };
 
@@ -324,104 +306,38 @@ const MarzbanSubscriptionForm = () => {
 
       console.log('SUBSCRIPTION: ✅ Successfully saved subscription to database:', savedSubscription);
 
-      // STEP 2: Create VPN user based on hardcoded routing
-      console.log(`=== CREATING VPN USER USING ${apiTypeToUse.toUpperCase()} ===`);
+      // STEP 2: Create VPN user using centralized service
+      console.log('=== CREATING VPN USER USING CENTRALIZED SERVICE ===');
       
-      let vpnResponse;
-      let edgeFunctionName;
-      
-      if (apiTypeToUse === 'marzban') {
-        edgeFunctionName = 'marzban-create-user';
-        console.log('🔥 ROUTING TO MARZBAN - Calling marzban-create-user');
+      const vpnResult = await PanelUserCreationService.createPaidSubscription(
+        savedSubscription.username,
+        selectedPlan.id, // Use plan ID
+        formData.dataLimit,
+        formData.duration,
+        savedSubscription.id,
+        `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
+      );
         
-        const requestPayload = {
-          username: savedSubscription.username,
-          dataLimitGB: formData.dataLimit,
-          durationDays: formData.duration,
-          notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
-        };
-        
-        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
-          body: requestPayload
-        });
-        
-        if (error) {
-          console.error('🔥 MARZBAN EDGE FUNCTION ERROR:', error);
-          throw new Error(`Marzban service error: ${error.message}`);
-        }
-        
-        vpnResponse = data;
-        
-      } else if (apiTypeToUse === 'marzneshin') {
-        edgeFunctionName = 'marzneshin-create-user';
-        console.log('🔥 ROUTING TO MARZNESHIN - Calling marzneshin-create-user');
-        
-        const requestPayload = {
-          username: savedSubscription.username,
-          dataLimitGB: formData.dataLimit,
-          durationDays: formData.duration,
-          notes: `Mobile: ${formData.mobile}, Plan: ${selectedPlan.name}, ID: ${savedSubscription.id}`
-        };
-        
-        const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
-          body: requestPayload
-        });
-        
-        if (error) {
-          console.error('🔥 MARZNESHIN EDGE FUNCTION ERROR:', error);
-          throw new Error(`Marzneshin service error: ${error.message}`);
-        }
-        
-        vpnResponse = data;
-        
-      } else {
-        throw new Error(`🔥 CRITICAL: Invalid API type: ${apiTypeToUse}`);
-      }
+      console.log('SUBSCRIPTION: VPN creation response:', vpnResult);
 
-      // STEP 3: Validate VPN response
-      console.log('VPN Response validation:', {
-        hasResponse: !!vpnResponse,
-        responseSuccess: vpnResponse?.success,
-        responseError: vpnResponse?.error
-      });
-
-      if (!vpnResponse?.success) {
-        console.error(`SUBSCRIPTION: VPN user creation failed using ${edgeFunctionName}:`, vpnResponse?.error);
+      if (!vpnResult.success) {
+        console.error('SUBSCRIPTION: VPN user creation failed:', vpnResult.error);
         
         // Update subscription status to failed
         await supabase
           .from('subscriptions')
           .update({ 
             status: 'failed',
-            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResponse?.error}`
+            notes: `${subscriptionData.notes} - VPN creation failed: ${vpnResult.error}`
           })
           .eq('id', savedSubscription.id);
         
-        throw new Error(`Failed to create VPN user: ${vpnResponse?.error}`);
+        throw new Error(`Failed to create VPN user: ${vpnResult.error}`);
       }
 
-      console.log(`SUBSCRIPTION: ✅ VPN user created successfully using ${edgeFunctionName}`);
+      console.log('SUBSCRIPTION: ✅ VPN user created successfully using centralized service');
 
-      // STEP 4: Update subscription with VPN details
-      const updateData = {
-        subscription_url: vpnResponse.data.subscription_url,
-        status: 'active',
-        marzban_user_created: true,
-        expire_at: vpnResponse.data.expire ? new Date(vpnResponse.data.expire * 1000).toISOString() : null
-      };
-
-      const { error: updateError } = await supabase
-        .from('subscriptions')
-        .update(updateData)
-        .eq('id', savedSubscription.id);
-
-      if (updateError) {
-        console.error('SUBSCRIPTION: Failed to update subscription with VPN details:', updateError);
-      }
-
-      console.log('SUBSCRIPTION: ✅ Successfully updated subscription with VPN details');
-
-      // STEP 5: Check if this is a lite plan and handle differently
+      // STEP 3: Check if this is a lite plan and handle differently
       const isLitePlan = selectedPlan.planId === 'lite';
       
       console.log('SUBSCRIPTION: Plan type check:', { 
@@ -431,13 +347,13 @@ const MarzbanSubscriptionForm = () => {
 
       // Prepare data for result display
       const subscriptionResult = {
-        username: vpnResponse.data.username,
-        subscription_url: vpnResponse.data.subscription_url,
-        expire: vpnResponse.data.expire || Date.now() + (formData.duration * 24 * 60 * 60 * 1000),
-        data_limit: vpnResponse.data.data_limit || formData.dataLimit * 1073741824,
+        username: vpnResult.data!.username,
+        subscription_url: vpnResult.data!.subscription_url,
+        expire: vpnResult.data!.expire,
+        data_limit: vpnResult.data!.data_limit,
         status: 'active',
         used_traffic: 0,
-        apiType: apiTypeToUse,
+        apiType: 'marzban',
         planName: selectedPlan.name,
         dataLimitGB: formData.dataLimit,
         durationDays: formData.duration
@@ -614,12 +530,8 @@ const MarzbanSubscriptionForm = () => {
                           {plan.durationDays} {language === 'fa' ? 'روز' : 'days'}
                         </p>
                         <div className="mt-2">
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            plan.planId === 'lite'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                              : 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400'
-                          }`}>
-                            {plan.planId === 'lite' ? 'Lite (Marzban)' : 'Pro (Marzneshin)'}
+                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                            Marzban Panel
                           </span>
                         </div>
                       </CardContent>
