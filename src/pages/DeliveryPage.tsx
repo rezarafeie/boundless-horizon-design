@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { PlanService } from '@/services/planService';
 import QRCodeCanvas from 'qrcode';
 import Navigation from '@/components/Navigation';
 
@@ -21,6 +22,7 @@ interface SubscriptionData {
   panel_type?: string;
   panel_name?: string;
   panel_id?: string;
+  panel_url?: string;
 }
 
 const DeliveryPage = () => {
@@ -43,12 +45,13 @@ const DeliveryPage = () => {
         setError(null);
         setPanelStatus('checking');
 
-        console.log('DELIVERY: Loading subscription data - FIXED VERSION...');
+        console.log('DELIVERY: Loading subscription data with DYNAMIC panel selection...');
         console.log('DELIVERY: Location state:', location.state);
         console.log('DELIVERY: URL search params:', Object.fromEntries(searchParams.entries()));
 
         // Check different sources for subscription data
         let data: SubscriptionData | null = null;
+        let planId: string | null = null;
 
         // 1. From URL state (navigation from subscription form)
         if (location.state?.subscriptionData) {
@@ -72,7 +75,7 @@ const DeliveryPage = () => {
           try {
             const { data: subscription, error: dbError } = await supabase
               .from('subscriptions')
-              .select('*')
+              .select('*, subscription_plans(*)')
               .eq('id', subscriptionId)
               .single();
 
@@ -82,7 +85,30 @@ const DeliveryPage = () => {
             }
 
             if (subscription) {
-              console.log('DELIVERY: Using ONLY marzban panel type for all subscriptions');
+              console.log('DELIVERY: Fetched subscription with plan data:', subscription);
+              planId = subscription.plan_id;
+              
+              // Get panel info from plan using PlanService
+              let panelInfo = null;
+              if (planId) {
+                try {
+                  const plan = await PlanService.getPlanById(planId);
+                  if (plan) {
+                    const primaryPanel = PlanService.getPrimaryPanel(plan);
+                    if (primaryPanel) {
+                      panelInfo = {
+                        panel_type: primaryPanel.type,
+                        panel_name: primaryPanel.name,
+                        panel_id: primaryPanel.id,
+                        panel_url: primaryPanel.panel_url
+                      };
+                      console.log('DELIVERY: Using dynamic panel info from plan:', panelInfo);
+                    }
+                  }
+                } catch (planError) {
+                  console.warn('DELIVERY: Could not fetch plan info:', planError);
+                }
+              }
               
               data = {
                 username: subscription.username,
@@ -91,9 +117,9 @@ const DeliveryPage = () => {
                 data_limit: subscription.data_limit_gb * 1073741824,
                 status: subscription.status || 'active',
                 used_traffic: 0,
-                panel_type: 'marzban'
+                ...panelInfo
               };
-              console.log('DELIVERY: Fetched subscription from database:', data);
+              console.log('DELIVERY: Using subscription data with dynamic panel info:', data);
             } else {
               throw new Error('Subscription not found in database');
             }
@@ -107,24 +133,31 @@ const DeliveryPage = () => {
           throw new Error('No subscription data found');
         }
 
-        console.log('DELIVERY: Using subscription data with FIXED API:', { 
+        console.log('DELIVERY: Using subscription data with DYNAMIC panel configuration:', { 
           username: data.username, 
-          panelType: 'marzban' // FORCE marzban only
+          panelType: data.panel_type,
+          panelUrl: data.panel_url,
+          panelName: data.panel_name
         });
 
-        // Try to fetch fresh data from the panel using ONLY the unified service
+        // Try to fetch fresh data from the panel using dynamic configuration
         try {
-          console.log('DELIVERY: Refreshing data using FIXED get-subscription-from-panel service');
+          console.log('DELIVERY: Refreshing data using DYNAMIC panel configuration');
+          
+          // Use the panel type from the subscription data or fallback to marzban
+          const panelType = data.panel_type || 'marzban';
           
           const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
             body: {
               username: data.username,
-              panelType: 'marzban' // FORCE marzban only
+              panelType: panelType,
+              panelUrl: data.panel_url, // Pass dynamic panel URL
+              panelId: data.panel_id // Pass panel ID for credentials
             }
           });
 
           if (panelResult?.success && panelResult.data) {
-            console.log('DELIVERY: FIXED panel data received:', panelResult.data);
+            console.log('DELIVERY: DYNAMIC panel data received:', panelResult.data);
             
             // Merge panel data with existing data, preferring panel data for critical fields
             const mergedData = {
@@ -133,8 +166,7 @@ const DeliveryPage = () => {
               expire: panelResult.data.expire ? panelResult.data.expire : data.expire,
               data_limit: panelResult.data.data_limit || data.data_limit,
               status: panelResult.data.status || data.status,
-              used_traffic: panelResult.data.used_traffic || data.used_traffic || 0,
-              panel_type: 'marzban'
+              used_traffic: panelResult.data.used_traffic || data.used_traffic || 0
             };
             
             setSubscriptionData(mergedData);
@@ -222,17 +254,21 @@ const DeliveryPage = () => {
 
     setIsRefreshing(true);
     try {
-      console.log('DELIVERY: Refreshing subscription data using FIXED API...');
+      console.log('DELIVERY: Refreshing subscription data using DYNAMIC panel configuration...');
+      
+      const panelType = subscriptionData.panel_type || 'marzban';
       
       const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
         body: {
           username: subscriptionData.username,
-          panelType: 'marzban' // FORCE marzban only
+          panelType: panelType,
+          panelUrl: subscriptionData.panel_url,
+          panelId: subscriptionData.panel_id
         }
       });
 
       if (panelResult?.success && panelResult.data) {
-        console.log('DELIVERY: FIXED refresh data received from panel');
+        console.log('DELIVERY: DYNAMIC refresh data received from panel');
         
         const updatedData = {
           ...subscriptionData,
@@ -240,8 +276,7 @@ const DeliveryPage = () => {
           expire: panelResult.data.expire ? panelResult.data.expire : subscriptionData.expire,
           data_limit: panelResult.data.data_limit || subscriptionData.data_limit,
           status: panelResult.data.status || subscriptionData.status,
-          used_traffic: panelResult.data.used_traffic || subscriptionData.used_traffic || 0,
-          panel_type: 'marzban'
+          used_traffic: panelResult.data.used_traffic || subscriptionData.used_traffic || 0
         };
         
         setSubscriptionData(updatedData);

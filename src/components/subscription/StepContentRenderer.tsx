@@ -52,9 +52,23 @@ const StepContentRenderer = ({
       console.log('StepContentRenderer - Rendering UserInfoStep with formData:', formData);
       return (
         <UserInfoStep
-          formData={formData}
+          formData={{
+            username: formData.username,
+            dataLimit: formData.dataLimit,
+            duration: formData.duration,
+            notes: formData.notes,
+            mobile: formData.mobile,
+            selectedPlan: formData.selectedPlan ? {
+              name: formData.selectedPlan.name_en,
+              description: formData.selectedPlan.description_en || '',
+              pricePerGB: formData.selectedPlan.price_per_gb,
+              apiType: formData.selectedPlan.api_type
+            } : null
+          }}
           appliedDiscount={appliedDiscount}
-          onUpdate={onUpdateFormData}
+          onUpdate={(field: string, value: any) => {
+            onUpdateFormData(field as keyof FormData, value);
+          }}
         />
       );
 

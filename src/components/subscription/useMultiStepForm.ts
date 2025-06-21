@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -163,14 +162,13 @@ export const useMultiStepForm = () => {
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        plan_id: formData.selectedPlan.id, // Use the UUID from the selected plan
+        plan_id: formData.selectedPlan.id,
         notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id}), Panel: ${primaryPanel?.name}`,
         status: 'pending' as const
       };
 
       console.log('MULTI STEP FORM: Creating subscription with data:', subscriptionData);
 
-      // Let database generate the ID automatically
       const { data, error } = await supabase
         .from('subscriptions')
         .insert([subscriptionData])

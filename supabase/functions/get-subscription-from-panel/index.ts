@@ -13,13 +13,13 @@ serve(async (req) => {
   }
 
   try {
-    const { username, panelType } = await req.json();
+    const { username, panelType, panelUrl, panelId } = await req.json();
     
     if (!username) {
       throw new Error("Username is required");
     }
 
-    console.log(`Fetching subscription for ${username} from ${panelType} panel`);
+    console.log(`Fetching subscription for ${username} from ${panelType} panel (${panelUrl || 'default'})`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -28,10 +28,28 @@ serve(async (req) => {
 
     let userData = null;
 
+    // If panelId is provided, get panel credentials from database
+    let panelConfig = null;
+    if (panelId) {
+      const { data: panel, error: panelError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('id', panelId)  
+        .single();
+
+      if (!panelError && panel) {
+        panelConfig = panel;
+        console.log(`Using panel configuration: ${panel.name} (${panel.panel_url})`);
+      }
+    }
+
     if (panelType === 'marzneshin') {
-      // Call Marzneshin get user function
+      // Call Marzneshin get user function with dynamic config
       const { data, error } = await supabase.functions.invoke('marzneshin-get-user', {
-        body: { username }
+        body: { 
+          username,
+          panelConfig: panelConfig // Pass panel config if available
+        }
       });
 
       if (error) {
@@ -50,9 +68,12 @@ serve(async (req) => {
         };
       }
     } else if (panelType === 'marzban') {
-      // Call Marzban get user function
+      // Call Marzban get user function with dynamic config
       const { data, error } = await supabase.functions.invoke('marzban-get-user', {
-        body: { username }
+        body: { 
+          username,
+          panelConfig: panelConfig // Pass panel config if available
+        }
       });
 
       if (error) {
@@ -99,7 +120,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Successfully fetched subscription data for ${username}`);
+    console.log(`Successfully fetched subscription data for ${username} from ${panelType} panel`);
 
     return new Response(JSON.stringify({
       success: true,
