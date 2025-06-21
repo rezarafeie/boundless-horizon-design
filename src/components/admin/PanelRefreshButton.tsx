@@ -107,8 +107,8 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       // Determine enabled protocols from the proxies structure
       const enabledProtocols = Object.keys(proxies);
       
-      // Count total configs - ensure we get a number
-      const totalConfigs: number = Object.values(inbounds).reduce((sum: number, protocols: any) => {
+      // Count total configs - ensure we get a number with proper type checking
+      const totalConfigs = Object.values(inbounds as Record<string, any>).reduce((sum: number, protocols: any) => {
         const count = Array.isArray(protocols) ? protocols.length : 0;
         return sum + count;
       }, 0);
