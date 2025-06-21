@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { CheckCircle, Globe } from 'lucide-react';
+import { CheckCircle, Globe, Loader } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Country } from '@/data/countries';
 import { SubscriptionPlan } from '@/types/subscription';
@@ -18,11 +18,12 @@ interface Plan {
   description_fa?: string;
   price_per_gb: number;
   available_countries?: Country[];
+  api_type: string;
 }
 
 interface PlanSelectorProps {
   selectedPlan: string | null;
-  onPlanSelect: (plan: SubscriptionPlan) => void; // Changed to pass full plan object
+  onPlanSelect: (plan: SubscriptionPlan) => void;
   dataLimit: number;
 }
 
@@ -81,6 +82,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
             description_en: plan.description_en,
             description_fa: plan.description_fa,
             price_per_gb: plan.price_per_gb,
+            api_type: plan.api_type,
             available_countries: availableCountries
           };
         });
@@ -111,7 +113,9 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
                 <div className="h-4 bg-gray-200 rounded"></div>
               </CardHeader>
               <CardContent>
-                <div className="h-20 bg-gray-200 rounded"></div>
+                <div className="flex items-center justify-center py-8">
+                  <Loader className="w-8 h-8 animate-spin text-blue-500" />
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -123,7 +127,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
   const handlePlanSelect = (plan: Plan) => {
     console.log('PlanSelector - Plan selected:', plan);
     
-    // Create a complete SubscriptionPlan object
+    // Create a complete SubscriptionPlan object with all required fields
     const subscriptionPlan: SubscriptionPlan = {
       id: plan.id,
       plan_id: plan.plan_id,
@@ -135,8 +139,8 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       description_fa: plan.description_fa,
       pricePerGB: plan.price_per_gb,
       price_per_gb: plan.price_per_gb,
-      apiType: plan.plan_id === 'pro' ? 'marzneshin' : 'marzban',
-      api_type: plan.plan_id === 'pro' ? 'marzneshin' : 'marzban',
+      apiType: plan.api_type as 'marzban' | 'marzneshin',
+      api_type: plan.api_type as 'marzban' | 'marzneshin',
       available_countries: plan.available_countries
     };
     

@@ -57,7 +57,7 @@ export const useMultiStepForm = () => {
 
   const loadAvailablePlans = async () => {
     try {
-      console.log('MULTI STEP FORM: Loading available plans from database directly');
+      console.log('MULTI STEP FORM: Loading available plans from database');
       
       const { data: plans, error } = await supabase
         .from('subscription_plans')
@@ -72,7 +72,9 @@ export const useMultiStepForm = () => {
               type
             )
           )
-        `);
+        `)
+        .eq('is_active', true)
+        .eq('is_visible', true);
 
       if (error) {
         console.error('MULTI STEP FORM: Error loading plans:', error);
@@ -106,14 +108,10 @@ export const useMultiStepForm = () => {
   const updateFormData = (field: keyof FormData, value: any) => {
     console.log('MULTI STEP FORM: Updating form data:', field, value);
     
-    if (field === 'selectedPlan') {
-      // Handle plan selection - value should already be a complete SubscriptionPlan object
-      if (value && typeof value === 'object' && value.id) {
-        console.log('MULTI STEP FORM: Setting complete plan object:', value);
-        setFormData(prev => ({ ...prev, [field]: value }));
-      } else {
-        console.warn('MULTI STEP FORM: Invalid plan object received:', value);
-      }
+    if (field === 'selectedPlan' && value) {
+      // Ensure we have a complete plan object
+      console.log('MULTI STEP FORM: Setting plan object:', value);
+      setFormData(prev => ({ ...prev, [field]: value }));
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -133,31 +131,28 @@ export const useMultiStepForm = () => {
   const canProceedFromStep = (step: StepNumber): boolean => {
     switch (step) {
       case 1:
-        const canProceed1 = !!formData.selectedPlan;
-        console.log('MULTI STEP FORM: Can proceed from step 1:', canProceed1, formData.selectedPlan);
-        return canProceed1;
+        const hasValidPlan = !!(formData.selectedPlan && (formData.selectedPlan.id || formData.selectedPlan.plan_id));
+        console.log('MULTI STEP FORM: Can proceed from step 1:', hasValidPlan, formData.selectedPlan);
+        return hasValidPlan;
       case 2:
-        const canProceed2 = !!(formData.username && formData.mobile && formData.dataLimit && formData.duration);
-        console.log('MULTI STEP FORM: Can proceed from step 2:', canProceed2, {
+        const hasRequiredFields = !!(
+          formData.username?.trim() && 
+          formData.mobile?.trim() && 
+          formData.dataLimit > 0 && 
+          formData.duration > 0
+        );
+        console.log('MULTI STEP FORM: Can proceed from step 2:', hasRequiredFields, {
           username: formData.username,
           mobile: formData.mobile,
           dataLimit: formData.dataLimit,
           duration: formData.duration
         });
-        return canProceed2;
+        return hasRequiredFields;
       case 3:
         return !!result;
       default:
         return true;
     }
-  };
-
-  const generateSubscriptionId = (): string => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
   };
 
   const createSubscriptionRecord = async (): Promise<string | null> => {
@@ -168,6 +163,18 @@ export const useMultiStepForm = () => {
         description: language === 'fa' ? 
           'لطفاً ابتدا یک پلن انتخاب کنید' : 
           'Please select a plan first',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    // Validate required fields
+    if (!formData.username?.trim() || !formData.mobile?.trim()) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً تمام فیلدهای ضروری را پر کنید' : 
+          'Please fill in all required fields',
         variant: 'destructive'
       });
       return null;
@@ -187,7 +194,6 @@ export const useMultiStepForm = () => {
       console.log('MULTI STEP FORM: Creating subscription record with plan:', formData.selectedPlan);
       
       const totalPrice = calculateTotalPrice();
-      const newSubscriptionId = generateSubscriptionId();
       
       // Generate unique username if needed
       const timestamp = Date.now();
@@ -195,18 +201,18 @@ export const useMultiStepForm = () => {
         formData.username : `${formData.username}_${timestamp}`;
       
       const subscriptionData = {
-        id: newSubscriptionId,
         username: uniqueUsername,
         mobile: formData.mobile.trim(),
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name}`,
+        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`,
         status: 'pending'
       };
 
       console.log('MULTI STEP FORM: Creating subscription with data:', subscriptionData);
 
+      // Let database generate the ID automatically
       const { data, error } = await supabase
         .from('subscriptions')
         .insert([subscriptionData])
@@ -243,7 +249,7 @@ export const useMultiStepForm = () => {
             formData.duration,
             panelType,
             data.id,
-            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name}`
+            `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`
           );
           
           console.log('MULTI STEP FORM: VPN creation response:', vpnResult);
@@ -270,7 +276,7 @@ export const useMultiStepForm = () => {
             
             // Navigate directly to delivery page for free subscriptions
             setTimeout(() => {
-              navigate(`/subscription-delivery?id=${data.id}`);
+              navigate(`/delivery?id=${data.id}`);
             }, 1500);
             
             return data.id;
@@ -322,6 +328,8 @@ export const useMultiStepForm = () => {
           errorMessage = language === 'fa' ? 
             'مشکل در اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید.' :
             'Connection problem. Please check your internet connection.';
+        } else {
+          errorMessage = error.message;
         }
       }
       
@@ -341,6 +349,23 @@ export const useMultiStepForm = () => {
     
     if (!canProceedFromStep(currentStep)) {
       console.warn('MULTI STEP FORM: Cannot proceed from current step:', currentStep);
+      
+      // Show helpful error message
+      if (currentStep === 1) {
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 
+            'لطفاً یک پلن انتخاب کنید' : 'Please select a plan',
+          variant: 'destructive'
+        });
+      } else if (currentStep === 2) {
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 
+            'لطفاً تمام فیلدهای ضروری را پر کنید' : 'Please fill in all required fields',
+          variant: 'destructive'
+        });
+      }
       return;
     }
 
@@ -365,9 +390,11 @@ export const useMultiStepForm = () => {
   };
 
   const handlePrevious = () => {
-    const prevStep = Math.max(currentStep - 1, 1) as StepNumber;
-    console.log(`MULTI STEP FORM: Moving from step ${currentStep} to step ${prevStep}`);
-    setCurrentStep(prevStep);
+    if (currentStep > 1) {
+      const prevStep = Math.max(currentStep - 1, 1) as StepNumber;
+      console.log(`MULTI STEP FORM: Moving from step ${currentStep} to step ${prevStep}`);
+      setCurrentStep(prevStep);
+    }
   };
 
   const handlePaymentSuccess = (subscriptionUrl?: string) => {
@@ -380,8 +407,8 @@ export const useMultiStepForm = () => {
         'Your payment was successful'
     });
 
-    // Redirect directly to delivery page instead of going to step 4
-    navigate(`/subscription-delivery?id=${subscriptionId}`);
+    // Redirect directly to delivery page
+    navigate(`/delivery?id=${subscriptionId}`);
   };
 
   const calculateTotalPrice = (): number => {

@@ -31,6 +31,7 @@ const StepContentRenderer = ({
 }: StepContentRendererProps) => {
   console.log('StepContentRenderer - Current step:', currentStep);
   console.log('StepContentRenderer - Form data:', formData);
+  console.log('StepContentRenderer - Subscription ID:', subscriptionId);
   
   switch (currentStep) {
     case 1:
@@ -39,7 +40,7 @@ const StepContentRenderer = ({
           selectedPlan={formData.selectedPlan?.id || formData.selectedPlan?.plan_id || ''}
           onPlanSelect={(plan: SubscriptionPlan) => {
             console.log('StepContentRenderer - Plan selected:', plan);
-            // Pass the complete plan object directly
+            // Ensure we pass a complete plan object
             onUpdateFormData('selectedPlan', plan);
           }}
           dataLimit={formData.dataLimit}
@@ -47,7 +48,7 @@ const StepContentRenderer = ({
       );
 
     case 2:
-      console.log('Rendering UserInfoStep with formData:', formData);
+      console.log('StepContentRenderer - Rendering UserInfoStep with formData:', formData);
       return (
         <UserInfoStep
           formData={formData}
@@ -57,6 +58,14 @@ const StepContentRenderer = ({
       );
 
     case 3:
+      if (!subscriptionId) {
+        console.error('StepContentRenderer - No subscription ID for payment step');
+        return (
+          <div className="text-center py-8">
+            <p className="text-red-600">خطا در ایجاد سفارش. لطفاً دوباره تلاش کنید.</p>
+          </div>
+        );
+      }
       return (
         <PaymentStep
           amount={calculateTotalPrice()}
@@ -72,11 +81,19 @@ const StepContentRenderer = ({
           result={result} 
           subscriptionId={subscriptionId}
         />
-      ) : null;
+      ) : (
+        <div className="text-center py-8">
+          <p className="text-gray-600">در حال بارگذاری...</p>
+        </div>
+      );
 
     default:
-      console.warn('Unknown step:', currentStep);
-      return null;
+      console.warn('StepContentRenderer - Unknown step:', currentStep);
+      return (
+        <div className="text-center py-8">
+          <p className="text-red-600">خطای نامشخص در سیستم</p>
+        </div>
+      );
   }
 };
 

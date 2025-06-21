@@ -44,21 +44,24 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get panel information - using the same query as admin panel
+    // Get panel information - improved panel selection logic
     logStep('DB_QUERY', `Fetching ${panelType} panel data`);
     
-    const { data: panel, error: panelError } = await supabase
+    const { data: panels, error: panelError } = await supabase
       .from('panel_servers')
       .select('*')
       .eq('type', panelType)
       .eq('is_active', true)
       .eq('health_status', 'online')
-      .single();
+      .order('created_at', { ascending: true });
 
-    if (panelError || !panel) {
+    if (panelError || !panels || panels.length === 0) {
       logStep('ERROR', `No active ${panelType} panel found`, panelError);
       throw new Error(`No active ${panelType} panel available. Please try again later.`);
     }
+
+    // Use the first available panel
+    const panel = panels[0];
 
     logStep('PANEL', 'Panel data retrieved', {
       name: panel.name,
@@ -154,7 +157,7 @@ serve(async (req) => {
       if (!createResponse.ok) {
         const errorText = await createResponse.text();
         logStep('ERROR', 'Marzban user creation failed', { status: createResponse.status, error: errorText });
-        throw new Error(`Failed to create user on ${panelType} panel`);
+        throw new Error(`Failed to create user on ${panelType} panel: ${errorText}`);
       }
 
       userData = await createResponse.json();
@@ -205,7 +208,7 @@ serve(async (req) => {
       if (!createResponse.ok) {
         const errorText = await createResponse.text();
         logStep('ERROR', 'Marzneshin user creation failed', { status: createResponse.status, error: errorText });
-        throw new Error(`Failed to create user on ${panelType} panel`);
+        throw new Error(`Failed to create user on ${panelType} panel: ${errorText}`);
       }
 
       userData = await createResponse.json();
