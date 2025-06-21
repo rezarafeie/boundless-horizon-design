@@ -37,9 +37,20 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
     debugLog('info', 'Processing manual payment confirmation', data);
 
     try {
+      // Validate subscription ID
+      if (!subscriptionId) {
+        throw new Error('Subscription ID is missing');
+      }
+
       // Update subscription with manual payment details
       const notes = `Manual payment - Tracking: ${data.trackingNumber}, Payer: ${data.payerName}, Time: ${data.paymentTime}`;
       
+      debugLog('info', 'Updating subscription with manual payment data', {
+        subscriptionId,
+        notes,
+        admin_decision: 'pending'
+      });
+
       const { error } = await supabase
         .from('subscriptions')
         .update({ 
@@ -50,10 +61,11 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
         .eq('id', subscriptionId);
 
       if (error) {
-        throw new Error(`Failed to update subscription: ${error.message}`);
+        debugLog('error', 'Supabase update error', error);
+        throw new Error(`Database update failed: ${error.message}`);
       }
 
-      debugLog('success', 'Manual payment data saved, showing waiting state');
+      debugLog('success', 'Manual payment data saved successfully');
       
       toast({
         title: language === 'fa' ? 'پرداخت ثبت شد' : 'Payment Recorded',
@@ -67,9 +79,25 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
       
     } catch (error) {
       debugLog('error', 'Manual payment confirmation failed', error);
+      
+      let errorMessage = 'An unexpected error occurred';
+      if (error instanceof Error) {
+        if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = language === 'fa' ? 
+            'مشکل در اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید.' :
+            'Connection problem. Please check your internet connection.';
+        } else if (error.message.includes('Database update failed')) {
+          errorMessage = language === 'fa' ? 
+            'خطا در ذخیره اطلاعات. لطفاً دوباره تلاش کنید.' :
+            'Failed to save information. Please try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
-        description: error instanceof Error ? error.message : 'An error occurred',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
