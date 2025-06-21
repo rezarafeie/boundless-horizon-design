@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -208,10 +207,7 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
       // Add the new test result to the beginning of the array
       setTestResults(prev => [result, ...prev]);
       
-      if (result.success) {
-        toast.success(`Plan ${plan.name_en} configuration is valid!`);
-      } else {
-        toast.error(`Plan ${plan.name_en} has configuration issues. Check details below.`);
+      if (!result.success) {
         setShowDebugLogs(true); // Auto-show logs when there are errors
       }
       
@@ -238,7 +234,6 @@ export const PlanTestConnection = ({ plan, onTestComplete }: PlanTestConnectionP
       };
       setTestResults(prev => [errorResult, ...prev]);
       setShowDebugLogs(true); // Auto-show logs when there are errors
-      toast.error(`Failed to test plan ${plan.name_en}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }

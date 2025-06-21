@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -84,10 +83,7 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
       // Add the new test result to the beginning of the array
       setTestResults(prev => [data, ...prev]);
       
-      if (data.success) {
-        toast.success(`Panel ${panel.name} is working correctly!`);
-      } else {
-        toast.error(`Panel ${panel.name} test failed. Check the details below.`);
+      if (!data.success) {
         setShowDebugLogs(true); // Auto-show logs on failure
       }
       
@@ -119,7 +115,6 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
       };
       setTestResults(prev => [errorResult, ...prev]);
       setShowDebugLogs(true); // Auto-show logs on error
-      toast.error(`Failed to test panel ${panel.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
