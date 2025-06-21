@@ -43,18 +43,23 @@ export const CountrySelector = ({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-full justify-between"
+            className="w-full justify-between h-10"
           >
-            {selectedCountries.length === 0 
-              ? placeholder 
-              : `${selectedCountries.length} countries selected`
-            }
+            <span className="truncate">
+              {selectedCountries.length === 0 
+                ? placeholder 
+                : `${selectedCountries.length} countries selected`
+              }
+            </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0">
-          <Command>
-            <CommandInput placeholder="Search countries..." />
+        <PopoverContent className="w-full p-0 z-50" align="start">
+          <Command className="w-full">
+            <CommandInput 
+              placeholder="Search countries..." 
+              className="h-9"
+            />
             <CommandEmpty>No countries found.</CommandEmpty>
             <CommandGroup className="max-h-64 overflow-auto">
               {COUNTRIES.map((country) => {
@@ -64,16 +69,17 @@ export const CountrySelector = ({
                     key={country.code}
                     value={`${country.name} ${country.code}`}
                     onSelect={() => handleCountryToggle(country)}
+                    className="flex items-center space-x-2 px-2 py-1.5 cursor-pointer hover:bg-gray-100"
                   >
                     <Check
                       className={cn(
-                        "mr-2 h-4 w-4",
+                        "h-4 w-4",
                         isSelected ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    <span className="mr-2">{country.flag}</span>
-                    <span>{country.name}</span>
-                    <span className="ml-auto text-xs text-gray-500">{country.code}</span>
+                    <span className="text-lg">{country.flag}</span>
+                    <span className="flex-1">{country.name}</span>
+                    <span className="text-xs text-gray-500">{country.code}</span>
                   </CommandItem>
                 );
               })}
@@ -84,14 +90,15 @@ export const CountrySelector = ({
       
       {/* Selected Countries Display */}
       {selectedCountries.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mt-2">
           {selectedCountries.map((country) => (
-            <Badge key={country.code} variant="secondary" className="flex items-center gap-1">
+            <Badge key={country.code} variant="secondary" className="flex items-center gap-1 px-2 py-1">
               <span>{country.flag}</span>
-              <span>{country.name}</span>
+              <span className="text-sm">{country.name}</span>
               <button
+                type="button"
                 onClick={() => removeCountry(country.code)}
-                className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
+                className="ml-1 hover:bg-gray-200 rounded-full p-0.5 transition-colors"
               >
                 <X className="h-3 w-3" />
               </button>

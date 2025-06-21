@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [availablePlans, setAvailablePlans] = useState<any[]>([]);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
   const [formData, setFormData] = useState({
     username: '',
     mobile: ''
@@ -36,6 +38,8 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
   const loadAvailablePlans = async () => {
     try {
+      console.log('FREE_TRIAL: Loading available plans with panel mappings...');
+      
       const { data: plans, error } = await supabase
         .from('subscription_plans')
         .select(`
@@ -43,32 +47,99 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           plan_panel_mappings!inner(
             panel_id,
             is_primary,
+            inbound_ids,
             panel_servers!inner(
               id,
               name,
               type,
               is_active,
-              health_status
+              health_status,
+              panel_url
             )
           )
         `)
         .eq('is_active', true)
-        .eq('is_visible', true);
+        .eq('is_visible', true)
+        .eq('plan_panel_mappings.panel_servers.is_active', true);
+
+      console.log('FREE_TRIAL: Query result:', { 
+        error: error?.message, 
+        plansCount: plans?.length || 0,
+        plans: plans?.map(p => ({
+          id: p.id,
+          name: p.name_en,
+          panelMappings: p.plan_panel_mappings?.length || 0
+        }))
+      });
 
       if (error) {
-        console.error('FREE_TRIAL: Error loading plans:', error);
+        console.error('FREE_TRIAL: Database error loading plans:', error);
+        setDebugInfo({ error: error.message, step: 'query_plans' });
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: `Database error: ${error.message}`,
+          variant: 'destructive',
+        });
         return;
       }
 
-      console.log('FREE_TRIAL: Available plans loaded:', plans?.length || 0);
-      setAvailablePlans(plans || []);
+      // Filter plans that have active panel mappings
+      const validPlans = plans?.filter(plan => 
+        plan.plan_panel_mappings && 
+        plan.plan_panel_mappings.length > 0 &&
+        plan.plan_panel_mappings.some(mapping => 
+          mapping.panel_servers && 
+          mapping.panel_servers.is_active
+        )
+      ) || [];
+
+      console.log('FREE_TRIAL: Valid plans after filtering:', {
+        totalPlans: plans?.length || 0,
+        validPlans: validPlans.length,
+        validPlanDetails: validPlans.map(p => ({
+          id: p.id,
+          name: p.name_en,
+          panels: p.plan_panel_mappings?.map(m => ({
+            panelId: m.panel_servers?.id,
+            panelName: m.panel_servers?.name,
+            panelType: m.panel_servers?.type,
+            isActive: m.panel_servers?.is_active,
+            healthStatus: m.panel_servers?.health_status
+          }))
+        }))
+      });
+
+      setAvailablePlans(validPlans);
+      setDebugInfo({ 
+        totalPlans: plans?.length || 0,
+        validPlans: validPlans.length,
+        step: 'plans_loaded'
+      });
       
       // Auto-select first available plan
-      if (plans && plans.length > 0) {
-        setSelectedPlan(plans[0].id);
+      if (validPlans.length > 0) {
+        setSelectedPlan(validPlans[0].id);
+        console.log('FREE_TRIAL: Auto-selected plan:', validPlans[0].id);
+      } else {
+        console.warn('FREE_TRIAL: No valid plans found with active panel mappings');
+        toast({
+          title: language === 'fa' ? 'هشدار' : 'Warning',
+          description: language === 'fa' ? 
+            'هیچ پلن فعالی با پنل متصل یافت نشد' : 
+            'No active plans with connected panels found',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('FREE_TRIAL: Failed to load plans:', error);
+      setDebugInfo({ error: error.message, step: 'exception' });
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'خطا در بارگذاری پلن‌ها' : 
+          'Failed to load plans',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -86,10 +157,23 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       return;
     }
 
+    if (availablePlans.length === 0) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'هیچ پلن فعالی یافت نشد' : 
+          'No active plans available',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       console.log('FREE_TRIAL: Starting free trial creation with centralized service');
+      console.log('FREE_TRIAL: Selected plan ID:', selectedPlan);
+      console.log('FREE_TRIAL: Available plans:', availablePlans.map(p => p.id));
       
       // Generate unique username
       const timestamp = Date.now();
@@ -105,6 +189,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       console.log('FREE_TRIAL: Creation result:', result);
 
       if (result.success && result.data) {
+        console.log('FREE_TRIAL: Success - calling onSuccess callback');
         toast({
           title: language === 'fa' ? 'موفقیت!' : 'Success!',
           description: language === 'fa' ? 
@@ -118,7 +203,8 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           expire: result.data.expire,
           data_limit: result.data.data_limit,
           panel_name: result.data.panel_name,
-          panel_type: result.data.panel_type
+          panel_type: result.data.panel_type,
+          panel_id: result.data.panel_id
         });
         
         onClose();
@@ -182,6 +268,11 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
                 ))}
               </SelectContent>
             </Select>
+            {availablePlans.length === 0 && (
+              <p className="text-sm text-red-600 mt-1">
+                {language === 'fa' ? 'هیچ پلن فعالی یافت نشد' : 'No active plans found'}
+              </p>
+            )}
           </div>
           
           <div>
@@ -220,6 +311,13 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
               }
             </p>
           </div>
+
+          {/* Debug info for development */}
+          {debugInfo && process.env.NODE_ENV === 'development' && (
+            <div className="bg-gray-100 p-2 rounded text-xs">
+              <strong>Debug:</strong> {JSON.stringify(debugInfo, null, 2)}
+            </div>
+          )}
           
           <div className="flex gap-3 pt-4">
             <Button

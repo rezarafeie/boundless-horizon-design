@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -8,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { PanelApiService, PanelSubscriptionData } from '@/services/panelApi';
 import QRCodeCanvas from 'qrcode';
 import Navigation from '@/components/Navigation';
 
@@ -19,7 +19,9 @@ interface SubscriptionData {
   data_limit: number;
   status: string;
   used_traffic?: number;
-  apiType?: 'marzban'; // Updated to only support marzban
+  panel_type?: string;
+  panel_name?: string;
+  panel_id?: string;
 }
 
 const DeliveryPage = () => {
@@ -81,10 +83,7 @@ const DeliveryPage = () => {
             }
 
             if (subscription) {
-              // All subscriptions now use marzban
-              const apiType: 'marzban' = 'marzban';
-              
-              console.log('DELIVERY: Using marzban API type for all subscriptions');
+              console.log('DELIVERY: Using marzban panel type for all subscriptions');
               
               data = {
                 username: subscription.username,
@@ -93,7 +92,7 @@ const DeliveryPage = () => {
                 data_limit: subscription.data_limit_gb * 1073741824,
                 status: subscription.status || 'active',
                 used_traffic: 0,
-                apiType: apiType
+                panel_type: 'marzban'
               };
               console.log('DELIVERY: Fetched subscription from database:', data);
             } else {
@@ -111,38 +110,52 @@ const DeliveryPage = () => {
 
         console.log('DELIVERY: Using subscription data:', { 
           username: data.username, 
-          apiType: data.apiType || 'marzban' 
+          panelType: data.panel_type || 'marzban' 
         });
 
-        // Try to fetch fresh data from the panel if we have a username
+        // Try to fetch fresh data from the panel using the unified service
         try {
-          // All panels are now marzban
-          const panelType: 'marzban' = 'marzban';
+          console.log('DELIVERY: Refreshing data from panel using unified service');
           
-          console.log('DELIVERY: Using marzban panel type for all subscriptions');
-          
-          // Fetch fresh data from the marzban panel
-          const panelData = await PanelApiService.getSubscriptionFromPanel(data.username, panelType);
-          
-          // Merge panel data with existing data, preferring panel data for critical fields
-          const mergedData = {
-            ...data,
-            subscription_url: panelData.subscription_url || data.subscription_url,
-            expire: panelData.expire || data.expire,
-            data_limit: panelData.data_limit || data.data_limit,
-            status: panelData.status || data.status,
-            used_traffic: panelData.used_traffic || data.used_traffic || 0,
-            apiType: panelType
-          };
-          
-          setSubscriptionData(mergedData);
-          setPanelStatus('online');
-          
-          // Store updated data in localStorage
-          localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
-          
-          if (mergedData.subscription_url) {
-            await generateQRCode(mergedData.subscription_url);
+          // Use the test-panel-connection function to get fresh subscription data
+          const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
+            body: {
+              username: data.username,
+              panelType: 'marzban'
+            }
+          });
+
+          if (panelResult?.success && panelResult.data) {
+            console.log('DELIVERY: Fresh panel data received:', panelResult.data);
+            
+            // Merge panel data with existing data, preferring panel data for critical fields
+            const mergedData = {
+              ...data,
+              subscription_url: panelResult.data.subscription_url || data.subscription_url,
+              expire: panelResult.data.expire ? panelResult.data.expire * 1000 : data.expire,
+              data_limit: panelResult.data.data_limit || data.data_limit,
+              status: panelResult.data.status || data.status,
+              used_traffic: panelResult.data.used_traffic || data.used_traffic || 0,
+              panel_type: 'marzban'
+            };
+            
+            setSubscriptionData(mergedData);
+            setPanelStatus('online');
+            
+            // Store updated data in localStorage
+            localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
+            
+            if (mergedData.subscription_url) {
+              await generateQRCode(mergedData.subscription_url);
+            }
+          } else {
+            console.warn('DELIVERY: Panel data fetch failed, using fallback data:', panelError);
+            setSubscriptionData(data);
+            setPanelStatus('offline');
+            
+            if (data.subscription_url) {
+              await generateQRCode(data.subscription_url);
+            }
           }
         } catch (panelError) {
           console.error('DELIVERY: Failed to fetch from panel, using fallback data:', panelError);
@@ -213,36 +226,49 @@ const DeliveryPage = () => {
     try {
       console.log('DELIVERY: Refreshing subscription data from panel...');
       
-      // All panels are now marzban
-      const panelType: 'marzban' = 'marzban';
-      
-      console.log('DELIVERY: Refreshing from marzban panel');
-      const panelData = await PanelApiService.getSubscriptionFromPanel(subscriptionData.username, panelType);
-      
-      const updatedData = {
-        ...subscriptionData,
-        subscription_url: panelData.subscription_url || subscriptionData.subscription_url,
-        expire: panelData.expire || subscriptionData.expire,
-        data_limit: panelData.data_limit || subscriptionData.data_limit,
-        status: panelData.status || subscriptionData.status,
-        used_traffic: panelData.used_traffic || subscriptionData.used_traffic || 0,
-        apiType: panelType
-      };
-      
-      setSubscriptionData(updatedData);
-      setPanelStatus('online');
-      localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
-      
-      if (updatedData.subscription_url) {
-        await generateQRCode(updatedData.subscription_url);
-      }
-      
-      toast({
-        title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
-        description: language === 'fa' ? 
-          'اطلاعات اشتراک بروزرسانی شد' : 
-          'Subscription data updated',
+      const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
+        body: {
+          username: subscriptionData.username,
+          panelType: 'marzban'
+        }
       });
+
+      if (panelResult?.success && panelResult.data) {
+        console.log('DELIVERY: Fresh data received from panel');
+        
+        const updatedData = {
+          ...subscriptionData,
+          subscription_url: panelResult.data.subscription_url || subscriptionData.subscription_url,
+          expire: panelResult.data.expire ? panelResult.data.expire * 1000 : subscriptionData.expire,
+          data_limit: panelResult.data.data_limit || subscriptionData.data_limit,
+          status: panelResult.data.status || subscriptionData.status,
+          used_traffic: panelResult.data.used_traffic || subscriptionData.used_traffic || 0,
+          panel_type: 'marzban'
+        };
+        
+        setSubscriptionData(updatedData);
+        setPanelStatus('online');
+        localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
+        
+        if (updatedData.subscription_url) {
+          await generateQRCode(updatedData.subscription_url);
+        }
+        
+        toast({
+          title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
+          description: language === 'fa' ? 
+            'اطلاعات اشتراک بروزرسانی شد' : 
+            'Subscription data updated',
+        });
+      } else {
+        console.error('DELIVERY: Refresh failed:', panelError);
+        setPanelStatus('offline');
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 'خطا در بروزرسانی' : 'Failed to refresh',
+          variant: 'destructive'
+        });
+      }
     } catch (error) {
       console.error('DELIVERY: Error refreshing subscription:', error);
       setPanelStatus('offline');
@@ -411,6 +437,14 @@ const DeliveryPage = () => {
                         <p className="font-bold">
                           {(subscriptionData.used_traffic / 1073741824).toFixed(2)} GB
                         </p>
+                      </div>
+                    )}
+                    {subscriptionData.panel_name && (
+                      <div className="col-span-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {language === 'fa' ? 'پنل' : 'Panel'}
+                        </Label>
+                        <p className="font-bold">{subscriptionData.panel_name}</p>
                       </div>
                     )}
                   </div>
