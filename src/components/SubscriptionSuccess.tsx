@@ -25,13 +25,12 @@ const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProp
   const navigate = useNavigate();
 
   useEffect(() => {
+    console.log('SUBSCRIPTION_SUCCESS: Component mounted with subscriptionId:', subscriptionId);
+    
     if (subscriptionId) {
-      // Store data for delivery page and redirect immediately
-      const timer = setTimeout(() => {
-        navigate(`/subscription-delivery?id=${subscriptionId}`);
-      }, 1000); // Very short delay just to show success message
-
-      return () => clearTimeout(timer);
+      // Immediate redirect to delivery page
+      console.log('SUBSCRIPTION_SUCCESS: Redirecting to delivery page immediately');
+      navigate(`/subscription-delivery?id=${subscriptionId}`, { replace: true });
     }
   }, [subscriptionId, navigate]);
 
@@ -47,9 +46,33 @@ const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProp
 
   const goToDeliveryPage = () => {
     if (subscriptionId) {
-      navigate(`/subscription-delivery?id=${subscriptionId}`);
+      navigate(`/subscription-delivery?id=${subscriptionId}`, { replace: true });
     }
   };
+
+  // If we have a subscriptionId, we should redirect immediately
+  if (subscriptionId) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-20 h-20 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mb-4 animate-scale-in">
+              <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400" />
+            </div>
+            <CardTitle className="text-2xl text-green-800 dark:text-green-200">
+              {language === 'fa' ? '✅ پرداخت تأیید شد! اشتراک شما فعال است' : '✅ Payment Confirmed! Your subscription is active'}
+            </CardTitle>
+            <CardDescription className="text-green-600 dark:text-green-400 text-lg">
+              {language === 'fa' ? 
+                'در حال انتقال به صفحه جزئیات...' : 
+                'Redirecting to details page...'
+              }
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -67,16 +90,6 @@ const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProp
               'Payment successful and your VLESS configuration is ready'
             }
           </CardDescription>
-          
-          {/* Auto-redirect notice */}
-          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <p className="text-blue-800 dark:text-blue-200 text-sm">
-              {language === 'fa' ? 
-                'در حال انتقال به صفحه جزئیات...' : 
-                'Redirecting to details page...'
-              }
-            </p>
-          </div>
         </CardHeader>
         
         <CardContent className="space-y-6">
