@@ -18,6 +18,8 @@ interface Panel {
   country_fa: string;
   is_active: boolean;
   health_status: 'online' | 'offline' | 'unknown';
+  enabled_protocols: string[];
+  panel_config_data: any;
 }
 
 interface DetailedLog {
@@ -64,23 +66,78 @@ export const PanelTestConnection = ({ panel, onTestComplete, disabled = false }:
   const [isLoading, setIsLoading] = useState(false);
   const [currentTestResult, setCurrentTestResult] = useState<TestResult | null>(null);
 
+  const fetchLatestPanelConfig = async (panelId: string) => {
+    try {
+      console.log('PANEL-TEST: Fetching latest panel configuration for:', panelId);
+      
+      const { data: panelData, error } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('id', panelId)
+        .single();
+
+      if (error) {
+        console.error('PANEL-TEST: Failed to fetch panel config:', error);
+        throw new Error(`Failed to fetch panel configuration: ${error.message}`);
+      }
+
+      console.log('PANEL-TEST: Latest panel config retrieved:', {
+        enabled_protocols: panelData.enabled_protocols,
+        panel_config_data: panelData.panel_config_data
+      });
+
+      return panelData;
+    } catch (error) {
+      console.error('PANEL-TEST: Error fetching panel config:', error);
+      throw error;
+    }
+  };
+
+  const buildDynamicProxiesObject = (enabledProtocols: string[]) => {
+    const proxies: Record<string, {}> = {};
+    
+    // Only include enabled protocols
+    enabledProtocols.forEach(protocol => {
+      proxies[protocol] = {};
+    });
+
+    console.log('PANEL-TEST: Built dynamic proxies object:', proxies);
+    return proxies;
+  };
+
   const testConnection = async () => {
     setIsLoading(true);
     setCurrentTestResult(null);
     
     try {
-      console.log('Testing panel connection:', panel.id);
+      console.log('PANEL-TEST: Starting connection test for panel:', panel.id);
       
+      // Step 1: Fetch latest panel configuration
+      const latestPanelConfig = await fetchLatestPanelConfig(panel.id);
+      const enabledProtocols = Array.isArray(latestPanelConfig.enabled_protocols) 
+        ? latestPanelConfig.enabled_protocols as string[]
+        : ['vless', 'vmess', 'trojan', 'shadowsocks']; // fallback
+
+      console.log('PANEL-TEST: Using enabled protocols:', enabledProtocols);
+
+      // Step 2: Build dynamic proxies object
+      const dynamicProxies = buildDynamicProxiesObject(enabledProtocols);
+
+      // Step 3: Call the test function with updated panel config
       const { data, error } = await supabase.functions.invoke('test-panel-connection', {
-        body: { panelId: panel.id }
+        body: { 
+          panelId: panel.id,
+          dynamicProxies: dynamicProxies,
+          enabledProtocols: enabledProtocols
+        }
       });
 
       if (error) {
-        console.error('Test connection error:', error);
+        console.error('PANEL-TEST: Test connection error:', error);
         throw new Error(error.message);
       }
 
-      console.log('Test connection result:', data);
+      console.log('PANEL-TEST: Test connection result:', data);
       
       // Set the current test result for immediate display
       setCurrentTestResult(data);
@@ -90,7 +147,7 @@ export const PanelTestConnection = ({ panel, onTestComplete, disabled = false }:
       }
       
     } catch (error) {
-      console.error('Failed to test panel connection:', error);
+      console.error('PANEL-TEST: Failed to test panel connection:', error);
       const errorResult: TestResult = {
         success: false,
         panel: {
@@ -157,7 +214,7 @@ export const PanelTestConnection = ({ panel, onTestComplete, disabled = false }:
               <span className="font-medium">Testing in progress...</span>
             </div>
             <p className="text-sm text-blue-600 mt-1">
-              Please wait while we test the panel connection and functionality.
+              Fetching latest panel configuration and testing connection...
             </p>
           </CardContent>
         </Card>

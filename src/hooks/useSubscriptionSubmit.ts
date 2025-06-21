@@ -23,6 +23,35 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
+  const fetchPanelEnabledProtocols = async (panelId: string): Promise<string[]> => {
+    try {
+      console.log('SUBSCRIPTION SUBMIT: Fetching enabled protocols for panel:', panelId);
+      
+      const { data: panelData, error } = await supabase
+        .from('panel_servers')
+        .select('enabled_protocols')
+        .eq('id', panelId)
+        .single();
+
+      if (error) {
+        console.error('SUBSCRIPTION SUBMIT: Failed to fetch panel protocols:', error);
+        // Fallback to default protocols
+        return ['vless', 'vmess', 'trojan', 'shadowsocks'];
+      }
+
+      const enabledProtocols = Array.isArray(panelData.enabled_protocols) 
+        ? panelData.enabled_protocols as string[]
+        : ['vless', 'vmess', 'trojan', 'shadowsocks'];
+
+      console.log('SUBSCRIPTION SUBMIT: Panel enabled protocols:', enabledProtocols);
+      return enabledProtocols;
+    } catch (error) {
+      console.error('SUBSCRIPTION SUBMIT: Error fetching panel protocols:', error);
+      // Fallback to default protocols
+      return ['vless', 'vmess', 'trojan', 'shadowsocks'];
+    }
+  };
+
   const submitSubscription = async (data: SubscriptionData): Promise<string | null> => {
     setIsSubmitting(true);
     
@@ -45,6 +74,16 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         apiType: PlanService.getApiType(planConfig),
         panelsCount: planConfig.panels.length
       });
+
+      // Get the primary panel for this plan
+      const primaryPanel = PlanService.getPrimaryPanel(planConfig);
+      if (!primaryPanel) {
+        throw new Error('No primary panel found for this plan.');
+      }
+
+      // Fetch the latest enabled protocols for the primary panel
+      const enabledProtocols = await fetchPanelEnabledProtocols(primaryPanel.id);
+      console.log('SUBSCRIPTION SUBMIT: Will use enabled protocols:', enabledProtocols);
       
       // Calculate price
       const basePrice = data.dataLimit * planConfig.price_per_gb;
@@ -67,7 +106,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         price_toman: finalPrice,
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
-        notes: `Plan: ${planConfig.name_en}, API: ${PlanService.getApiType(planConfig)}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        notes: `Plan: ${planConfig.name_en}, API: ${PlanService.getApiType(planConfig)}, Protocols: ${enabledProtocols.join(', ')}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
       console.log('SUBSCRIPTION SUBMIT: Inserting subscription to database:', subscriptionData);
@@ -88,14 +127,15 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       // If price is 0, create VPN user immediately
       if (finalPrice === 0) {
         try {
-          console.log('SUBSCRIPTION SUBMIT: Creating VPN user for free subscription using plan service...');
+          console.log('SUBSCRIPTION SUBMIT: Creating VPN user for free subscription using plan service with dynamic protocols...');
           
           const vpnResult = await PlanService.createSubscription(planConfig.id, {
             username: uniqueUsername,
             mobile: data.mobile,
             dataLimitGB: data.dataLimit,
             durationDays: data.duration,
-            notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig.name_en}`
+            notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${planConfig.name_en}`,
+            enabledProtocols: enabledProtocols // Pass the dynamic protocols
           });
           
           console.log('SUBSCRIPTION SUBMIT: VPN creation response:', vpnResult);

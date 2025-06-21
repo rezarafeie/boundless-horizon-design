@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface PlanWithPanels {
@@ -27,6 +28,7 @@ export interface PlanWithPanels {
     is_primary: boolean;
     inbound_ids: string[];
     default_inbounds: any[];
+    enabled_protocols: string[];
   }[];
 }
 
@@ -71,7 +73,8 @@ export class PlanService {
               password,
               is_active,
               health_status,
-              default_inbounds
+              default_inbounds,
+              enabled_protocols
             )
           )
         `)
@@ -122,7 +125,8 @@ export class PlanService {
                 health_status: isValidHealthStatus(server.health_status) ? server.health_status : 'unknown',
                 is_primary: mapping.is_primary,
                 inbound_ids: Array.isArray(mapping.inbound_ids) ? mapping.inbound_ids : [],
-                default_inbounds: Array.isArray(server.default_inbounds) ? server.default_inbounds : []
+                default_inbounds: Array.isArray(server.default_inbounds) ? server.default_inbounds : [],
+                enabled_protocols: Array.isArray(server.enabled_protocols) ? server.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
               };
             });
 
@@ -193,6 +197,7 @@ export class PlanService {
     dataLimitGB: number;
     durationDays: number;
     notes?: string;
+    enabledProtocols?: string[];
   }) {
     console.log('PLAN SERVICE: Creating subscription for plan:', planId);
     
@@ -207,10 +212,14 @@ export class PlanService {
         throw new Error('No active panel found for this plan');
       }
 
+      // Use provided protocols or fetch from panel configuration
+      const enabledProtocols = subscriptionData.enabledProtocols || primaryPanel.enabled_protocols;
+
       console.log('PLAN SERVICE: Using panel for subscription:', {
         panelName: primaryPanel.name,
         panelType: primaryPanel.type,
-        apiType: this.getApiType(plan)
+        apiType: this.getApiType(plan),
+        enabledProtocols: enabledProtocols
       });
 
       // Route to the correct edge function based on panel type
@@ -225,7 +234,8 @@ export class PlanService {
             dataLimitGB: subscriptionData.dataLimitGB,
             durationDays: subscriptionData.durationDays,
             notes: subscriptionData.notes || '',
-            panelId: primaryPanel.id // Pass panel ID for credentials
+            panelId: primaryPanel.id, // Pass panel ID for credentials
+            enabledProtocols: enabledProtocols // Pass dynamic protocols
           }
         }
       );
@@ -239,7 +249,7 @@ export class PlanService {
         throw new Error(`VPN creation failed: ${vpnResponse?.error || 'Unknown error'}`);
       }
 
-      console.log('PLAN SERVICE: VPN user created successfully');
+      console.log('PLAN SERVICE: VPN user created successfully with dynamic protocols');
       return vpnResponse.data;
       
     } catch (error) {
