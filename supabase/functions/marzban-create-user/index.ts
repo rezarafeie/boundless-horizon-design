@@ -38,35 +38,34 @@ const logError = (step: string, error: any) => {
   });
 };
 
-async function validateEnvironment(): Promise<{ baseUrl: string; adminUsername: string; adminPassword: string }> {
-  const baseUrl = Deno.env.get('MARZBAN_BASE_URL');
-  const adminUsername = Deno.env.get('MARZBAN_ADMIN_USERNAME');
-  const adminPassword = Deno.env.get('MARZBAN_ADMIN_PASSWORD');
+async function getPanelCredentials(panelId: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  logStep('Environment validation', {
-    baseUrlExists: !!baseUrl,
-    usernameExists: !!adminUsername,
-    passwordExists: !!adminPassword,
-    baseUrlValue: baseUrl || 'NOT_SET'
+  logStep('Fetching panel credentials', { panelId });
+  
+  const { data: panel, error } = await supabase
+    .from('panel_servers')
+    .select('*')
+    .eq('id', panelId)
+    .single();
+
+  if (error || !panel) {
+    throw new Error(`Panel not found: ${error?.message || 'Unknown error'}`);
+  }
+
+  logStep('Panel credentials retrieved', {
+    panelName: panel.name,
+    panelUrl: panel.panel_url,
+    enabledProtocols: panel.enabled_protocols
   });
 
-  if (!baseUrl || !adminUsername || !adminPassword) {
-    const missingVars = [];
-    if (!baseUrl) missingVars.push('MARZBAN_BASE_URL');
-    if (!adminUsername) missingVars.push('MARZBAN_ADMIN_USERNAME');
-    if (!adminPassword) missingVars.push('MARZBAN_ADMIN_PASSWORD');
-    
-    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
-  }
-
-  if (baseUrl.trim() === '' || adminUsername.trim() === '' || adminPassword.trim() === '') {
-    throw new Error('One or more environment variables are empty. Please check your secret values.');
-  }
-
   return {
-    baseUrl: baseUrl.replace(/\/+$/, ''),
-    adminUsername: adminUsername.trim(),
-    adminPassword: adminPassword.trim()
+    baseUrl: panel.panel_url.replace(/\/+$/, ''),
+    username: panel.username,
+    password: panel.password,
+    enabledProtocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
   };
 }
 
@@ -130,13 +129,15 @@ async function createMarzbanUser(
     dataLimitGB: number;
     durationDays: number;
     notes: string;
+    enabledProtocols: string[];
   }
 ): Promise<MarzbanUserResponse> {
   
   logStep('Starting user creation process', {
     username: userData.username,
     dataLimitGB: userData.dataLimitGB,
-    durationDays: userData.durationDays
+    durationDays: userData.durationDays,
+    enabledProtocols: userData.enabledProtocols
   });
   
   // Calculate expiration date
@@ -147,15 +148,15 @@ async function createMarzbanUser(
   // Convert GB to bytes
   const dataLimitBytes = userData.dataLimitGB * 1073741824;
   
-  // Default inbounds
-  const defaultInbounds = ["vmess", "vless", "trojan", "shadowsocks"];
+  // Use dynamic protocols instead of hardcoded ones
+  const inbounds = userData.enabledProtocols.length > 0 ? userData.enabledProtocols : ["vmess", "vless", "trojan", "shadowsocks"];
   
   const userRequest: MarzbanUserRequest = {
     username: userData.username,
     data_limit: dataLimitBytes,
     expire_strategy: "fixed_date",
     expire_date: expireDateString,
-    inbounds: defaultInbounds,
+    inbounds: inbounds,
     note: `Purchased via bnets.co - ${userData.notes || 'No additional notes'}`,
     enabled: true
   };
@@ -257,10 +258,12 @@ Deno.serve(async (req) => {
       hasUsername: !!requestBody.username,
       hasDataLimit: !!requestBody.dataLimitGB,
       hasDuration: !!requestBody.durationDays,
+      hasPanelId: !!requestBody.panelId,
+      hasEnabledProtocols: !!requestBody.enabledProtocols,
       usernameLength: requestBody.username?.length || 0
     });
 
-    const { username, dataLimitGB, durationDays, notes } = requestBody;
+    const { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols } = requestBody;
 
     // Input validation
     if (!username || typeof username !== 'string' || username.trim().length === 0) {
@@ -302,11 +305,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate and get environment variables
-    const { baseUrl, adminUsername, adminPassword } = await validateEnvironment();
+    if (!panelId || typeof panelId !== 'string') {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Panel ID is required' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Get panel-specific credentials and configuration
+    const { baseUrl, username: panelUsername, password: panelPassword, enabledProtocols: panelProtocols } = await getPanelCredentials(panelId);
+    
+    // Use provided protocols or fall back to panel's enabled protocols
+    const finalProtocols = enabledProtocols && Array.isArray(enabledProtocols) && enabledProtocols.length > 0 
+      ? enabledProtocols 
+      : panelProtocols;
     
     // Get authentication token
-    const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
+    const token = await getAuthToken(baseUrl, panelUsername, panelPassword);
     
     // Create the user
     const result = await createMarzbanUser(
@@ -316,7 +337,8 @@ Deno.serve(async (req) => {
         username: username.trim(), 
         dataLimitGB, 
         durationDays, 
-        notes: notes || '' 
+        notes: notes || '',
+        enabledProtocols: finalProtocols
       }
     );
 
@@ -345,9 +367,8 @@ Deno.serve(async (req) => {
     if (error instanceof Error) {
       errorMessage = error.message;
       
-      if (error.message.includes('Missing required environment variables') || 
-          error.message.includes('environment variables are empty')) {
-        statusCode = 500;
+      if (error.message.includes('Panel not found')) {
+        statusCode = 404;
       } else if (error.message.includes('already taken')) {
         statusCode = 409;
       } else if (error.message.includes('Validation error')) {

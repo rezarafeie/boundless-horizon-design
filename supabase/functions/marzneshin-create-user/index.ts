@@ -44,15 +44,6 @@ interface MarzneshinServicesResponse {
   links: any;
 }
 
-interface MarzneshinInbound {
-  id: number;
-  tag: string;
-  protocol: string;
-  network: string;
-  tls: string;
-  port: number;
-}
-
 interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
@@ -71,6 +62,37 @@ interface MarzneshinUserResponse {
   data_limit: number;
   usage_duration: number;
   service_ids: number[];
+}
+
+async function getPanelCredentials(panelId: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  console.log('Fetching panel credentials for:', panelId);
+  
+  const { data: panel, error } = await supabase
+    .from('panel_servers')
+    .select('*')
+    .eq('id', panelId)
+    .single();
+
+  if (error || !panel) {
+    throw new Error(`Panel not found: ${error?.message || 'Unknown error'}`);
+  }
+
+  console.log('Panel credentials retrieved:', {
+    panelName: panel.name,
+    panelUrl: panel.panel_url,
+    enabledProtocols: panel.enabled_protocols
+  });
+
+  return {
+    baseUrl: panel.panel_url.replace(/\/+$/, ''),
+    username: panel.username,
+    password: panel.password,
+    enabledProtocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
+  };
 }
 
 async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
@@ -122,36 +144,6 @@ async function getServices(baseUrl: string, token: string): Promise<MarzneshinSe
   return data.items || [];
 }
 
-async function getInbounds(baseUrl: string, token: string): Promise<MarzneshinInbound[]> {
-  console.log('Fetching inbounds from Marzneshin API to check for WS protocol support');
-  
-  const response = await fetch(`${baseUrl}/api/inbounds`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Failed to fetch inbounds:', errorText);
-    return []; // Don't fail the whole process if inbounds can't be fetched
-  }
-
-  const data = await response.json();
-  console.log('Inbounds response for WS protocol check:', data);
-  
-  // Filter for WebSocket compatible inbounds
-  const wsInbounds = (data.items || []).filter((inbound: MarzneshinInbound) => 
-    inbound.protocol === 'vmess' || inbound.protocol === 'vless' || 
-    inbound.network === 'ws' || inbound.network === 'websocket'
-  );
-  
-  console.log(`Found ${wsInbounds.length} WebSocket compatible inbounds`);
-  return wsInbounds;
-}
-
 function getRequiredServiceIds(services: MarzneshinService[]): number[] {
   const serviceIds: number[] = [];
   
@@ -199,6 +191,7 @@ async function createMarzneshinUser(
     dataLimitGB: number;
     durationDays: number;
     notes: string;
+    enabledProtocols: string[];
   },
   serviceIds: number[]
 ): Promise<MarzneshinUserResponse> {
@@ -225,6 +218,7 @@ async function createMarzneshinUser(
   
   console.log(`Calculated expiration date: ${formattedExpireDateMM} (${userData.durationDays} days from now)`);
   console.log(`Alternative formats: ISO=${formattedExpireDateISO}, YYYY-MM-DD=${formattedExpireDateYYYY}`);
+  console.log(`Using enabled protocols: ${userData.enabledProtocols.join(', ')}`);
   
   // Focus only on fixed_date strategy with different formats and field names
   const strategies = [
@@ -236,7 +230,7 @@ async function createMarzneshinUser(
         expire_date: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -248,7 +242,7 @@ async function createMarzneshinUser(
         expire: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -260,7 +254,7 @@ async function createMarzneshinUser(
         expire_date: formattedExpireDateISO,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -272,7 +266,7 @@ async function createMarzneshinUser(
         expire: formattedExpireDateISO,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -284,7 +278,7 @@ async function createMarzneshinUser(
         expire_date: formattedExpireDateYYYY,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -296,19 +290,7 @@ async function createMarzneshinUser(
         expire: formattedExpireDateYYYY,
         data_limit: userData.dataLimitGB * 1073741824,
         service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
-        data_limit_reset_strategy: 'no_reset'
-      })
-    },
-    {
-      name: 'fixed_date_expiration_date',
-      createRequest: () => ({
-        username: userData.username,
-        expire_strategy: 'fixed_date',
-        expiration_date: formattedExpireDateMM,
-        data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes}`,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     }
@@ -338,7 +320,6 @@ async function createMarzneshinUser(
         const result = await response.json();
         console.log(`Strategy ${strategy.name} succeeded:`, result);
         console.log(`✅ User created successfully with ${strategy.name} strategy`);
-        console.log(`📅 Requested expiration format: ${JSON.stringify(userRequest).match(/"expire[^"]*":"[^"]*"/g)}`);
         console.log(`📋 Full API response:`, JSON.stringify(result, null, 2));
         return result;
       } else {
@@ -351,12 +332,6 @@ async function createMarzneshinUser(
           throw new Error('This username is already taken. Please choose a different one');
         }
         
-        // Log detailed error information
-        if (errorData.detail) {
-          console.error(`Detailed error for ${strategy.name}:`, JSON.stringify(errorData.detail, null, 2));
-        }
-        
-        // Continue to next strategy for other errors
         continue;
       }
     } catch (error) {
@@ -410,14 +385,18 @@ Deno.serve(async (req) => {
       username,
       dataLimitGB,
       durationDays,
-      notes
+      notes,
+      panelId,
+      enabledProtocols
     } = requestBody;
 
     console.log('Extracted parameters (with corrected names):', {
       username,
       dataLimitGB,
       durationDays,
-      notes: notes ? 'provided' : 'empty'
+      notes: notes ? 'provided' : 'empty',
+      panelId,
+      enabledProtocols
     });
 
     // Validate required parameters with corrected parameter names
@@ -460,37 +439,40 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get secrets from environment
-    const baseUrl = Deno.env.get('MARZNESHIN_BASE_URL');
-    const adminUsername = Deno.env.get('MARZNESHIN_ADMIN_USERNAME');
-    const adminPassword = Deno.env.get('MARZNESHIN_ADMIN_PASSWORD');
-
-    if (!baseUrl || !adminUsername || !adminPassword) {
-      console.error('Missing required environment variables');
+    if (!panelId || typeof panelId !== 'string') {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Server configuration error. Please contact support.' 
+          error: 'Panel ID is required' 
         }),
         { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type':2 'application/json' } 
         }
       );
     }
 
-    console.log('Starting Marzneshin user creation process with WS protocol support');
+    // Get panel-specific credentials and configuration
+    const { baseUrl, username: panelUsername, password: panelPassword, enabledProtocols: panelProtocols } = await getPanelCredentials(panelId);
+    
+    // Use provided protocols or fall back to panel's enabled protocols
+    console.log('Determining protocols to use:', {
+      providedProtocols: enabledProtocols,
+      panelProtocols: panelProtocols
+    });
+    
+    const finalProtocols = enabledProtocols && Array.isArray(enabledProtocols) && enabledProtocols.length > 0 
+      ? enabledProtocols 
+      : panelProtocols;
+
+    console.log('Starting Marzneshin user creation process with panel-specific protocols:', finalProtocols);
 
     // Get authentication token
-    const token = await getAuthToken(baseUrl, adminUsername, adminPassword);
+    const token = await getAuthToken(baseUrl, panelUsername, panelPassword);
     
     // Get available services
     const services = await getServices(baseUrl, token);
     console.log(`Fetched ${services.length} services from API`);
-    
-    // Check for WebSocket support in inbounds
-    const wsInbounds = await getInbounds(baseUrl, token);
-    console.log(`Found ${wsInbounds.length} WebSocket compatible inbounds`);
     
     // Get required service IDs for Pro plan
     const requiredServiceIds = getRequiredServiceIds(services);
@@ -499,7 +481,7 @@ Deno.serve(async (req) => {
       throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
     }
 
-    // Create the user with corrected parameter names
+    // Create the user with corrected parameter names and dynamic protocols
     const result = await createMarzneshinUser(
       baseUrl,
       token,
@@ -507,12 +489,13 @@ Deno.serve(async (req) => {
         username, 
         dataLimitGB, 
         durationDays, 
-        notes: notes || '' 
+        notes: notes || '',
+        enabledProtocols: finalProtocols
       },
       requiredServiceIds
     );
 
-    console.log('Marzneshin user creation completed successfully with WS protocol support');
+    console.log('Marzneshin user creation completed successfully with panel-specific protocols');
 
     return new Response(
       JSON.stringify({
@@ -530,13 +513,20 @@ Deno.serve(async (req) => {
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
     
+    let statusCode = 500;
+    if (error.message?.includes('Panel not found')) {
+      statusCode = 404;
+    } else if (error.message?.includes('already taken')) {
+      statusCode = 409;
+    }
+    
     return new Response(
       JSON.stringify({ 
         success: false,
         error: error.message || 'Failed to create user' 
       }),
       { 
-        status: 400, 
+        status: statusCode, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
