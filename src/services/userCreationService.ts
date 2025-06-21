@@ -69,7 +69,7 @@ export class UserCreationService {
     
     return PanelUserCreationService.createFreeTrial(
       username,
-      planType, // Use planType as planId
+      planType,
       dataLimitGB,
       durationDays
     );
