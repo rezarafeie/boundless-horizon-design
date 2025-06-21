@@ -105,13 +105,77 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
     }
   };
 
-  const handleStatusUpdate = (status: string, subscriptionUrl?: string) => {
+  const handleStatusUpdate = async (status: string, subscriptionUrl?: string) => {
     debugLog('info', 'Subscription status updated', { status, subscriptionUrl });
     
     if (status === 'active' && subscriptionId) {
-      debugLog('success', 'Subscription activated, calling onSuccess');
-      // Call onSuccess to trigger redirection in parent component
+      debugLog('success', 'Subscription activated, triggering VPN user creation');
+      
+      try {
+        // Get subscription details to create VPN user
+        const { data: subscription, error: fetchError } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('id', subscriptionId)
+          .single();
+
+        if (fetchError || !subscription) {
+          debugLog('error', 'Failed to fetch subscription details', fetchError);
+          // Still redirect to delivery page even if we can't create the user
+          onSuccess(subscriptionUrl);
+          return;
+        }
+
+        debugLog('info', 'Creating VPN user for approved manual payment', {
+          username: subscription.username,
+          dataLimit: subscription.data_limit_gb,
+          duration: subscription.duration_days
+        });
+
+        // Call the test-panel-connection function to create the user
+        const { data: creationResult, error: creationError } = await supabase.functions.invoke('test-panel-connection', {
+          body: {
+            createUser: true,
+            userData: {
+              username: subscription.username,
+              dataLimitGB: subscription.data_limit_gb,
+              durationDays: subscription.duration_days,
+              notes: `Manual payment approved - ${subscription.notes}`,
+              subscriptionId: subscription.id,
+              panelType: 'marzban'
+            }
+          }
+        });
+
+        if (creationError) {
+          debugLog('error', 'VPN user creation failed', creationError);
+        } else if (creationResult?.success && creationResult?.userCreation?.success) {
+          debugLog('success', 'VPN user created successfully', {
+            username: creationResult.userCreation.username,
+            subscriptionUrl: creationResult.userCreation.subscriptionUrl
+          });
+          
+          // Update subscription with the new subscription URL
+          if (creationResult.userCreation.subscriptionUrl) {
+            await supabase
+              .from('subscriptions')
+              .update({ 
+                subscription_url: creationResult.userCreation.subscriptionUrl,
+                marzban_user_created: true
+              })
+              .eq('id', subscriptionId);
+          }
+        } else {
+          debugLog('warning', 'VPN user creation was not successful', creationResult);
+        }
+      } catch (vpnError) {
+        debugLog('error', 'Exception during VPN user creation', vpnError);
+      }
+      
+      // Always redirect to delivery page regardless of VPN creation result
+      debugLog('success', 'Redirecting to delivery page');
       onSuccess(subscriptionUrl);
+      
     } else if (status === 'rejected') {
       toast({
         title: language === 'fa' ? 'پرداخت رد شد' : 'Payment Rejected',
@@ -126,7 +190,6 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
 
   const handlePaymentSuccess = (subscriptionUrl?: string) => {
     debugLog('success', 'Payment successful via automated method, calling onSuccess callback');
-    // Call onSuccess to trigger redirection in parent component
     onSuccess(subscriptionUrl);
   };
 
