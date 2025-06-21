@@ -83,7 +83,15 @@ const PlansManagement = () => {
         .order('name');
 
       if (error) throw error;
-      setPanels(data || []);
+      
+      // Cast the data to proper types
+      const typedPanels: PanelServer[] = (data || []).map(panel => ({
+        ...panel,
+        type: panel.type as 'marzban' | 'marzneshin',
+        health_status: panel.health_status as 'online' | 'offline' | 'unknown'
+      }));
+      
+      setPanels(typedPanels);
     } catch (error) {
       console.error('Error fetching panels:', error);
       toast({
