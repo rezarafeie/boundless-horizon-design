@@ -99,7 +99,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
             panelName: m.panel_servers?.name,
             panelType: m.panel_servers?.type,
             isActive: m.panel_servers?.is_active,
-            healthStatus: m.plan_servers?.health_status
+            healthStatus: m.panel_servers?.health_status
           }))
         }))
       });
