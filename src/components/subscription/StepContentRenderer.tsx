@@ -4,7 +4,7 @@ import UserInfoStep from '@/components/UserInfoStep';
 import PaymentStep from '@/components/PaymentStep';
 import SubscriptionSuccess from '@/components/SubscriptionSuccess';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
-import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
+import { DiscountCode } from '@/types/subscription';
 
 interface StepContentRendererProps {
   currentStep: StepNumber;
@@ -32,22 +32,22 @@ const StepContentRenderer = ({
   switch (currentStep) {
     case 1:
       return (
-        <div className="space-y-6">
-          <PlanSelector
-            selectedPlan={formData.selectedPlan}
-            onPlanSelect={(plan: SubscriptionPlan) => onUpdateFormData('selectedPlan', plan)}
-            dataLimit={formData.dataLimit}
-          />
-        </div>
+        <PlanSelector
+          selectedPlan={formData.selectedPlan}
+          onPlanSelect={(plan) => onUpdateFormData('selectedPlan', plan)}
+        />
       );
+
     case 2:
       return (
         <UserInfoStep
           formData={formData}
-          onUpdate={onUpdateFormData}
           appliedDiscount={appliedDiscount}
+          calculateTotalPrice={calculateTotalPrice}
+          onUpdateFormData={onUpdateFormData}
         />
       );
+
     case 3:
       return (
         <PaymentStep
@@ -57,10 +57,15 @@ const StepContentRenderer = ({
           onBack={onPrevious}
         />
       );
+
     case 4:
       return result ? (
-        <SubscriptionSuccess result={result} />
+        <SubscriptionSuccess 
+          result={result} 
+          subscriptionId={subscriptionId}
+        />
       ) : null;
+
     default:
       return null;
   }

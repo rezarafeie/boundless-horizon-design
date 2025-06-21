@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 import PaymentMethodSelector, { PaymentMethod } from './PaymentMethodSelector';
 import ManualPaymentForm from './ManualPaymentForm';
 import CryptoPaymentForm from './CryptoPaymentForm';
@@ -19,6 +20,7 @@ interface PaymentStepProps {
 const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('manual');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showWaitingState, setShowWaitingState] = useState(false);
@@ -80,8 +82,9 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
   const handleStatusUpdate = (status: string, subscriptionUrl?: string) => {
     debugLog('info', 'Subscription status updated', { status, subscriptionUrl });
     
-    if (status === 'active' && subscriptionUrl) {
-      onSuccess(subscriptionUrl);
+    if (status === 'active' && subscriptionId) {
+      // Redirect to delivery page instead of calling onSuccess
+      navigate(`/subscription-delivery?id=${subscriptionId}`);
     } else if (status === 'rejected') {
       toast({
         title: language === 'fa' ? 'پرداخت رد شد' : 'Payment Rejected',
@@ -92,6 +95,11 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
       });
       setShowWaitingState(false);
     }
+  };
+
+  const handlePaymentSuccess = () => {
+    // Redirect to delivery page for all successful payments
+    navigate(`/subscription-delivery?id=${subscriptionId}`);
   };
 
   // If showing waiting state for manual payment, show the monitor
@@ -145,7 +153,7 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
       {selectedMethod === 'nowpayments' && (
         <CryptoPaymentForm
           amount={amount}
-          onPaymentSuccess={onSuccess}
+          onPaymentSuccess={handlePaymentSuccess}
           isSubmitting={isSubmitting}
         />
       )}
@@ -154,7 +162,7 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
         <StripePaymentForm
           amount={amount}
           subscriptionData={{}} 
-          onPaymentSuccess={() => onSuccess()}
+          onPaymentSuccess={handlePaymentSuccess}
           isSubmitting={isSubmitting}
         />
       )}

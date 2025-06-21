@@ -4,11 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
 import { CheckCircle, Copy, Download, AlertCircle, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import QRCodeCanvas from 'qrcode';
 
 interface SubscriptionResponse {
   username: string;
@@ -19,46 +16,23 @@ interface SubscriptionResponse {
 
 interface SubscriptionSuccessProps {
   result: SubscriptionResponse;
+  subscriptionId?: string;
 }
 
-const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
+const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProps) => {
   const { language } = useLanguage();
-  const { toast } = useToast();
-  const navigate = useNavigate();
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
-
-  const MARZBAN_INBOUND_TAGS = ['VLESSTCP', 'Israel', 'fanland', 'USAC', 'info_protocol', 'Dubai'];
+  const { toast } = use
 
   useEffect(() => {
-    if (result?.subscription_url) {
-      generateQRCode(result.subscription_url);
-      // Store data for delivery page
-      localStorage.setItem('deliverySubscriptionData', JSON.stringify(result));
-      
-      // Redirect immediately to delivery page
+    if (subscriptionId) {
+      // Store data for delivery page and redirect immediately
       const timer = setTimeout(() => {
-        navigate('/delivery', { state: { subscriptionData: result } });
-      }, 500); // Very short delay just to show success message
+        navigate(`/subscription-delivery?id=${subscriptionId}`);
+      }, 1000); // Very short delay just to show success message
 
       return () => clearTimeout(timer);
     }
-  }, [result, navigate]);
-
-  const generateQRCode = async (url: string) => {
-    try {
-      const qrDataUrl = await QRCodeCanvas.toDataURL(url, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-      setQrCodeDataUrl(qrDataUrl);
-    } catch (error) {
-      console.error('Error generating QR code:', error);
-    }
-  };
+  }, [subscriptionId, navigate]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -70,22 +44,10 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
     });
   };
 
-  const downloadConfig = () => {
-    if (!result) return;
-    
-    const blob = new Blob([result.subscription_url], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${result.username}-subscription.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const goToDeliveryPage = () => {
-    navigate('/delivery', { state: { subscriptionData: result } });
+    if (subscriptionId) {
+      navigate(`/subscription-delivery?id=${subscriptionId}`);
+    }
   };
 
   return (
@@ -133,53 +95,23 @@ const SubscriptionSuccess = ({ result }: SubscriptionSuccessProps) => {
               <Copy className="w-5 h-5 mr-2" />
               {language === 'fa' ? 'کپی لینک' : 'Copy Link'}
             </Button>
-            
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={downloadConfig}
-              className="flex-1 sm:flex-none"
-            >
-              <Download className="w-5 h-5 mr-2" />
-              {language === 'fa' ? 'دانلود' : 'Download'}
-            </Button>
           </div>
 
           {/* Quick Preview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-              <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'نام کاربری' : 'Username'}</Label>
+              <p className="text-gray-600 dark:text-gray-400 text-xs">{language === 'fa' ? 'نام کاربری' : 'Username'}</p>
               <p className="font-mono text-lg font-bold">{result.username}</p>
             </div>
             <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-              <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}</Label>
+              <p className="text-gray-600 dark:text-gray-400 text-xs">{language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}</p>
               <p className="font-bold">{new Date(result.expire * 1000).toLocaleDateString()}</p>
             </div>
             <div className="text-center p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-              <Label className="text-gray-600 dark:text-gray-400">{language === 'fa' ? 'حجم' : 'Volume'}</Label>
+              <p className="text-gray-600 dark:text-gray-400 text-xs">{language === 'fa' ? 'حجم' : 'Volume'}</p>
               <p className="font-bold">{Math.round(result.data_limit / 1073741824)} GB</p>
             </div>
           </div>
-
-          {/* QR Code Section */}
-          {qrCodeDataUrl && (
-            <div className="text-center space-y-4">
-              <Label className="text-lg font-semibold">
-                {language === 'fa' ? 'کد QR اشتراک' : 'Subscription QR Code'}
-              </Label>
-              <div className="flex justify-center">
-                <div className="p-4 bg-white rounded-lg shadow-lg">
-                  <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-48 h-48" />
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {language === 'fa' ? 
-                  'این کد را با اپ V2Ray اسکن کنید' : 
-                  'Scan this QR code with your V2Ray app'
-                }
-              </p>
-            </div>
-          )}
 
           {/* Important Notes */}
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
