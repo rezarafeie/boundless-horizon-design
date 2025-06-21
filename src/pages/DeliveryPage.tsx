@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -44,7 +43,7 @@ const DeliveryPage = () => {
         setError(null);
         setPanelStatus('checking');
 
-        console.log('DELIVERY: Loading subscription data...');
+        console.log('DELIVERY: Loading subscription data - FIXED VERSION...');
         console.log('DELIVERY: Location state:', location.state);
         console.log('DELIVERY: URL search params:', Object.fromEntries(searchParams.entries()));
 
@@ -83,7 +82,7 @@ const DeliveryPage = () => {
             }
 
             if (subscription) {
-              console.log('DELIVERY: Using marzban panel type for all subscriptions');
+              console.log('DELIVERY: Using ONLY marzban panel type for all subscriptions');
               
               data = {
                 username: subscription.username,
@@ -108,31 +107,30 @@ const DeliveryPage = () => {
           throw new Error('No subscription data found');
         }
 
-        console.log('DELIVERY: Using subscription data:', { 
+        console.log('DELIVERY: Using subscription data with FIXED API:', { 
           username: data.username, 
-          panelType: data.panel_type || 'marzban' 
+          panelType: 'marzban' // FORCE marzban only
         });
 
-        // Try to fetch fresh data from the panel using the unified service
+        // Try to fetch fresh data from the panel using ONLY the unified service
         try {
-          console.log('DELIVERY: Refreshing data from panel using unified service');
+          console.log('DELIVERY: Refreshing data using FIXED get-subscription-from-panel service');
           
-          // Use the test-panel-connection function to get fresh subscription data
           const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
             body: {
               username: data.username,
-              panelType: 'marzban'
+              panelType: 'marzban' // FORCE marzban only
             }
           });
 
           if (panelResult?.success && panelResult.data) {
-            console.log('DELIVERY: Fresh panel data received:', panelResult.data);
+            console.log('DELIVERY: FIXED panel data received:', panelResult.data);
             
             // Merge panel data with existing data, preferring panel data for critical fields
             const mergedData = {
               ...data,
               subscription_url: panelResult.data.subscription_url || data.subscription_url,
-              expire: panelResult.data.expire ? panelResult.data.expire * 1000 : data.expire,
+              expire: panelResult.data.expire ? panelResult.data.expire : data.expire,
               data_limit: panelResult.data.data_limit || data.data_limit,
               status: panelResult.data.status || data.status,
               used_traffic: panelResult.data.used_traffic || data.used_traffic || 0,
@@ -224,22 +222,22 @@ const DeliveryPage = () => {
 
     setIsRefreshing(true);
     try {
-      console.log('DELIVERY: Refreshing subscription data from panel...');
+      console.log('DELIVERY: Refreshing subscription data using FIXED API...');
       
       const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
         body: {
           username: subscriptionData.username,
-          panelType: 'marzban'
+          panelType: 'marzban' // FORCE marzban only
         }
       });
 
       if (panelResult?.success && panelResult.data) {
-        console.log('DELIVERY: Fresh data received from panel');
+        console.log('DELIVERY: FIXED refresh data received from panel');
         
         const updatedData = {
           ...subscriptionData,
           subscription_url: panelResult.data.subscription_url || subscriptionData.subscription_url,
-          expire: panelResult.data.expire ? panelResult.data.expire * 1000 : subscriptionData.expire,
+          expire: panelResult.data.expire ? panelResult.data.expire : subscriptionData.expire,
           data_limit: panelResult.data.data_limit || subscriptionData.data_limit,
           status: panelResult.data.status || subscriptionData.status,
           used_traffic: panelResult.data.used_traffic || subscriptionData.used_traffic || 0,

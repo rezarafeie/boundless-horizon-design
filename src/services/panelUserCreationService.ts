@@ -31,7 +31,7 @@ export class PanelUserCreationService {
     console.log('PANEL_USER_CREATION: Starting user creation with request:', request);
     
     try {
-      // Step 1: Get plan configuration with panel mappings
+      // Step 1: Get plan configuration with panel mappings - FIXED QUERY
       const { data: planConfig, error: planError } = await supabase
         .from('subscription_plans')
         .select(`
@@ -54,15 +54,17 @@ export class PanelUserCreationService {
             )
           )
         `)
-        .or(`id.eq.${request.planId},plan_id.eq.${request.planId}`)
+        .eq('id', request.planId)
         .eq('is_active', true)
+        .eq('plan_panel_mappings.panel_servers.is_active', true)
+        .eq('plan_panel_mappings.panel_servers.type', 'marzban')
         .single();
 
       if (planError || !planConfig) {
         console.error('PANEL_USER_CREATION: Plan not found:', planError);
         return {
           success: false,
-          error: `Plan configuration not found: ${request.planId}`
+          error: `Plan configuration not found. Error: ${planError?.message || 'Unknown error'}`
         };
       }
 
@@ -77,7 +79,7 @@ export class PanelUserCreationService {
         console.error('PANEL_USER_CREATION: No panels configured for plan');
         return {
           success: false,
-          error: 'No panels configured for this plan. Please contact support.'
+          error: 'No marzban panels configured for this plan. Please contact support.'
         };
       }
 
@@ -97,20 +99,7 @@ export class PanelUserCreationService {
         isActive: panel.is_active
       });
 
-      // Step 3: Validate panel is active and healthy
-      if (!panel.is_active) {
-        console.error('PANEL_USER_CREATION: Panel is not active');
-        return {
-          success: false,
-          error: 'Selected panel is currently inactive. Please try again later.'
-        };
-      }
-
-      if (panel.health_status === 'offline') {
-        console.warn('PANEL_USER_CREATION: Panel appears offline, but attempting connection...');
-      }
-
-      // Step 4: Create user using the test-panel-connection function (same logic as panel tests)
+      // Step 3: Create user using the test-panel-connection function with ALL required data
       console.log('PANEL_USER_CREATION: Creating user via test-panel-connection function');
       
       const userCreationData = {
@@ -118,7 +107,7 @@ export class PanelUserCreationService {
         dataLimitGB: request.dataLimitGB,
         durationDays: request.durationDays,
         notes: request.notes || `Plan: ${planConfig.name_en || planConfig.plan_id}, ${request.isFreeTriaL ? 'Free Trial' : 'Paid Subscription'}`,
-        panelType: panel.type,
+        panelType: 'marzban',
         subscriptionId: request.subscriptionId,
         isFreeTriaL: request.isFreeTriaL || false
       };
@@ -133,7 +122,8 @@ export class PanelUserCreationService {
 
       console.log('PANEL_USER_CREATION: User creation response:', { 
         success: creationResult?.success,
-        error: creationError || creationResult?.error 
+        error: creationError || creationResult?.error,
+        userCreation: creationResult?.userCreation
       });
 
       if (creationError) {
@@ -152,7 +142,7 @@ export class PanelUserCreationService {
         };
       }
 
-      // Step 5: Extract user creation data
+      // Step 4: Extract user creation data
       const userCreation = creationResult.userCreation;
       if (!userCreation?.success) {
         console.error('PANEL_USER_CREATION: User creation unsuccessful:', userCreation?.error);
@@ -167,41 +157,21 @@ export class PanelUserCreationService {
         hasSubscriptionUrl: !!userCreation.subscriptionUrl
       });
 
-      // Step 6: Update subscription record if provided
-      if (request.subscriptionId && userCreation.subscriptionUrl) {
-        console.log('PANEL_USER_CREATION: Updating subscription record');
-        const { error: updateError } = await supabase
-          .from('subscriptions')
-          .update({
-            status: 'active',
-            subscription_url: userCreation.subscriptionUrl,
-            marzban_user_created: true,
-            expire_at: userCreation.expire ? 
-              new Date(userCreation.expire * 1000).toISOString() : 
-              new Date(Date.now() + request.durationDays * 24 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', request.subscriptionId);
+      // Step 5: Return success response IMMEDIATELY
+      const responseData = {
+        username: userCreation.username,
+        subscription_url: userCreation.subscriptionUrl,
+        expire: userCreation.expire || Math.floor(Date.now() / 1000) + (request.durationDays * 24 * 60 * 60),
+        data_limit: request.dataLimitGB * 1073741824, // Convert GB to bytes
+        panel_type: panel.type,
+        panel_name: panel.name,
+        panel_id: panel.id
+      };
 
-        if (updateError) {
-          console.error('PANEL_USER_CREATION: Failed to update subscription:', updateError);
-        } else {
-          console.log('PANEL_USER_CREATION: Subscription updated successfully');
-        }
-      }
-
-      // Step 7: Return success response
+      console.log('PANEL_USER_CREATION: Returning success response:', responseData);
       return {
         success: true,
-        data: {
-          username: userCreation.username,
-          subscription_url: userCreation.subscriptionUrl,
-          expire: userCreation.expire || Math.floor(Date.now() / 1000) + (request.durationDays * 24 * 60 * 60),
-          data_limit: request.dataLimitGB * 1073741824, // Convert GB to bytes
-          panel_type: panel.type,
-          panel_name: panel.name,
-          panel_id: panel.id
-        }
+        data: responseData
       };
 
     } catch (error) {
@@ -210,17 +180,6 @@ export class PanelUserCreationService {
       let errorMessage = 'Unexpected error occurred during user creation';
       if (error instanceof Error) {
         errorMessage = error.message;
-      }
-      
-      // Check for specific error types
-      if (errorMessage.includes('Panel configuration')) {
-        errorMessage = 'Panel configuration error. Please contact support.';
-      } else if (errorMessage.includes('Authentication failed')) {
-        errorMessage = 'Panel authentication failed. Please contact support.';
-      } else if (errorMessage.includes('Cannot connect')) {
-        errorMessage = 'Cannot connect to panel. Please try again later.';
-      } else if (errorMessage.includes('timeout')) {
-        errorMessage = 'Connection timeout. Please try again.';
       }
       
       return {

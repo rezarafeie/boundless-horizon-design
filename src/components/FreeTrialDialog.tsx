@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -38,7 +37,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
   const loadAvailablePlans = async () => {
     try {
-      console.log('FREE_TRIAL: Loading available plans with panel mappings...');
+      console.log('FREE_TRIAL: Loading available plans with marzban panel mappings ONLY...');
       
       const { data: plans, error } = await supabase
         .from('subscription_plans')
@@ -60,7 +59,8 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         `)
         .eq('is_active', true)
         .eq('is_visible', true)
-        .eq('plan_panel_mappings.panel_servers.is_active', true);
+        .eq('plan_panel_mappings.panel_servers.is_active', true)
+        .eq('plan_panel_mappings.panel_servers.type', 'marzban');
 
       console.log('FREE_TRIAL: Query result:', { 
         error: error?.message, 
@@ -83,19 +83,11 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         return;
       }
 
-      // Filter plans that have active panel mappings
-      const validPlans = plans?.filter(plan => 
-        plan.plan_panel_mappings && 
-        plan.plan_panel_mappings.length > 0 &&
-        plan.plan_panel_mappings.some(mapping => 
-          mapping.panel_servers && 
-          mapping.panel_servers.is_active
-        )
-      ) || [];
+      // All plans returned should have active marzban panel mappings due to the query
+      const validPlans = plans || [];
 
-      console.log('FREE_TRIAL: Valid plans after filtering:', {
-        totalPlans: plans?.length || 0,
-        validPlans: validPlans.length,
+      console.log('FREE_TRIAL: Valid marzban plans:', {
+        totalPlans: validPlans.length,
         validPlanDetails: validPlans.map(p => ({
           id: p.id,
           name: p.name_en,
@@ -111,8 +103,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
       setAvailablePlans(validPlans);
       setDebugInfo({ 
-        totalPlans: plans?.length || 0,
-        validPlans: validPlans.length,
+        totalPlans: validPlans.length,
         step: 'plans_loaded'
       });
       
@@ -121,12 +112,12 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         setSelectedPlan(validPlans[0].id);
         console.log('FREE_TRIAL: Auto-selected plan:', validPlans[0].id);
       } else {
-        console.warn('FREE_TRIAL: No valid plans found with active panel mappings');
+        console.warn('FREE_TRIAL: No valid marzban plans found');
         toast({
           title: language === 'fa' ? 'هشدار' : 'Warning',
           description: language === 'fa' ? 
-            'هیچ پلن فعالی با پنل متصل یافت نشد' : 
-            'No active plans with connected panels found',
+            'هیچ پلن فعالی با پنل مارزبان یافت نشد' : 
+            'No active plans with Marzban panels found',
           variant: 'destructive',
         });
       }
@@ -171,9 +162,8 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
     setIsLoading(true);
 
     try {
-      console.log('FREE_TRIAL: Starting free trial creation with centralized service');
+      console.log('FREE_TRIAL: Starting free trial creation with FIXED centralized service');
       console.log('FREE_TRIAL: Selected plan ID:', selectedPlan);
-      console.log('FREE_TRIAL: Available plans:', availablePlans.map(p => p.id));
       
       // Generate unique username
       const timestamp = Date.now();
@@ -181,7 +171,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
-        selectedPlan, // Use selected plan ID
+        selectedPlan, // Use selected plan ID - FIXED
         1, // 1 GB for free trial
         1  // 1 day for free trial
       );
@@ -270,7 +260,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
             </Select>
             {availablePlans.length === 0 && (
               <p className="text-sm text-red-600 mt-1">
-                {language === 'fa' ? 'هیچ پلن فعالی یافت نشد' : 'No active plans found'}
+                {language === 'fa' ? 'هیچ پلن مارزبان فعالی یافت نشد' : 'No active Marzban plans found'}
               </p>
             )}
           </div>
