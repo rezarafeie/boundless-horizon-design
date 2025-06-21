@@ -45,8 +45,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
               id,
               name,
               type,
-              is_active,
-              health_status
+              is_active
             )
           )
         `)
@@ -67,10 +66,6 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       }
 
       const primaryPanel = primaryPanelMapping.panel_servers;
-      if (!primaryPanel.is_active || primaryPanel.health_status !== 'online') {
-        throw new Error(`Primary panel for this plan is currently ${primaryPanel.health_status}. Please try again later.`);
-      }
-
       console.log('SUBSCRIPTION_SUBMIT: Using primary panel:', {
         panelId: primaryPanel.id,
         panelName: primaryPanel.name,

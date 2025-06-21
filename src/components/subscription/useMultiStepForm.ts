@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
@@ -27,7 +26,6 @@ interface PlanWithPanels {
       name: string;
       type: string;
       is_active: boolean;
-      health_status: string;
     };
   }>;
 }
@@ -71,15 +69,13 @@ export const useMultiStepForm = () => {
               id,
               name,
               type,
-              is_active,
-              health_status
+              is_active
             )
           )
         `)
         .eq('is_active', true)
         .eq('is_visible', true)
-        .eq('plan_panel_mappings.panel_servers.is_active', true)
-        .eq('plan_panel_mappings.panel_servers.health_status', 'online');
+        .eq('plan_panel_mappings.panel_servers.is_active', true);
 
       if (error) {
         console.error('MULTI STEP FORM: Error loading plans:', error);
