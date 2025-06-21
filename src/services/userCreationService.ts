@@ -20,6 +20,7 @@ export interface CreateUserResponse {
     data_limit: number;
     panel_type: string;
     panel_name: string;
+    panel_id?: string;
   };
   error?: string;
 }
@@ -33,23 +34,49 @@ export class UserCreationService {
         body: request
       });
 
+      console.log('USER_CREATION_SERVICE: Edge function response:', { data, error });
+
       if (error) {
         console.error('USER_CREATION_SERVICE: Edge function error:', error);
         throw new Error(error.message || 'Failed to call user creation service');
       }
 
-      if (!data?.success) {
-        console.error('USER_CREATION_SERVICE: Service returned error:', data?.error);
-        throw new Error(data?.error || 'User creation service failed');
+      if (!data) {
+        console.error('USER_CREATION_SERVICE: No data returned from edge function');
+        throw new Error('No response data from user creation service');
+      }
+
+      if (!data.success) {
+        console.error('USER_CREATION_SERVICE: Service returned error:', data.error);
+        throw new Error(data.error || 'User creation service failed');
       }
 
       console.log('USER_CREATION_SERVICE: User created successfully:', data.data);
       return data;
     } catch (error) {
       console.error('USER_CREATION_SERVICE: Error:', error);
+      
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      // Check for specific error types and provide better messages
+      if (errorMessage.includes('Panel configuration')) {
+        errorMessage = 'VPN panel configuration error. Please contact support.';
+      } else if (errorMessage.includes('Authentication failed')) {
+        errorMessage = 'VPN panel authentication failed. Please contact support.';
+      } else if (errorMessage.includes('Cannot connect')) {
+        errorMessage = 'Cannot connect to VPN panel. Please try again later.';
+      } else if (errorMessage.includes('timeout')) {
+        errorMessage = 'Connection timeout. Please try again.';
+      }
+      
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: errorMessage
       };
     }
   }

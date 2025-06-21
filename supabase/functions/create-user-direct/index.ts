@@ -37,14 +37,21 @@ serve(async (req) => {
 
     // Input validation
     if (!username || !dataLimitGB || !durationDays || !panelType) {
-      throw new Error('Missing required parameters');
+      logStep('ERROR', 'Missing required parameters', { username: !!username, dataLimitGB: !!dataLimitGB, durationDays: !!durationDays, panelType: !!panelType });
+      throw new Error('Missing required parameters: username, dataLimitGB, durationDays, and panelType are required');
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      logStep('ERROR', 'Environment variables missing', { hasUrl: !!supabaseUrl, hasKey: !!supabaseServiceKey });
+      throw new Error('Supabase environment variables not configured');
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get panel information - improved panel selection logic
+    // Get panel information with better error handling
     logStep('DB_QUERY', `Fetching ${panelType} panel data`);
     
     const { data: panels, error: panelError } = await supabase
@@ -52,191 +59,376 @@ serve(async (req) => {
       .select('*')
       .eq('type', panelType)
       .eq('is_active', true)
-      .eq('health_status', 'online')
       .order('created_at', { ascending: true });
 
-    if (panelError || !panels || panels.length === 0) {
-      logStep('ERROR', `No active ${panelType} panel found`, panelError);
-      throw new Error(`No active ${panelType} panel available. Please try again later.`);
+    if (panelError) {
+      logStep('ERROR', 'Database query failed', panelError);
+      throw new Error(`Database query failed: ${panelError.message}`);
     }
 
-    // Use the first available panel
-    const panel = panels[0];
+    if (!panels || panels.length === 0) {
+      logStep('ERROR', `No ${panelType} panels found`, { panelType, totalPanels: 0 });
+      throw new Error(`No active ${panelType} panels available. Please configure panels in admin dashboard.`);
+    }
 
-    logStep('PANEL', 'Panel data retrieved', {
+    // Filter for healthy panels first, then fall back to any active panel
+    let availablePanels = panels.filter(panel => panel.health_status === 'online');
+    if (availablePanels.length === 0) {
+      logStep('WARNING', 'No healthy panels found, using any active panel');
+      availablePanels = panels;
+    }
+
+    const panel = availablePanels[0];
+    logStep('PANEL', 'Panel selected', {
+      id: panel.id,
       name: panel.name,
       url: panel.panel_url,
+      type: panel.type,
+      health_status: panel.health_status,
       enabledProtocols: panel.enabled_protocols
     });
+
+    // Validate panel configuration
+    if (!panel.panel_url || !panel.username || !panel.password) {
+      logStep('ERROR', 'Panel configuration incomplete', {
+        hasUrl: !!panel.panel_url,
+        hasUsername: !!panel.username,
+        hasPassword: !!panel.password
+      });
+      throw new Error('Panel configuration is incomplete. Please check admin dashboard.');
+    }
 
     const baseUrl = panel.panel_url.replace(/\/+$/, '');
     const enabledProtocols = Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks'];
 
-    // Authenticate with panel - using same method as test function
+    // Test panel connectivity first
+    logStep('CONNECTIVITY', 'Testing panel connectivity');
+    try {
+      const connectivityResponse = await fetch(`${baseUrl}/`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+      logStep('CONNECTIVITY', 'Panel connectivity test', {
+        status: connectivityResponse.status,
+        ok: connectivityResponse.ok
+      });
+    } catch (connectError) {
+      logStep('ERROR', 'Panel connectivity failed', {
+        error: connectError.message,
+        panelUrl: baseUrl
+      });
+      throw new Error(`Cannot connect to panel at ${baseUrl}. Please check panel configuration.`);
+    }
+
+    // Authenticate with panel
     let token: string;
     
-    if (panelType === 'marzban') {
-      logStep('AUTH', 'Authenticating with Marzban panel');
-      
-      const authResponse = await fetch(`${baseUrl}/api/admin/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          username: panel.username,
-          password: panel.password,
-        }),
-      });
+    try {
+      if (panelType === 'marzban') {
+        logStep('AUTH', 'Authenticating with Marzban panel');
+        
+        const authResponse = await fetch(`${baseUrl}/api/admin/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            username: panel.username,
+            password: panel.password,
+          }),
+          signal: AbortSignal.timeout(15000) // 15 second timeout
+        });
 
-      if (!authResponse.ok) {
-        const errorText = await authResponse.text();
-        logStep('ERROR', 'Marzban authentication failed', { status: authResponse.status, error: errorText });
-        throw new Error(`Authentication failed with ${panelType} panel`);
+        logStep('AUTH', 'Marzban auth response', {
+          status: authResponse.status,
+          statusText: authResponse.statusText,
+          ok: authResponse.ok
+        });
+
+        if (!authResponse.ok) {
+          const errorText = await authResponse.text().catch(() => 'Could not read error response');
+          logStep('ERROR', 'Marzban authentication failed', { 
+            status: authResponse.status, 
+            error: errorText,
+            url: `${baseUrl}/api/admin/token`
+          });
+          throw new Error(`Authentication failed with Marzban panel (${authResponse.status}): ${errorText}`);
+        }
+
+        const authData = await authResponse.json();
+        token = authData.access_token;
+        
+        if (!token) {
+          logStep('ERROR', 'No access token received from Marzban');
+          throw new Error('Authentication successful but no access token received');
+        }
+      } else {
+        logStep('AUTH', 'Authenticating with Marzneshin panel');
+        
+        const authResponse = await fetch(`${baseUrl}/api/admins/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            username: panel.username,
+            password: panel.password,
+            grant_type: 'password'
+          }),
+          signal: AbortSignal.timeout(15000) // 15 second timeout
+        });
+
+        logStep('AUTH', 'Marzneshin auth response', {
+          status: authResponse.status,
+          statusText: authResponse.statusText,
+          ok: authResponse.ok
+        });
+
+        if (!authResponse.ok) {
+          const errorText = await authResponse.text().catch(() => 'Could not read error response');
+          logStep('ERROR', 'Marzneshin authentication failed', { 
+            status: authResponse.status, 
+            error: errorText,
+            url: `${baseUrl}/api/admins/token`
+          });
+          throw new Error(`Authentication failed with Marzneshin panel (${authResponse.status}): ${errorText}`);
+        }
+
+        const authData = await authResponse.json();
+        token = authData.access_token;
+        
+        if (!token) {
+          logStep('ERROR', 'No access token received from Marzneshin');
+          throw new Error('Authentication successful but no access token received');
+        }
       }
 
-      const authData = await authResponse.json();
-      token = authData.access_token;
-    } else {
-      logStep('AUTH', 'Authenticating with Marzneshin panel');
-      
-      const authResponse = await fetch(`${baseUrl}/api/admins/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          username: panel.username,
-          password: panel.password,
-          grant_type: 'password'
-        })
+      logStep('AUTH', 'Authentication successful', { tokenLength: token.length });
+    } catch (authError) {
+      logStep('ERROR', 'Authentication process failed', {
+        error: authError.message,
+        panelType,
+        baseUrl
       });
-
-      if (!authResponse.ok) {
-        const errorText = await authResponse.text();
-        logStep('ERROR', 'Marzneshin authentication failed', { status: authResponse.status, error: errorText });
-        throw new Error(`Authentication failed with ${panelType} panel`);
+      
+      // Update panel health status to offline
+      try {
+        await supabase
+          .from('panel_servers')
+          .update({ 
+            health_status: 'offline',
+            last_health_check: new Date().toISOString()
+          })
+          .eq('id', panel.id);
+      } catch (updateError) {
+        logStep('WARNING', 'Failed to update panel health status', updateError);
       }
-
-      const authData = await authResponse.json();
-      token = authData.access_token;
+      
+      throw new Error(`Panel authentication failed: ${authError.message}`);
     }
 
-    logStep('AUTH', 'Authentication successful');
-
-    // Create user - using panel-specific logic
+    // Create user based on panel type
     let userData: any;
     
-    if (panelType === 'marzban') {
-      // Marzban user creation
-      const expireDate = new Date();
-      expireDate.setDate(expireDate.getDate() + durationDays);
-      
-      const userPayload = {
-        username: username,
-        data_limit: dataLimitGB * 1073741824,
-        expire: Math.floor(expireDate.getTime() / 1000),
-        proxies: enabledProtocols.reduce((acc: any, protocol: string) => {
-          acc[protocol] = {};
-          return acc;
-        }, {}),
-        note: notes || `Created via bnets.co - ${isFreeTriaL ? 'Free Trial' : 'Subscription'}`
-      };
+    try {
+      if (panelType === 'marzban') {
+        // Marzban user creation
+        const expireDate = new Date();
+        expireDate.setDate(expireDate.getDate() + durationDays);
+        
+        const userPayload = {
+          username: username,
+          data_limit: dataLimitGB * 1073741824, // Convert GB to bytes
+          expire: Math.floor(expireDate.getTime() / 1000),
+          proxies: enabledProtocols.reduce((acc: any, protocol: string) => {
+            acc[protocol] = {};
+            return acc;
+          }, {}),
+          note: notes || `Created via bnets.co - ${isFreeTriaL ? 'Free Trial' : 'Subscription'}`
+        };
 
-      logStep('CREATE', 'Creating Marzban user', userPayload);
+        logStep('CREATE', 'Creating Marzban user', userPayload);
 
-      const createResponse = await fetch(`${baseUrl}/api/user`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(userPayload),
-      });
+        const createResponse = await fetch(`${baseUrl}/api/user`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(userPayload),
+          signal: AbortSignal.timeout(20000) // 20 second timeout
+        });
 
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        logStep('ERROR', 'Marzban user creation failed', { status: createResponse.status, error: errorText });
-        throw new Error(`Failed to create user on ${panelType} panel: ${errorText}`);
-      }
+        logStep('CREATE', 'Marzban user creation response', {
+          status: createResponse.status,
+          statusText: createResponse.statusText,
+          ok: createResponse.ok
+        });
 
-      userData = await createResponse.json();
-    } else {
-      // Marzneshin user creation - get services first
-      logStep('SERVICES', 'Fetching Marzneshin services');
-      
-      const servicesResponse = await fetch(`${baseUrl}/api/services`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+        if (!createResponse.ok) {
+          const errorText = await createResponse.text().catch(() => 'Could not read error response');
+          logStep('ERROR', 'Marzban user creation failed', { 
+            status: createResponse.status, 
+            error: errorText,
+            payload: userPayload
+          });
+          throw new Error(`Failed to create user on Marzban panel (${createResponse.status}): ${errorText}`);
         }
-      });
 
-      if (!servicesResponse.ok) {
-        throw new Error('Failed to fetch services from Marzneshin panel');
+        userData = await createResponse.json();
+      } else {
+        // Marzneshin user creation - get services first
+        logStep('SERVICES', 'Fetching Marzneshin services');
+        
+        const servicesResponse = await fetch(`${baseUrl}/api/services`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          signal: AbortSignal.timeout(15000) // 15 second timeout
+        });
+
+        logStep('SERVICES', 'Services response', {
+          status: servicesResponse.status,
+          ok: servicesResponse.ok
+        });
+
+        if (!servicesResponse.ok) {
+          const errorText = await servicesResponse.text().catch(() => 'Could not read error response');
+          logStep('ERROR', 'Failed to fetch services from Marzneshin panel', {
+            status: servicesResponse.status,
+            error: errorText
+          });
+          throw new Error(`Failed to fetch services from Marzneshin panel (${servicesResponse.status}): ${errorText}`);
+        }
+
+        const servicesData = await servicesResponse.json();
+        const serviceIds = servicesData.items?.map((service: any) => service.id) || [];
+        
+        logStep('SERVICES', `Found ${serviceIds.length} services`, { serviceIds });
+
+        if (serviceIds.length === 0) {
+          logStep('WARNING', 'No services found on Marzneshin panel');
+        }
+
+        const expireDateStr = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        const userPayload = {
+          username: username,
+          expire_strategy: 'fixed_date',
+          expire_date: expireDateStr,
+          data_limit: dataLimitGB * 1073741824, // Convert GB to bytes
+          service_ids: serviceIds,
+          note: notes || `Created via bnets.co - ${isFreeTriaL ? 'Free Trial' : 'Subscription'}`,
+          data_limit_reset_strategy: 'no_reset'
+        };
+
+        logStep('CREATE', 'Creating Marzneshin user', userPayload);
+
+        const createResponse = await fetch(`${baseUrl}/api/users`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(userPayload),
+          signal: AbortSignal.timeout(20000) // 20 second timeout
+        });
+
+        logStep('CREATE', 'Marzneshin user creation response', {
+          status: createResponse.status,
+          statusText: createResponse.statusText,
+          ok: createResponse.ok
+        });
+
+        if (!createResponse.ok) {
+          const errorText = await createResponse.text().catch(() => 'Could not read error response');
+          logStep('ERROR', 'Marzneshin user creation failed', { 
+            status: createResponse.status, 
+            error: errorText,
+            payload: userPayload
+          });
+          throw new Error(`Failed to create user on Marzneshin panel (${createResponse.status}): ${errorText}`);
+        }
+
+        userData = await createResponse.json();
       }
 
-      const servicesData = await servicesResponse.json();
-      const serviceIds = servicesData.items?.map((service: any) => service.id) || [];
-      
-      logStep('SERVICES', `Found ${serviceIds.length} services`);
-
-      const expireDateStr = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
-      const userPayload = {
-        username: username,
-        expire_strategy: 'fixed_date',
-        expire_date: expireDateStr,
-        data_limit: dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: notes || `Created via bnets.co - ${isFreeTriaL ? 'Free Trial' : 'Subscription'}`,
-        data_limit_reset_strategy: 'no_reset'
-      };
-
-      logStep('CREATE', 'Creating Marzneshin user', userPayload);
-
-      const createResponse = await fetch(`${baseUrl}/api/users`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(userPayload),
+      logStep('SUCCESS', 'User created successfully', {
+        username: userData.username,
+        hasSubscriptionUrl: !!userData.subscription_url,
+        dataLimit: userData.data_limit,
+        expire: userData.expire
       });
 
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        logStep('ERROR', 'Marzneshin user creation failed', { status: createResponse.status, error: errorText });
-        throw new Error(`Failed to create user on ${panelType} panel: ${errorText}`);
+      // Update panel health status to online on successful operation
+      try {
+        await supabase
+          .from('panel_servers')
+          .update({ 
+            health_status: 'online',
+            last_health_check: new Date().toISOString()
+          })
+          .eq('id', panel.id);
+      } catch (updateError) {
+        logStep('WARNING', 'Failed to update panel health status to online', updateError);
       }
 
-      userData = await createResponse.json();
+    } catch (createError) {
+      logStep('ERROR', 'User creation process failed', {
+        error: createError.message,
+        panelType,
+        username
+      });
+      
+      // Update panel health status based on error type
+      try {
+        const healthStatus = createError.message.includes('timeout') ? 'offline' : 'degraded';
+        await supabase
+          .from('panel_servers')
+          .update({ 
+            health_status: healthStatus,
+            last_health_check: new Date().toISOString()
+          })
+          .eq('id', panel.id);
+      } catch (updateError) {
+        logStep('WARNING', 'Failed to update panel health status after error', updateError);
+      }
+      
+      throw createError;
     }
-
-    logStep('SUCCESS', 'User created successfully', {
-      username: userData.username,
-      hasSubscriptionUrl: !!userData.subscription_url
-    });
 
     // Update subscription record if provided
     if (subscriptionId) {
       logStep('UPDATE', 'Updating subscription record');
       
-      const { error: updateError } = await supabase
-        .from('subscriptions')
-        .update({
-          status: 'active',
-          subscription_url: userData.subscription_url || `${baseUrl}/sub/${username}`,
-          marzban_user_created: true,
-          expire_at: new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString()
-        })
-        .eq('id', subscriptionId);
+      try {
+        const subscriptionUrl = userData.subscription_url || `${baseUrl}/sub/${username}`;
+        const expireAt = userData.expire ? 
+          new Date(userData.expire * 1000).toISOString() : 
+          new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
-      if (updateError) {
-        logStep('ERROR', 'Failed to update subscription record', updateError);
-      } else {
-        logStep('UPDATE', 'Subscription record updated successfully');
+        const { error: updateError } = await supabase
+          .from('subscriptions')
+          .update({
+            status: 'active',
+            subscription_url: subscriptionUrl,
+            marzban_user_created: true,
+            expire_at: expireAt,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', subscriptionId);
+
+        if (updateError) {
+          logStep('ERROR', 'Failed to update subscription record', updateError);
+          // Don't throw here as the VPN user was created successfully
+        } else {
+          logStep('UPDATE', 'Subscription record updated successfully');
+        }
+      } catch (updateError) {
+        logStep('ERROR', 'Exception during subscription update', updateError);
+        // Don't throw here as the VPN user was created successfully
       }
     }
 
@@ -249,22 +441,32 @@ serve(async (req) => {
         expire: userData.expire || Math.floor(Date.now() / 1000) + (durationDays * 24 * 60 * 60),
         data_limit: userData.data_limit || (dataLimitGB * 1073741824),
         panel_type: panelType,
-        panel_name: panel.name
+        panel_name: panel.name,
+        panel_id: panel.id
       }
     };
 
-    logStep('COMPLETE', 'User creation completed successfully', result);
+    logStep('COMPLETE', 'User creation completed successfully', {
+      username: result.data.username,
+      panelName: result.data.panel_name,
+      subscriptionUrl: !!result.data.subscription_url
+    });
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    logStep('ERROR', 'User creation failed', { message: error.message, stack: error.stack });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    logStep('ERROR', 'User creation failed', { 
+      message: errorMessage, 
+      stack: error instanceof Error ? error.stack : undefined 
+    });
     
     return new Response(JSON.stringify({
       success: false,
-      error: error.message || 'Failed to create user'
+      error: errorMessage,
+      timestamp: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,

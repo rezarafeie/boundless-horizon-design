@@ -107,19 +107,12 @@ export const useMultiStepForm = () => {
 
   const updateFormData = (field: keyof FormData, value: any) => {
     console.log('MULTI STEP FORM: Updating form data:', field, value);
-    
-    if (field === 'selectedPlan' && value) {
-      // Ensure we have a complete plan object
-      console.log('MULTI STEP FORM: Setting plan object:', value);
-      setFormData(prev => ({ ...prev, [field]: value }));
-    } else {
-      setFormData(prev => ({ ...prev, [field]: value }));
-    }
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   // Auto-advance from plan selection step when plan is selected
   useEffect(() => {
-    if (currentStep === 1 && formData.selectedPlan) {
+    if (currentStep === 1 && formData.selectedPlan && (formData.selectedPlan.id || formData.selectedPlan.plan_id)) {
       console.log('MULTI STEP FORM: Auto-advancing to step 2 with selected plan:', formData.selectedPlan);
       const timer = setTimeout(() => {
         setCurrentStep(2);
@@ -207,7 +200,7 @@ export const useMultiStepForm = () => {
         duration_days: formData.duration,
         price_toman: totalPrice,
         notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name || formData.selectedPlan.name_en}`,
-        status: 'pending'
+        status: 'pending' as const
       };
 
       console.log('MULTI STEP FORM: Creating subscription with data:', subscriptionData);
@@ -284,10 +277,10 @@ export const useMultiStepForm = () => {
             console.warn('MULTI STEP FORM: VPN user creation failed:', vpnResult.error);
             
             toast({
-              title: language === 'fa' ? 'موفق جزئی' : 'Partial Success',
+              title: language === 'fa' ? 'خطای جزئی' : 'Partial Error',
               description: language === 'fa' ? 
-                'سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد. لطفاً با پشتیبانی تماس بگیرید.' :
-                'Subscription saved but VPN creation failed. Please contact support.',
+                'سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد. پس از پرداخت، VPN شما ایجاد خواهد شد.' :
+                'Order saved but VPN creation failed. Your VPN will be created after payment.',
               variant: 'destructive'
             });
           }
@@ -295,10 +288,10 @@ export const useMultiStepForm = () => {
         } catch (vpnError) {
           console.error('MULTI STEP FORM: VPN creation failed for free subscription:', vpnError);
           toast({
-            title: language === 'fa' ? 'موفق جزئی' : 'Partial Success',
+            title: language === 'fa' ? 'خطای جزئی' : 'Partial Error',
             description: language === 'fa' ? 
-              'سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد. لطفاً با پشتیبانی تماس بگیرید.' :
-              'Subscription saved but VPN creation failed. Please contact support.',
+              'سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد. پس از پرداخت، VPN شما ایجاد خواهد ش د.' :
+              'Order saved but VPN creation failed. Your VPN will be created after payment.',
             variant: 'destructive'
           });
         }
@@ -403,8 +396,8 @@ export const useMultiStepForm = () => {
     toast({
       title: language === 'fa' ? 'تبریک!' : 'Congratulations!',
       description: language === 'fa' ? 
-        'پرداخت شما با موفقیت انجام شد' : 
-        'Your payment was successful'
+        'پرداخت شما با موفقیت انجام شد. VPN شما در حال ایجاد است...' : 
+        'Your payment was successful. Your VPN is being created...'
     });
 
     // Redirect directly to delivery page
