@@ -85,23 +85,52 @@ const FreeTrialButton = () => {
     return `${prefix}${timestamp}_${random}`;
   };
 
-  // Create trial user using edge functions consistently
+  // Get panel ID for the given API type
+  const getPanelIdForApiType = async (apiType: 'marzban' | 'marzneshin'): Promise<string> => {
+    console.log(`FREE TRIAL: Fetching panel ID for API type: ${apiType}`);
+    
+    const { data: panels, error } = await supabase
+      .from('panel_servers')
+      .select('id')
+      .eq('type', apiType)
+      .eq('is_active', true)
+      .eq('health_status', 'online')
+      .limit(1);
+
+    if (error) {
+      console.error('FREE TRIAL: Error fetching panel:', error);
+      throw new Error(`Failed to find active ${apiType} panel`);
+    }
+
+    if (!panels || panels.length === 0) {
+      throw new Error(`No active ${apiType} panel found. Please try again later.`);
+    }
+
+    console.log(`FREE TRIAL: Found panel ID: ${panels[0].id} for ${apiType}`);
+    return panels[0].id;
+  };
+
+  // Create trial user using edge functions with proper panel ID
   const createTrialUser = async (plan: TrialPlan): Promise<TrialResult> => {
     const username = generateTrialUsername();
 
     try {
       console.log(`Creating trial user via ${plan.apiType} edge function...`);
       
+      // Get the appropriate panel ID for this API type
+      const panelId = await getPanelIdForApiType(plan.apiType);
+      
       let result;
       
       if (plan.apiType === 'marzban') {
-        console.log('Using Marzban edge function');
+        console.log('Using Marzban edge function with panel ID:', panelId);
         const { data, error } = await supabase.functions.invoke('marzban-create-user', {
           body: {
             username: username,
             dataLimitGB: 1, // 1GB
             durationDays: 1, // 1 day
-            notes: 'Free Trial - 1 Day / 1GB'
+            notes: 'Free Trial - 1 Day / 1GB',
+            panelId: panelId
           }
         });
         
@@ -116,13 +145,14 @@ const FreeTrialButton = () => {
         
         result = data.data;
       } else {
-        console.log('Using Marzneshin edge function');
+        console.log('Using Marzneshin edge function with panel ID:', panelId);
         const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
           body: {
             username: username,
             dataLimitGB: 1, // 1GB
             durationDays: 1, // 1 day
-            notes: 'Free Trial - 1 Day / 1GB'
+            notes: 'Free Trial - 1 Day / 1GB',
+            panelId: panelId
           }
         });
         
