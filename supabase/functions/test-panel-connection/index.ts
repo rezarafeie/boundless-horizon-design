@@ -11,26 +11,49 @@ interface TestConnectionRequest {
   planId?: string;
 }
 
+interface DetailedLog {
+  step: string;
+  status: 'success' | 'error' | 'info';
+  message: string;
+  details?: any;
+  timestamp: string;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const detailedLogs: DetailedLog[] = [];
+  
+  const addLog = (step: string, status: 'success' | 'error' | 'info', message: string, details?: any) => {
+    const logEntry = {
+      step,
+      status,
+      message,
+      details,
+      timestamp: new Date().toISOString()
+    };
+    detailedLogs.push(logEntry);
+    console.log(`[TEST-PANEL-CONNECTION] ${status.toUpperCase()}: ${step} - ${message}`, details || '');
+  };
+
   try {
-    console.log('[TEST-PANEL-CONNECTION] Starting panel connection test');
+    addLog('Test Initialization', 'info', 'Starting panel connection test');
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { panelId, planId }: TestConnectionRequest = await req.json();
+    const { panelId }: TestConnectionRequest = await req.json();
 
     if (!panelId) {
+      addLog('Validation', 'error', 'Panel ID is required');
       throw new Error('Panel ID is required');
     }
 
-    console.log('[TEST-PANEL-CONNECTION] Testing panel:', panelId);
+    addLog('Database Query', 'info', `Fetching panel data for ID: ${panelId}`);
 
     // Get panel information
     const { data: panel, error: panelError } = await supabase
@@ -40,13 +63,15 @@ Deno.serve(async (req) => {
       .single();
 
     if (panelError || !panel) {
+      addLog('Database Query', 'error', `Panel not found: ${panelError?.message}`, { panelError });
       throw new Error(`Panel not found: ${panelError?.message}`);
     }
 
-    console.log('[TEST-PANEL-CONNECTION] Panel found:', {
+    addLog('Database Query', 'success', 'Panel data retrieved successfully', {
       name: panel.name,
       type: panel.type,
-      url: panel.panel_url
+      url: panel.panel_url,
+      username: panel.username
     });
 
     // Test authentication based on panel type
@@ -54,40 +79,54 @@ Deno.serve(async (req) => {
     let testUserResult;
 
     if (panel.type === 'marzban') {
-      console.log('[TEST-PANEL-CONNECTION] Testing Marzban authentication');
+      addLog('Authentication', 'info', 'Testing Marzban authentication');
       
-      // Test Marzban authentication
-      const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          username: panel.username,
-          password: panel.password,
-        }),
-      });
+      try {
+        // Test Marzban authentication
+        const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            username: panel.username,
+            password: panel.password,
+          }),
+        });
 
-      if (!authResponse.ok) {
-        throw new Error(`Marzban auth failed: ${authResponse.status} ${authResponse.statusText}`);
-      }
+        addLog('Authentication', 'info', `Auth request sent to ${panel.panel_url}/api/admin/token`, {
+          status: authResponse.status,
+          statusText: authResponse.statusText,
+          ok: authResponse.ok
+        });
 
-      const authData = await authResponse.json();
-      authResult = {
-        success: true,
-        tokenReceived: !!authData.access_token,
-        tokenType: authData.token_type
-      };
+        if (!authResponse.ok) {
+          const errorText = await authResponse.text();
+          addLog('Authentication', 'error', `Marzban auth failed: ${authResponse.status} ${authResponse.statusText}`, {
+            status: authResponse.status,
+            statusText: authResponse.statusText,
+            errorBody: errorText
+          });
+          throw new Error(`Marzban auth failed: ${authResponse.status} ${authResponse.statusText}`);
+        }
 
-      // Test creating a user
-      const testUsername = `test_${Date.now()}`;
-      const testUserResponse = await fetch(`${panel.panel_url}/api/user`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authData.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        const authData = await authResponse.json();
+        addLog('Authentication', 'success', 'Authentication successful', {
+          hasAccessToken: !!authData.access_token,
+          tokenType: authData.token_type
+        });
+
+        authResult = {
+          success: true,
+          tokenReceived: !!authData.access_token,
+          tokenType: authData.token_type
+        };
+
+        // Test creating a user
+        const testUsername = `test_${Date.now()}`;
+        addLog('User Creation', 'info', `Creating test user: ${testUsername}`);
+
+        const testUserPayload = {
           username: testUsername,
           data_limit: 1073741824, // 1GB
           expire: Math.floor(Date.now() / 1000) + 86400, // 1 day
@@ -97,74 +136,142 @@ Deno.serve(async (req) => {
             trojan: {},
             shadowsocks: {}
           }
-        }),
-      });
-
-      if (testUserResponse.ok) {
-        const userData = await testUserResponse.json();
-        testUserResult = {
-          success: true,
-          username: userData.username,
-          subscriptionUrl: userData.subscription_url
         };
 
-        // Clean up test user
-        try {
-          await fetch(`${panel.panel_url}/api/user/${testUsername}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${authData.access_token}`,
-            },
+        addLog('User Creation', 'info', 'Sending user creation request', testUserPayload);
+
+        const testUserResponse = await fetch(`${panel.panel_url}/api/user`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authData.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(testUserPayload),
+        });
+
+        addLog('User Creation', 'info', `User creation response received`, {
+          status: testUserResponse.status,
+          statusText: testUserResponse.statusText,
+          ok: testUserResponse.ok
+        });
+
+        if (testUserResponse.ok) {
+          const userData = await testUserResponse.json();
+          addLog('User Creation', 'success', 'Test user created successfully', {
+            username: userData.username,
+            hasSubscriptionUrl: !!userData.subscription_url
           });
-          console.log('[TEST-PANEL-CONNECTION] Test user cleaned up');
-        } catch (cleanupError) {
-          console.warn('[TEST-PANEL-CONNECTION] Failed to cleanup test user:', cleanupError);
+
+          testUserResult = {
+            success: true,
+            username: userData.username,
+            subscriptionUrl: userData.subscription_url
+          };
+
+          // Clean up test user
+          try {
+            addLog('Cleanup', 'info', `Deleting test user: ${testUsername}`);
+            const deleteResponse = await fetch(`${panel.panel_url}/api/user/${testUsername}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${authData.access_token}`,
+              },
+            });
+            
+            if (deleteResponse.ok) {
+              addLog('Cleanup', 'success', 'Test user deleted successfully');
+            } else {
+              addLog('Cleanup', 'error', `Failed to delete test user: ${deleteResponse.status}`, {
+                status: deleteResponse.status,
+                statusText: deleteResponse.statusText
+              });
+            }
+          } catch (cleanupError) {
+            addLog('Cleanup', 'error', 'Exception during cleanup', { error: cleanupError.message });
+          }
+        } else {
+          const errorText = await testUserResponse.text();
+          addLog('User Creation', 'error', `Failed to create test user: ${testUserResponse.status}`, {
+            status: testUserResponse.status,
+            statusText: testUserResponse.statusText,
+            errorBody: errorText
+          });
+          
+          testUserResult = {
+            success: false,
+            error: `Failed to create test user: ${testUserResponse.status} - ${errorText}`
+          };
         }
-      } else {
+
+      } catch (authError) {
+        addLog('Authentication', 'error', 'Authentication exception occurred', {
+          error: authError.message,
+          stack: authError.stack
+        });
+        authResult = {
+          success: false,
+          error: authError.message
+        };
         testUserResult = {
           success: false,
-          error: `Failed to create test user: ${testUserResponse.status}`
+          error: `Authentication failed: ${authError.message}`
         };
       }
 
     } else {
-      console.log('[TEST-PANEL-CONNECTION] Testing Marzneshin authentication');
+      addLog('Authentication', 'info', 'Testing Marzneshin authentication');
       
-      // Test Marzneshin authentication
-      const authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      try {
+        // Test Marzneshin authentication
+        const authPayload = {
           username: panel.username,
           password: panel.password,
-        }),
-      });
+        };
 
-      if (!authResponse.ok) {
-        throw new Error(`Marzneshin auth failed: ${authResponse.status} ${authResponse.statusText}`);
-      }
+        addLog('Authentication', 'info', 'Sending Marzneshin auth request', { username: panel.username });
 
-      const authData = await authResponse.json();
-      authResult = {
-        success: true,
-        tokenReceived: !!authData.access_token,
-        isSudo: authData.is_sudo
-      };
+        const authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(authPayload),
+        });
 
-      // Test creating a user
-      const testUsername = `test_${Date.now()}`;
-      const expireDate = new Date();
-      expireDate.setDate(expireDate.getDate() + 1);
-      
-      const testUserResponse = await fetch(`${panel.panel_url}/api/users`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authData.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        addLog('Authentication', 'info', 'Auth response received', {
+          status: authResponse.status,
+          statusText: authResponse.statusText,
+          ok: authResponse.ok
+        });
+
+        if (!authResponse.ok) {
+          const errorText = await authResponse.text();
+          addLog('Authentication', 'error', `Marzneshin auth failed: ${authResponse.status} ${authResponse.statusText}`, {
+            status: authResponse.status,
+            statusText: authResponse.statusText,
+            errorBody: errorText
+          });
+          throw new Error(`Marzneshin auth failed: ${authResponse.status} ${authResponse.statusText}`);
+        }
+
+        const authData = await authResponse.json();
+        addLog('Authentication', 'success', 'Authentication successful', {
+          hasAccessToken: !!authData.access_token,
+          isSudo: authData.is_sudo
+        });
+
+        authResult = {
+          success: true,
+          tokenReceived: !!authData.access_token,
+          isSudo: authData.is_sudo
+        };
+
+        // Test creating a user
+        const testUsername = `test_${Date.now()}`;
+        const expireDate = new Date();
+        expireDate.setDate(expireDate.getDate() + 1);
+        
+        const testUserPayload = {
           username: testUsername,
           expire_strategy: 'fixed_date',
           expire_date: expireDate.toISOString().split('T')[0],
@@ -172,45 +279,102 @@ Deno.serve(async (req) => {
           service_ids: [7], // Basic service
           note: 'Test connection user',
           data_limit_reset_strategy: 'no_reset'
-        }),
-      });
-
-      if (testUserResponse.ok) {
-        const userData = await testUserResponse.json();
-        testUserResult = {
-          success: true,
-          username: userData.username,
-          subscriptionUrl: userData.subscription_url
         };
 
-        // Clean up test user
-        try {
-          await fetch(`${panel.panel_url}/api/users/${userData.id}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${authData.access_token}`,
-            },
+        addLog('User Creation', 'info', `Creating test user: ${testUsername}`, testUserPayload);
+
+        const testUserResponse = await fetch(`${panel.panel_url}/api/users`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authData.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(testUserPayload),
+        });
+
+        addLog('User Creation', 'info', 'User creation response received', {
+          status: testUserResponse.status,
+          statusText: testUserResponse.statusText,
+          ok: testUserResponse.ok
+        });
+
+        if (testUserResponse.ok) {
+          const userData = await testUserResponse.json();
+          addLog('User Creation', 'success', 'Test user created successfully', {
+            username: userData.username,
+            hasSubscriptionUrl: !!userData.subscription_url
           });
-          console.log('[TEST-PANEL-CONNECTION] Test user cleaned up');
-        } catch (cleanupError) {
-          console.warn('[TEST-PANEL-CONNECTION] Failed to cleanup test user:', cleanupError);
+
+          testUserResult = {
+            success: true,
+            username: userData.username,
+            subscriptionUrl: userData.subscription_url
+          };
+
+          // Clean up test user
+          try {
+            addLog('Cleanup', 'info', `Deleting test user: ${userData.id}`);
+            const deleteResponse = await fetch(`${panel.panel_url}/api/users/${userData.id}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${authData.access_token}`,
+              },
+            });
+            
+            if (deleteResponse.ok) {
+              addLog('Cleanup', 'success', 'Test user deleted successfully');
+            } else {
+              addLog('Cleanup', 'error', `Failed to delete test user: ${deleteResponse.status}`, {
+                status: deleteResponse.status,
+                statusText: deleteResponse.statusText
+              });
+            }
+          } catch (cleanupError) {
+            addLog('Cleanup', 'error', 'Exception during cleanup', { error: cleanupError.message });
+          }
+        } else {
+          const errorText = await testUserResponse.text();
+          addLog('User Creation', 'error', `Failed to create test user: ${testUserResponse.status}`, {
+            status: testUserResponse.status,
+            statusText: testUserResponse.statusText,
+            errorBody: errorText
+          });
+          
+          testUserResult = {
+            success: false,
+            error: `Failed to create test user: ${testUserResponse.status} - ${errorText}`
+          };
         }
-      } else {
+
+      } catch (authError) {
+        addLog('Authentication', 'error', 'Authentication exception occurred', {
+          error: authError.message,
+          stack: authError.stack
+        });
+        authResult = {
+          success: false,
+          error: authError.message
+        };
         testUserResult = {
           success: false,
-          error: `Failed to create test user: ${testUserResponse.status}`
+          error: `Authentication failed: ${authError.message}`
         };
       }
     }
 
     // Update panel health status
+    const healthStatus = authResult.success && testUserResult.success ? 'online' : 'offline';
+    addLog('Database Update', 'info', `Updating panel health status to: ${healthStatus}`);
+
     await supabase
       .from('panel_servers')
       .update({
-        health_status: authResult.success && testUserResult.success ? 'online' : 'offline',
+        health_status: healthStatus,
         last_health_check: new Date().toISOString()
       })
       .eq('id', panelId);
+
+    addLog('Database Update', 'success', 'Panel health status updated successfully');
 
     const result = {
       success: authResult.success && testUserResult.success,
@@ -222,10 +386,11 @@ Deno.serve(async (req) => {
       },
       authentication: authResult,
       userCreation: testUserResult,
+      detailedLogs,
       timestamp: new Date().toISOString()
     };
 
-    console.log('[TEST-PANEL-CONNECTION] Test completed:', result);
+    addLog('Test Completion', 'success', 'Panel connection test completed', { success: result.success });
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -233,11 +398,17 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
+    addLog('Test Failure', 'error', 'Panel connection test failed', {
+      error: error.message,
+      stack: error.stack
+    });
+
     console.error('[TEST-PANEL-CONNECTION] Error:', error);
     
     return new Response(JSON.stringify({
       success: false,
       error: error.message,
+      detailedLogs,
       timestamp: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

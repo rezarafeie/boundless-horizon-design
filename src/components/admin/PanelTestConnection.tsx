@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -20,6 +20,14 @@ interface Panel {
   health_status: 'online' | 'offline' | 'unknown';
 }
 
+interface DetailedLog {
+  step: string;
+  status: 'success' | 'error' | 'info';
+  message: string;
+  details?: any;
+  timestamp: string;
+}
+
 interface TestResult {
   success: boolean;
   panel: {
@@ -33,6 +41,7 @@ interface TestResult {
     tokenReceived?: boolean;
     tokenType?: string;
     isSudo?: boolean;
+    error?: string;
   };
   userCreation: {
     success: boolean;
@@ -40,6 +49,7 @@ interface TestResult {
     subscriptionUrl?: string;
     error?: string;
   };
+  detailedLogs: DetailedLog[];
   timestamp: string;
 }
 
@@ -91,8 +101,16 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
           type: panel.type,
           url: panel.panel_url
         },
-        authentication: { success: false },
+        authentication: { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
         userCreation: { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+        detailedLogs: [
+          {
+            step: 'Test Initialization',
+            status: 'error',
+            message: `Failed to initialize test: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            timestamp: new Date().toISOString()
+          }
+        ],
         timestamp: new Date().toISOString()
       };
       setTestResult(errorResult);
@@ -110,6 +128,17 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
   const getStatusBadge = (success: boolean) => {
     if (success) return <Badge className="bg-green-100 text-green-800">Success</Badge>;
     return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
+  };
+
+  const getLogIcon = (status: 'success' | 'error' | 'info') => {
+    switch (status) {
+      case 'success':
+        return <CheckCircle className="w-3 h-3 text-green-600" />;
+      case 'error':
+        return <XCircle className="w-3 h-3 text-red-600" />;
+      case 'info':
+        return <Info className="w-3 h-3 text-blue-600" />;
+    }
   };
 
   return (
@@ -165,7 +194,12 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
                     )}
                   </div>
                 ) : (
-                  <p>❌ Authentication failed</p>
+                  <div>
+                    <p>❌ Authentication failed</p>
+                    {testResult.authentication.error && (
+                      <p className="text-red-600">Error: {testResult.authentication.error}</p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -196,6 +230,36 @@ export const PanelTestConnection = ({ panel, onTestComplete }: PanelTestConnecti
                 )}
               </div>
             </div>
+
+            {/* Detailed Logs Section */}
+            {testResult.detailedLogs && testResult.detailedLogs.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2">Detailed Test Logs</h4>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {testResult.detailedLogs.map((log, index) => (
+                    <div key={index} className="flex gap-2 text-sm p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                      {getLogIcon(log.status)}
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{log.step}</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(log.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <p className={`mt-1 ${log.status === 'error' ? 'text-red-600' : log.status === 'success' ? 'text-green-600' : 'text-gray-600'}`}>
+                          {log.message}
+                        </p>
+                        {log.details && (
+                          <pre className="text-xs text-gray-500 mt-1 overflow-x-auto">
+                            {JSON.stringify(log.details, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="pt-2 border-t">
               <h4 className="font-medium">Panel Information</h4>
