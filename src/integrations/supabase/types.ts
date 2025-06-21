@@ -173,17 +173,57 @@ export type Database = {
           },
         ]
       }
+      panel_refresh_logs: {
+        Row: {
+          configs_fetched: number | null
+          created_at: string
+          error_message: string | null
+          id: string
+          panel_id: string
+          refresh_result: boolean
+          response_data: Json | null
+        }
+        Insert: {
+          configs_fetched?: number | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          panel_id: string
+          refresh_result: boolean
+          response_data?: Json | null
+        }
+        Update: {
+          configs_fetched?: number | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          panel_id?: string
+          refresh_result?: boolean
+          response_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "panel_refresh_logs_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "panel_servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       panel_servers: {
         Row: {
           country_en: string
           country_fa: string
           created_at: string
           default_inbounds: Json
+          enabled_protocols: Json
           health_status: string | null
           id: string
           is_active: boolean
           last_health_check: string | null
           name: string
+          panel_config_data: Json | null
           panel_url: string
           password: string
           type: string
@@ -195,11 +235,13 @@ export type Database = {
           country_fa: string
           created_at?: string
           default_inbounds?: Json
+          enabled_protocols?: Json
           health_status?: string | null
           id?: string
           is_active?: boolean
           last_health_check?: string | null
           name: string
+          panel_config_data?: Json | null
           panel_url: string
           password: string
           type: string
@@ -211,11 +253,13 @@ export type Database = {
           country_fa?: string
           created_at?: string
           default_inbounds?: Json
+          enabled_protocols?: Json
           health_status?: string | null
           id?: string
           is_active?: boolean
           last_health_check?: string | null
           name?: string
+          panel_config_data?: Json | null
           panel_url?: string
           password?: string
           type?: string

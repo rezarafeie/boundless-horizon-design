@@ -12,6 +12,8 @@ import { Plus, Edit, Trash2, Server, CheckCircle, XCircle, AlertCircle } from 'l
 import { supabase } from '@/integrations/supabase/client';
 import { PanelTestConnection } from './PanelTestConnection';
 import { PanelTestHistory } from './PanelTestHistory';
+import { PanelProtocolSelector } from './PanelProtocolSelector';
+import { PanelRefreshButton } from './PanelRefreshButton';
 
 interface Panel {
   id: string;
@@ -26,6 +28,8 @@ interface Panel {
   health_status: 'online' | 'offline' | 'unknown';
   last_health_check: string | null;
   default_inbounds: any[];
+  enabled_protocols: string[];
+  panel_config_data: any;
 }
 
 export const PanelsManagement = () => {
@@ -45,7 +49,8 @@ export const PanelsManagement = () => {
     country_en: '',
     country_fa: '',
     is_active: true,
-    default_inbounds: '[]'
+    default_inbounds: '[]',
+    enabled_protocols: ['vless', 'vmess', 'trojan', 'shadowsocks']
   });
 
   const fetchPanels = async () => {
@@ -65,7 +70,9 @@ export const PanelsManagement = () => {
         ...panel,
         type: panel.type as 'marzban' | 'marzneshin',
         health_status: panel.health_status as 'online' | 'offline' | 'unknown',
-        default_inbounds: Array.isArray(panel.default_inbounds) ? panel.default_inbounds : []
+        default_inbounds: Array.isArray(panel.default_inbounds) ? panel.default_inbounds : [],
+        enabled_protocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks'],
+        panel_config_data: panel.panel_config_data || {}
       }));
 
       setPanels(typedPanels);
@@ -90,7 +97,8 @@ export const PanelsManagement = () => {
       country_en: '',
       country_fa: '',
       is_active: true,
-      default_inbounds: '[]'
+      default_inbounds: '[]',
+      enabled_protocols: ['vless', 'vmess', 'trojan', 'shadowsocks']
     });
     setEditingPanel(null);
   };
@@ -138,7 +146,8 @@ export const PanelsManagement = () => {
       country_en: panel.country_en,
       country_fa: panel.country_fa,
       is_active: panel.is_active,
-      default_inbounds: JSON.stringify(panel.default_inbounds || [])
+      default_inbounds: JSON.stringify(panel.default_inbounds || []),
+      enabled_protocols: panel.enabled_protocols || ['vless', 'vmess', 'trojan', 'shadowsocks']
     });
     setIsDialogOpen(true);
   };
@@ -307,6 +316,11 @@ export const PanelsManagement = () => {
                   </div>
                 </div>
 
+                <PanelProtocolSelector
+                  selectedProtocols={formData.enabled_protocols}
+                  onProtocolsChange={(protocols) => setFormData({ ...formData, enabled_protocols: protocols })}
+                />
+
                 <div>
                   <Label htmlFor="default_inbounds">Default Inbounds (JSON)</Label>
                   <Textarea
@@ -331,8 +345,8 @@ export const PanelsManagement = () => {
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit">
-                    {editingPanel ? 'Update Panel' : 'Create Panel'}
+                  <Button type="submit" disabled={formData.enabled_protocols.length === 0}>
+                    {formData.enabled_protocols.length === 0 ? 'Select Protocols First' : (editingPanel ? 'Update Panel' : 'Create Panel')}
                   </Button>
                 </div>
               </form>
@@ -419,8 +433,27 @@ export const PanelsManagement = () => {
                   </div>
                 </div>
 
+                <div>
+                  <span className="font-medium text-sm">Enabled Protocols:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {panel.enabled_protocols.map((protocol) => (
+                      <Badge key={protocol} variant="outline" className="text-xs">
+                        {protocol.toUpperCase()}
+                      </Badge>
+                    ))}
+                  </div>
+                  {panel.enabled_protocols.length === 0 && (
+                    <p className="text-red-600 text-sm mt-1">⚠️ No protocols enabled - panel cannot create users</p>
+                  )}
+                </div>
+
                 <div className="space-y-4">
-                  <PanelTestConnection panel={panel} onTestComplete={fetchPanels} />
+                  <PanelRefreshButton panel={panel} onRefreshComplete={fetchPanels} />
+                  <PanelTestConnection 
+                    panel={panel} 
+                    onTestComplete={fetchPanels}
+                    disabled={panel.enabled_protocols.length === 0}
+                  />
                   <PanelTestHistory 
                     panelId={panel.id} 
                     panelName={panel.name}
