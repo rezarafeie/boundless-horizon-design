@@ -135,51 +135,85 @@ serve(async (req) => {
         tokenType: authData.token_type || 'bearer'
       };
 
-      // Test User Creation with Dynamic Proxies
+      // Test User Creation with fallback protocols
       const testUsername = `test_${Date.now()}`;
       const testExpire = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 24 hours from now
 
       addLog(detailedLogs, 'User Creation', 'info', `Creating test user: ${testUsername}`);
 
-      const userPayload = {
-        username: testUsername,
-        data_limit: 1 * 1024 * 1024 * 1024, // 1GB in bytes
-        expire: testExpire,
-        proxies: dynamicProxies || {} // Use dynamic proxies from request
-      };
+      // Try creating user with minimal protocol setup first
+      const protocolsToTry = [
+        ['vless'], // Try VLESS only first
+        ['trojan'], // Then Trojan only
+        ['shadowsocks'], // Then Shadowsocks only
+        enabledProtocols || ['vless', 'vmess', 'trojan', 'shadowsocks'] // Finally try all enabled
+      ];
 
-      addLog(detailedLogs, 'User Creation', 'info', 'Sending user creation request', userPayload);
+      let userCreationSuccess = false;
+      let userData = null;
+      let lastError = null;
 
-      const createResponse = await fetch(`${panel.panel_url}/api/user`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(userPayload),
-      });
+      for (const protocols of protocolsToTry) {
+        try {
+          const userPayload = {
+            username: testUsername,
+            data_limit: 1 * 1024 * 1024 * 1024, // 1GB in bytes
+            expire: testExpire,
+            proxies: protocols.reduce((acc, protocol) => {
+              acc[protocol] = {};
+              return acc;
+            }, {} as Record<string, {}>)
+          };
 
-      addLog(detailedLogs, 'User Creation', 'info', 'User creation response received', {
-        status: createResponse.status,
-        statusText: createResponse.statusText,
-        ok: createResponse.ok
-      });
+          addLog(detailedLogs, 'User Creation', 'info', `Trying user creation with protocols: ${protocols.join(', ')}`, userPayload);
 
-      if (!createResponse.ok) {
-        const errorBody = await createResponse.text();
-        addLog(detailedLogs, 'User Creation', 'error', `Failed to create test user: ${createResponse.status}`, {
-          status: createResponse.status,
-          statusText: createResponse.statusText,
-          errorBody: errorBody
-        });
-        throw new Error(`User creation failed: ${createResponse.status}`);
+          const createResponse = await fetch(`${panel.panel_url}/api/user`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userPayload),
+          });
+
+          addLog(detailedLogs, 'User Creation', 'info', `User creation response for ${protocols.join(', ')}`, {
+            status: createResponse.status,
+            statusText: createResponse.statusText,
+            ok: createResponse.ok
+          });
+
+          if (createResponse.ok) {
+            userData = await createResponse.json();
+            addLog(detailedLogs, 'User Creation', 'success', `Test user created successfully with protocols: ${protocols.join(', ')}`, {
+              username: userData.username,
+              hasSubscriptionUrl: !!userData.subscription_url,
+              workingProtocols: protocols
+            });
+            userCreationSuccess = true;
+            break;
+          } else {
+            const errorBody = await createResponse.text();
+            lastError = errorBody;
+            addLog(detailedLogs, 'User Creation', 'info', `Failed with protocols ${protocols.join(', ')}: ${createResponse.status}`, {
+              status: createResponse.status,
+              statusText: createResponse.statusText,
+              errorBody: errorBody
+            });
+            // Continue to next protocol combination
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : 'Unknown error';
+          addLog(detailedLogs, 'User Creation', 'info', `Error with protocols ${protocols.join(', ')}: ${lastError}`);
+          // Continue to next protocol combination
+        }
       }
 
-      const userData = await createResponse.json();
-      addLog(detailedLogs, 'User Creation', 'success', 'Test user created successfully', {
-        username: userData.username,
-        hasSubscriptionUrl: !!userData.subscription_url
-      });
+      if (!userCreationSuccess) {
+        addLog(detailedLogs, 'User Creation', 'error', 'All protocol combinations failed', {
+          lastError: lastError
+        });
+        throw new Error(`User creation failed with all protocol combinations. Last error: ${lastError}`);
+      }
 
       testResult.userCreation = {
         success: true,
