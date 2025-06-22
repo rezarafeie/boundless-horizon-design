@@ -38,6 +38,7 @@ interface Subscription {
       name: string;
       type: string;
       health_status: string;
+      panel_url: string;
     };
   };
 }
@@ -65,7 +66,8 @@ export const UsersManagement = () => {
               id,
               name,
               type,
-              health_status
+              health_status,
+              panel_url
             )
           )
         `)
