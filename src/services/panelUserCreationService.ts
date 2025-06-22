@@ -123,7 +123,8 @@ export class PanelUserCreationService {
         durationDays: request.durationDays,
         notes: request.notes || `Plan: ${planConfig.name_en || planConfig.plan_id}, ${request.isFreeTriaL ? 'Free Trial' : 'Paid Subscription'}`,
         panelId: panel.id, // ✅ CRITICAL: Pass the exact panel ID to ensure correct API usage
-        enabledProtocols: panel.enabled_protocols
+        enabledProtocols: panel.enabled_protocols,
+        subscriptionId: request.subscriptionId // ✅ NEW: Pass subscription ID for logging
       };
 
       // FIXED: Route to correct edge function based on panel type

@@ -540,6 +540,63 @@ export type Database = {
           },
         ]
       }
+      user_creation_logs: {
+        Row: {
+          created_at: string
+          edge_function_name: string
+          error_message: string | null
+          id: string
+          panel_id: string | null
+          panel_name: string | null
+          panel_url: string | null
+          request_data: Json
+          response_data: Json | null
+          subscription_id: string | null
+          success: boolean
+        }
+        Insert: {
+          created_at?: string
+          edge_function_name: string
+          error_message?: string | null
+          id?: string
+          panel_id?: string | null
+          panel_name?: string | null
+          panel_url?: string | null
+          request_data?: Json
+          response_data?: Json | null
+          subscription_id?: string | null
+          success?: boolean
+        }
+        Update: {
+          created_at?: string
+          edge_function_name?: string
+          error_message?: string | null
+          id?: string
+          panel_id?: string | null
+          panel_name?: string | null
+          panel_url?: string | null
+          request_data?: Json
+          response_data?: Json | null
+          subscription_id?: string | null
+          success?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_creation_logs_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "panel_servers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_creation_logs_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       zarinpal_contracts: {
         Row: {
           bank_code: string | null

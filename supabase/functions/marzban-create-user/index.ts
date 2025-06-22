@@ -12,23 +12,29 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Initialize Supabase client for logging
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  let requestData = {};
+  let panelConfig = null;
+  let subscriptionId = null;
+
   try {
-    const { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols } = await req.json();
+    const { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols, subscriptionId: subId } = await req.json();
+    
+    requestData = { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols };
+    subscriptionId = subId;
     
     console.log('🔵 [MARZBAN-CREATE-USER] Starting user creation with STRICT panel selection:', {
       username,
       dataLimitGB,
       durationDays,
       panelId: panelId || 'NOT PROVIDED',
-      enabledProtocols
+      enabledProtocols,
+      subscriptionId
     });
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    let panelConfig = null;
 
     // ✅ CRITICAL FIX: Use the EXACT panel specified by panelId, no fallbacks
     if (panelId) {
@@ -44,6 +50,19 @@ serve(async (req) => {
 
       if (panelError || !panel) {
         console.error('❌ [MARZBAN-CREATE-USER] STRICT panel selection failed:', panelError);
+        
+        // Log the failure
+        await supabase.from('user_creation_logs').insert({
+          subscription_id: subscriptionId,
+          panel_id: panelId,
+          edge_function_name: 'marzban-create-user',
+          request_data: requestData,
+          success: false,
+          error_message: `Specified panel not found or inactive: ${panelId}`,
+          panel_url: null,
+          panel_name: null
+        });
+        
         throw new Error(`Specified panel not found or inactive: ${panelId}`);
       }
 
@@ -70,6 +89,19 @@ serve(async (req) => {
 
       if (panelsError || !panels || panels.length === 0) {
         console.error('❌ [MARZBAN-CREATE-USER] No active Marzban panels found:', panelsError);
+        
+        // Log the failure
+        await supabase.from('user_creation_logs').insert({
+          subscription_id: subscriptionId,
+          panel_id: null,
+          edge_function_name: 'marzban-create-user',
+          request_data: requestData,
+          success: false,
+          error_message: 'No active Marzban panels available',
+          panel_url: null,
+          panel_name: null
+        });
+        
         throw new Error('No active Marzban panels available');
       }
 
@@ -108,6 +140,19 @@ serve(async (req) => {
         statusText: authResponse.statusText,
         panelUrl: panelConfig.panel_url
       });
+      
+      // Log the failure
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscriptionId,
+        panel_id: panelConfig.id,
+        edge_function_name: 'marzban-create-user',
+        request_data: requestData,
+        success: false,
+        error_message: `Authentication failed: ${authResponse.status} ${authResponse.statusText}`,
+        panel_url: panelConfig.panel_url,
+        panel_name: panelConfig.name
+      });
+      
       throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
     }
 
@@ -126,6 +171,19 @@ serve(async (req) => {
 
     if (!templateUserResponse.ok) {
       console.error('❌ [MARZBAN-CREATE-USER] Template user fetch failed:', templateUserResponse.status);
+      
+      // Log the failure
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscriptionId,
+        panel_id: panelConfig.id,
+        edge_function_name: 'marzban-create-user',
+        request_data: requestData,
+        success: false,
+        error_message: `Template user fetch failed: ${templateUserResponse.status}`,
+        panel_url: panelConfig.panel_url,
+        panel_name: panelConfig.name
+      });
+      
       throw new Error(`Template user fetch failed: ${templateUserResponse.status}`);
     }
 
@@ -172,6 +230,19 @@ serve(async (req) => {
         error: errorText,
         panelUrl: panelConfig.panel_url
       });
+      
+      // Log the failure
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscriptionId,
+        panel_id: panelConfig.id,
+        edge_function_name: 'marzban-create-user',
+        request_data: requestData,
+        success: false,
+        error_message: `User creation failed: ${createUserResponse.status} - ${errorText}`,
+        panel_url: panelConfig.panel_url,
+        panel_name: panelConfig.name
+      });
+      
       throw new Error(`User creation failed: ${createUserResponse.status} - ${errorText}`);
     }
 
@@ -189,19 +260,34 @@ serve(async (req) => {
       expire: createdUser.expire
     });
 
+    const responseData = {
+      username: createdUser.username,
+      subscription_url: createdUser.subscription_url,
+      expire: createdUser.expire,
+      data_limit: createdUser.data_limit,
+      status: createdUser.status,
+      panel_type: 'marzban',
+      panel_name: panelConfig.name,
+      panel_id: panelConfig.id,
+      panel_url: panelConfig.panel_url
+    };
+
+    // Log the success
+    await supabase.from('user_creation_logs').insert({
+      subscription_id: subscriptionId,
+      panel_id: panelConfig.id,
+      edge_function_name: 'marzban-create-user',
+      request_data: requestData,
+      response_data: responseData,
+      success: true,
+      error_message: null,
+      panel_url: panelConfig.panel_url,
+      panel_name: panelConfig.name
+    });
+
     return new Response(JSON.stringify({
       success: true,
-      data: {
-        username: createdUser.username,
-        subscription_url: createdUser.subscription_url,
-        expire: createdUser.expire,
-        data_limit: createdUser.data_limit,
-        status: createdUser.status,
-        panel_type: 'marzban',
-        panel_name: panelConfig.name,
-        panel_id: panelConfig.id,
-        panel_url: panelConfig.panel_url
-      }
+      data: responseData
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
@@ -209,6 +295,20 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ [MARZBAN-CREATE-USER] Error:', error);
+    
+    // Log the error if we haven't already
+    if (panelConfig) {
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscriptionId,
+        panel_id: panelConfig?.id || null,
+        edge_function_name: 'marzban-create-user',
+        request_data: requestData,
+        success: false,
+        error_message: error.message,
+        panel_url: panelConfig?.panel_url || null,
+        panel_name: panelConfig?.name || null
+      });
+    }
     
     return new Response(JSON.stringify({
       success: false,

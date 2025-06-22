@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Search, User, Calendar, DollarSign, RefreshCw, Image, Receipt, Server, Package } from 'lucide-react';
 import { ManualPaymentActions } from './ManualPaymentActions';
+import { UserCreationLogs } from './UserCreationLogs';
 
 interface Subscription {
   id: string;
@@ -413,6 +413,11 @@ export const UsersManagement = () => {
                       </a>
                     </div>
                   )}
+
+                  {/* NEW: User Creation Logs */}
+                  <div className="border-t pt-4">
+                    <UserCreationLogs subscriptionId={subscription.id} />
+                  </div>
 
                   {/* Manual Payment Actions */}
                   <ManualPaymentActions
