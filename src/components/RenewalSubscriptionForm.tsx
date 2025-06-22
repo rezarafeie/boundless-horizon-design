@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import PlanSelector from './PlanSelector';
 import DiscountField from './DiscountField';
 import { Search, RefreshCw, Calendar, Database, CheckCircle, CreditCard, Loader } from 'lucide-react';
-import { DiscountCode, SubscriptionPlan } from '@/types/subscription';
+import { DiscountCode } from '@/types/subscription';
+import { PlanWithPanels } from '@/services/planService';
 import { useToast } from '@/hooks/use-toast';
 import { useSubscriptionData } from '@/hooks/useSubscriptionData';
 
@@ -22,7 +22,7 @@ const RenewalSubscriptionForm = () => {
   
   const [searchMobile, setSearchMobile] = useState('');
   const [userSubscriptions, setUserSubscriptions] = useState<any[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PlanWithPanels | null>(null);
   const [dataLimit, setDataLimit] = useState(10);
   const [duration, setDuration] = useState(30);
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
@@ -76,16 +76,30 @@ const RenewalSubscriptionForm = () => {
     }
   };
 
-  const handlePlanSelect = (plan: SubscriptionPlan) => {
+  const handlePlanSelect = (plan: PlanWithPanels) => {
     console.log('RenewalForm - Plan selected:', plan);
+    
+    // ULTRA STRICT VALIDATION: Only allow plans with assigned panels
+    if (!plan.assigned_panel_id) {
+      console.error('RenewalForm - REJECTED: Plan has no assigned panel');
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'این پلن در حال حاضر در دسترس نیست' : 
+          'This plan is currently unavailable',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
     setSelectedPlan(plan);
   };
 
   const calculatePrice = () => {
     if (!selectedPlan) return 0;
     
-    // Use the plan's price per GB - prioritize new format
-    const basePrice = (selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800) * dataLimit;
+    // Use the plan's price per GB from PlanWithPanels format
+    const basePrice = selectedPlan.price_per_gb * dataLimit;
     
     if (appliedDiscount) {
       const discountAmount = (basePrice * appliedDiscount.percentage) / 100;
@@ -97,7 +111,7 @@ const RenewalSubscriptionForm = () => {
 
   const calculateDiscount = () => {
     if (!selectedPlan || !appliedDiscount) return 0;
-    const basePrice = (selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800) * dataLimit;
+    const basePrice = selectedPlan.price_per_gb * dataLimit;
     return (basePrice * appliedDiscount.percentage) / 100;
   };
 
@@ -441,7 +455,7 @@ const RenewalSubscriptionForm = () => {
 
                 {/* Plan Selection */}
                 <PlanSelector
-                  selectedPlan={selectedPlan?.id || selectedPlan?.plan_id || ''}
+                  selectedPlan={selectedPlan?.id || ''}
                   onPlanSelect={handlePlanSelect}
                   dataLimit={dataLimit}
                 />
@@ -463,15 +477,15 @@ const RenewalSubscriptionForm = () => {
                           </h4>
                           <p className="text-sm text-blue-600 dark:text-blue-400">
                             {language === 'fa' ? 
-                              `${dataLimit} گیگابایت × ${(selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800).toLocaleString()} تومان` : 
-                              `${dataLimit} GB × ${(selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800).toLocaleString()} Toman`
+                              `${dataLimit} گیگابایت × ${selectedPlan.price_per_gb.toLocaleString()} تومان` : 
+                              `${dataLimit} GB × ${selectedPlan.price_per_gb.toLocaleString()} Toman`
                             }
                           </p>
                         </div>
                         <div className="text-right">
                           {appliedDiscount && (
                             <div className="text-sm text-blue-600 dark:text-blue-400 line-through">
-                              {(dataLimit * (selectedPlan.price_per_gb || selectedPlan.pricePerGB || 800)).toLocaleString()}
+                              {(dataLimit * selectedPlan.price_per_gb).toLocaleString()}
                               {language === 'fa' ? ' تومان' : ' Toman'}
                             </div>
                           )}
