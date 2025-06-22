@@ -19,7 +19,7 @@ serve(async (req) => {
       throw new Error("Username is required");
     }
 
-    console.log(`Fetching subscription for ${username} from ${panelType} panel (${panelUrl || 'default'})`);
+    console.log(`[GET-SUBSCRIPTION-FROM-PANEL] Fetching subscription for ${username} from ${panelType} panel (${panelUrl || 'default'})`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -39,7 +39,7 @@ serve(async (req) => {
 
       if (!panelError && panel) {
         panelConfig = panel;
-        console.log(`Using panel configuration: ${panel.name} (${panel.panel_url})`);
+        console.log(`[GET-SUBSCRIPTION-FROM-PANEL] Using panel configuration: ${panel.name} (${panel.panel_url})`);
       }
     }
 
@@ -53,7 +53,7 @@ serve(async (req) => {
       });
 
       if (error) {
-        console.error('Marzneshin get user error:', error);
+        console.error('[GET-SUBSCRIPTION-FROM-PANEL] Marzneshin get user error:', error);
         throw new Error(`Failed to fetch from Marzneshin: ${error.message}`);
       }
 
@@ -61,7 +61,7 @@ serve(async (req) => {
         userData = {
           username: data.user.username,
           subscription_url: data.user.subscription_url,
-          expire: data.user.expire_date ? new Date(data.user.expire_date).getTime() : null,
+          expire_at: data.user.expire_date ? new Date(data.user.expire_date).toISOString() : null,
           data_limit: data.user.data_limit,
           status: data.user.is_active ? 'active' : 'inactive',
           used_traffic: data.user.used_traffic || 0
@@ -77,7 +77,7 @@ serve(async (req) => {
       });
 
       if (error) {
-        console.error('Marzban get user error:', error);
+        console.error('[GET-SUBSCRIPTION-FROM-PANEL] Marzban get user error:', error);
         throw new Error(`Failed to fetch from Marzban: ${error.message}`);
       }
 
@@ -85,7 +85,7 @@ serve(async (req) => {
         userData = {
           username: data.user.username,
           subscription_url: data.user.subscription_url,
-          expire: data.user.expire ? data.user.expire * 1000 : null, // Convert to milliseconds
+          expire_at: data.user.expire ? new Date(data.user.expire * 1000).toISOString() : null,
           data_limit: data.user.data_limit,
           status: data.user.status || 'active',
           used_traffic: data.user.used_traffic || 0
@@ -96,6 +96,7 @@ serve(async (req) => {
     }
 
     if (!userData) {
+      console.log(`[GET-SUBSCRIPTION-FROM-PANEL] User not found: ${username}`);
       return new Response(JSON.stringify({
         success: false,
         error: "User not found in panel"
@@ -111,27 +112,31 @@ serve(async (req) => {
         .from('subscriptions')
         .update({ 
           subscription_url: userData.subscription_url,
-          status: userData.status
+          status: userData.status,
+          expire_at: userData.expire_at
         })
         .eq('username', username);
 
       if (updateError) {
-        console.error('Failed to update subscription in database:', updateError);
+        console.error('[GET-SUBSCRIPTION-FROM-PANEL] Failed to update subscription in database:', updateError);
+      } else {
+        console.log(`[GET-SUBSCRIPTION-FROM-PANEL] Updated subscription in database for ${username}`);
       }
     }
 
-    console.log(`Successfully fetched subscription data for ${username} from ${panelType} panel`);
+    console.log(`[GET-SUBSCRIPTION-FROM-PANEL] Successfully fetched subscription data for ${username} from ${panelType} panel`);
 
+    // FIXED: Return the format that DeliveryPage expects
     return new Response(JSON.stringify({
       success: true,
-      data: userData
+      subscription: userData  // Changed from 'data' to 'subscription'
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
 
   } catch (error) {
-    console.error('Get subscription from panel error:', error);
+    console.error('[GET-SUBSCRIPTION-FROM-PANEL] Error:', error);
     
     return new Response(JSON.stringify({
       success: false,

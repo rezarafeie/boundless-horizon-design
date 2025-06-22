@@ -175,14 +175,21 @@ const DeliveryPage = () => {
         }
       });
 
+      console.log('DELIVERY_PAGE: Raw response from get-subscription-from-panel:', data);
+
       if (error) {
         console.error('DELIVERY_PAGE: Refresh error:', error);
-        throw error;
+        throw new Error(`Function call failed: ${error.message}`);
       }
 
-      console.log('DELIVERY_PAGE: Refresh response from STRICTLY assigned panel:', data);
+      if (!data.success) {
+        console.error('DELIVERY_PAGE: Panel response error:', data.error);
+        throw new Error(data.error || 'Failed to fetch subscription from panel');
+      }
 
-      if (data.success && data.subscription) {
+      if (data.subscription && data.subscription.subscription_url) {
+        console.log('DELIVERY_PAGE: Got subscription data:', data.subscription);
+        
         // Update subscription with fresh data from the STRICTLY assigned panel
         const { error: updateError } = await supabase
           .from('subscriptions')
@@ -209,7 +216,8 @@ const DeliveryPage = () => {
             'Subscription data updated successfully'
         });
       } else {
-        throw new Error(data.error || 'Failed to fetch subscription from panel');
+        console.error('DELIVERY_PAGE: No subscription data in response:', data);
+        throw new Error('No subscription data received from panel');
       }
     } catch (error) {
       console.error('DELIVERY_PAGE: Refresh failed:', error);
