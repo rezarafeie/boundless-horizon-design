@@ -117,18 +117,6 @@ export const useMultiStepForm = () => {
       return null;
     }
 
-    // Validate that the plan has available panels
-    if (!formData.selectedPlan.panels || formData.selectedPlan.panels.length === 0) {
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 
-          'این پلن در حال حاضر در دسترس نیست. لطفاً پلن دیگری انتخاب کنید.' : 
-          'This plan is currently not available. Please choose another plan.',
-        variant: 'destructive'
-      });
-      return null;
-    }
-
     // Validate required fields
     if (!formData.username?.trim() || !formData.mobile?.trim()) {
       toast({
@@ -141,13 +129,10 @@ export const useMultiStepForm = () => {
       return null;
     }
 
-    const primaryPanel = PlanService.getPrimaryPanel(formData.selectedPlan);
-    console.log('MULTI STEP FORM: Plan config found with panel:', primaryPanel?.name);
-
     setIsCreatingSubscription(true);
     
     try {
-      console.log('MULTI STEP FORM: Creating subscription record with dynamic plan:', formData.selectedPlan);
+      console.log('MULTI STEP FORM: Creating subscription record with plan:', formData.selectedPlan);
       
       const totalPrice = calculateTotalPrice();
       
@@ -163,7 +148,7 @@ export const useMultiStepForm = () => {
         duration_days: formData.duration,
         price_toman: totalPrice,
         plan_id: formData.selectedPlan.id,
-        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id}), Panel: ${primaryPanel?.name}`,
+        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id})`,
         status: 'pending' as const
       };
 

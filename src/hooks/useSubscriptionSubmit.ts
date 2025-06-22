@@ -33,41 +33,15 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get the latest plan data with panel information
+      // Get the latest plan data
       const latestPlan = await PlanService.getPlanById(data.selectedPlan.id);
       if (!latestPlan) {
         throw new Error('Selected plan is no longer available. Please refresh the page and select another plan.');
       }
 
-      // Check if plan has any panels available (more permissive check)
-      const primaryPanel = PlanService.getPrimaryPanel(latestPlan);
-      if (!primaryPanel) {
-        console.error('SUBSCRIPTION_SUBMIT: No panels available for plan:', {
-          planId: latestPlan.id,
-          planName: latestPlan.name_en,
-          assignedPanelId: latestPlan.assigned_panel_id,
-          availablePanels: latestPlan.panels.length
-        });
-        
-        throw new Error('This plan is temporarily unavailable. Please try again later or contact support.');
-      }
-
-      // Check panel health (but allow unknown status)
-      if (primaryPanel.health_status === 'offline') {
-        console.error('SUBSCRIPTION_SUBMIT: Primary panel is offline:', {
-          panelId: primaryPanel.id,
-          panelName: primaryPanel.name,
-          healthStatus: primaryPanel.health_status
-        });
-        
-        throw new Error('The selected plan\'s server is currently offline. Please try again later or choose another plan.');
-      }
-
-      console.log('SUBSCRIPTION_SUBMIT: Using plan with panel:', {
+      console.log('SUBSCRIPTION_SUBMIT: Using plan:', {
         planName: latestPlan.name_en,
-        panelName: primaryPanel.name,
-        panelType: primaryPanel.type,
-        healthStatus: primaryPanel.health_status
+        planId: latestPlan.id
       });
 
       const selectedPlanId = latestPlan.id;
@@ -93,7 +67,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
         plan_id: selectedPlanId, // Use the plan UUID
-        notes: `Plan: ${latestPlan.name_en} (${latestPlan.plan_id}), Panel: ${primaryPanel.name}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        notes: `Plan: ${latestPlan.name_en} (${latestPlan.plan_id})${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
       console.log('SUBSCRIPTION_SUBMIT: Inserting subscription to database:', subscriptionData);

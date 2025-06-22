@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface PlanWithPanels {
@@ -53,7 +54,7 @@ export class PlanService {
     console.log('=== PLAN SERVICE: Fetching available plans with panels ===');
     
     try {
-      // Get all active plans
+      // Get all active plans - don't filter by panel availability
       const { data: plans, error: plansError } = await supabase
         .from('subscription_plans')
         .select('*')
@@ -217,9 +218,9 @@ export class PlanService {
           return planWithPanel;
         });
 
-      console.log('PLAN SERVICE: Successfully fetched', planWithPanels.length, 'plans with panels');
+      console.log('PLAN SERVICE: Successfully fetched', planWithPanels.length, 'plans');
       
-      // Always return plans, even if some don't have panels available
+      // Return all plans, even those without panels - let the purchase flow handle it
       return planWithPanels;
       
     } catch (error) {
@@ -288,12 +289,8 @@ export class PlanService {
 
       const primaryPanel = this.getPrimaryPanel(plan);
       if (!primaryPanel) {
-        throw new Error(`This plan is currently not available. Please choose another plan.`);
-      }
-
-      // Validate panel health
-      if (primaryPanel.health_status === 'offline') {
-        throw new Error(`The selected plan's server is currently offline. Please try again later or choose another plan.`);
+        console.warn('PLAN SERVICE: No panel available for plan, but allowing subscription creation');
+        throw new Error(`VPN creation is temporarily unavailable for this plan. Please try again later.`);
       }
 
       // Use provided protocols or fetch from panel configuration
