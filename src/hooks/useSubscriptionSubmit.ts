@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { PlanService } from '@/services/planService';
+import { PanelUserCreationService } from '@/services/panelUserCreationService';
 import { supabase } from '@/integrations/supabase/client';
 
 interface SubscriptionData {
@@ -26,22 +27,24 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
     setIsSubmitting(true);
     
     try {
-      console.log('SUBSCRIPTION_SUBMIT: Starting submission with plan:', data.selectedPlan?.name_en);
+      console.log('SUBSCRIPTION_SUBMIT: Starting submission with STRICT panel enforcement for plan:', data.selectedPlan?.name_en);
       
       // Validate that we have the required plan data
       if (!data.selectedPlan?.id) {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get the latest plan data
+      // Get the latest plan data with STRICT panel assignment
       const latestPlan = await PlanService.getPlanById(data.selectedPlan.id);
       if (!latestPlan) {
         throw new Error('Selected plan is no longer available. Please refresh the page and select another plan.');
       }
 
-      console.log('SUBSCRIPTION_SUBMIT: Using plan:', {
+      console.log('SUBSCRIPTION_SUBMIT: Using plan with STRICT panel assignment:', {
         planName: latestPlan.name_en,
-        planId: latestPlan.id
+        planId: latestPlan.id,
+        assignedPanelId: latestPlan.assigned_panel_id,
+        panelCount: latestPlan.panels.length
       });
 
       const selectedPlanId = latestPlan.id;
@@ -85,34 +88,33 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       
       console.log('SUBSCRIPTION_SUBMIT: Subscription inserted successfully:', subscription);
       
-      // If price is 0, create VPN user immediately using PlanService
+      // If price is 0, create VPN user immediately using STRICT PanelUserCreationService
       if (finalPrice === 0) {
         try {
-          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using PlanService');
+          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using STRICT PanelUserCreationService');
           
-          const result = await PlanService.createSubscription(
-            selectedPlanId,
-            {
-              username: uniqueUsername,
-              mobile: data.mobile,
-              dataLimitGB: data.dataLimit,
-              durationDays: data.duration,
-              notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${latestPlan.name_en}`
-            }
-          );
+          const result = await PanelUserCreationService.createUserFromPanel({
+            planId: selectedPlanId,
+            username: uniqueUsername,
+            dataLimitGB: data.dataLimit,
+            durationDays: data.duration,
+            notes: `Free subscription via discount: ${data.appliedDiscount?.code || 'N/A'} - Plan: ${latestPlan.name_en}`,
+            subscriptionId: subscription.id,
+            isFreeTriaL: false
+          });
           
-          console.log('SUBSCRIPTION_SUBMIT: VPN creation response:', result);
+          console.log('SUBSCRIPTION_SUBMIT: STRICT VPN creation response:', result);
           
-          if (result) {
-            console.log('SUBSCRIPTION_SUBMIT: Free subscription completed successfully');
+          if (result.success && result.data) {
+            console.log('SUBSCRIPTION_SUBMIT: Free subscription completed successfully with STRICT panel assignment');
             
             // Update subscription with VPN details
             await supabase
               .from('subscriptions')
               .update({
                 status: 'active',
-                subscription_url: result.subscription_url,
-                expire_at: result.expire,
+                subscription_url: result.data.subscription_url,
+                expire_at: new Date(result.data.expire * 1000).toISOString(),
                 marzban_user_created: true
               })
               .eq('id', subscription.id);
@@ -122,11 +124,11 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
               description: 'Free subscription created successfully!',
             });
           } else {
-            console.warn('SUBSCRIPTION_SUBMIT: VPN user creation failed');
+            console.error('SUBSCRIPTION_SUBMIT: STRICT VPN user creation failed:', result.error);
             
             toast({
-              title: 'Partial Success',
-              description: 'Subscription saved but VPN creation failed. Please contact support.',
+              title: 'Subscription Created',
+              description: `Subscription saved but VPN creation failed: ${result.error}. Please contact support.`,
               variant: 'destructive'
             });
           }
@@ -134,9 +136,9 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
           return subscription.id;
           
         } catch (vpnError) {
-          console.error('SUBSCRIPTION_SUBMIT: VPN creation failed for free subscription:', vpnError);
+          console.error('SUBSCRIPTION_SUBMIT: VPN creation failed for free subscription with STRICT enforcement:', vpnError);
           toast({
-            title: 'Partial Success',
+            title: 'Subscription Created',
             description: 'Subscription saved but VPN creation failed. Please contact support.',
             variant: 'destructive'
           });

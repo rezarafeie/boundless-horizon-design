@@ -21,6 +21,7 @@ export interface PanelUserCreationResponse {
     panel_type: string;
     panel_name: string;
     panel_id: string;
+    panel_url: string;
   };
   error?: string;
 }
@@ -31,7 +32,7 @@ export class PanelUserCreationService {
     console.log('PANEL_USER_CREATION: Starting STRICT plan-to-panel user creation:', request);
     
     try {
-      // Step 1: Get plan with its assigned panel - STRICT BINDING
+      // Step 1: Get plan with its STRICTLY assigned panel - NO FALLBACKS ALLOWED
       console.log('PANEL_USER_CREATION: Looking up plan with STRICT panel binding:', request.planId);
       
       const { data: planConfig, error: planError } = await supabase
@@ -66,40 +67,78 @@ export class PanelUserCreationService {
       console.log('PANEL_USER_CREATION: Plan loaded with STRICT binding:', {
         planId: planConfig.id,
         planName: planConfig.name_en,
-        hasAssignedPanel: !!planConfig.panel_servers
+        hasAssignedPanel: !!planConfig.panel_servers,
+        assignedPanelId: planConfig.assigned_panel_id
       });
 
-      // Step 2: STRICT VALIDATION - Plan MUST have assigned panel
+      // Step 2: ABSOLUTE STRICT VALIDATION - Plan MUST have assigned panel, NO EXCEPTIONS
       if (!planConfig.assigned_panel_id || !planConfig.panel_servers) {
         console.error('PANEL_USER_CREATION: STRICT VALIDATION FAILED - No panel assigned to plan');
         return {
           success: false,
-          error: `No panel is configured for this plan "${planConfig.name_en}". Please contact admin.`
+          error: `CRITICAL ERROR: Plan "${planConfig.name_en}" has NO assigned panel. This plan cannot create VPN users. Please contact admin to assign a panel to this plan.`
         };
       }
 
       const panel = planConfig.panel_servers;
       
-      // Step 3: STRICT VALIDATION - Panel must be active and healthy
+      // Step 3: STRICT PANEL HEALTH VALIDATION - Panel must be active and healthy
       if (!panel.is_active) {
         console.error('PANEL_USER_CREATION: STRICT VALIDATION FAILED - Assigned panel is not active');
         return {
           success: false,
-          error: `The assigned panel "${panel.name}" is currently inactive. Please contact admin.`
+          error: `PANEL ERROR: The assigned panel "${panel.name}" for plan "${planConfig.name_en}" is currently INACTIVE. VPN creation is not possible. Please contact admin.`
         };
       }
 
-      console.log('PANEL_USER_CREATION: Using STRICTLY ASSIGNED panel:', {
+      if (panel.health_status === 'offline') {
+        console.error('PANEL_USER_CREATION: STRICT VALIDATION FAILED - Assigned panel is offline');
+        return {
+          success: false,
+          error: `PANEL ERROR: The assigned panel "${panel.name}" for plan "${planConfig.name_en}" is currently OFFLINE. VPN creation is not possible. Please try again later or contact admin.`
+        };
+      }
+
+      console.log('PANEL_USER_CREATION: Using STRICTLY ASSIGNED panel (NO FALLBACKS):', {
         panelId: panel.id,
         panelName: panel.name,
         panelType: panel.type,
         panelUrl: panel.panel_url,
         healthStatus: panel.health_status,
-        isActive: panel.is_active
+        isActive: panel.is_active,
+        planName: planConfig.name_en
       });
 
-      // Step 4: Create user using the STRICTLY ASSIGNED panel
-      console.log('PANEL_USER_CREATION: Creating user via STRICT panel assignment');
+      // Step 4: HEALTH CHECK - Verify panel is reachable before creating user
+      console.log('PANEL_USER_CREATION: Performing panel health check before user creation');
+      
+      try {
+        const { data: healthCheck, error: healthError } = await supabase.functions.invoke('test-panel-connection', {
+          body: {
+            panelId: panel.id,
+            createUser: false // Just test connection
+          }
+        });
+
+        if (healthError || !healthCheck?.success) {
+          console.error('PANEL_USER_CREATION: Panel health check FAILED:', healthError || healthCheck?.error);
+          return {
+            success: false,
+            error: `PANEL HEALTH CHECK FAILED: Panel "${panel.name}" (${panel.panel_url}) is not responding. Error: ${healthError?.message || healthCheck?.error || 'Unknown health check error'}`
+          };
+        }
+
+        console.log('PANEL_USER_CREATION: Panel health check passed');
+      } catch (healthCheckError) {
+        console.error('PANEL_USER_CREATION: Panel health check threw error:', healthCheckError);
+        return {
+          success: false,
+          error: `PANEL HEALTH CHECK ERROR: Unable to verify panel "${panel.name}" health. Error: ${healthCheckError instanceof Error ? healthCheckError.message : 'Unknown error'}`
+        };
+      }
+
+      // Step 5: Create user using the STRICTLY ASSIGNED and VERIFIED panel
+      console.log('PANEL_USER_CREATION: Creating user via STRICT panel assignment (health verified)');
       
       const userCreationData = {
         username: request.username,
@@ -123,14 +162,15 @@ export class PanelUserCreationService {
         success: creationResult?.success,
         error: creationError || creationResult?.error,
         userCreation: creationResult?.userCreation,
-        panelUsed: panel.name
+        panelUsed: panel.name,
+        panelUrl: panel.panel_url
       });
 
       if (creationError) {
         console.error('PANEL_USER_CREATION: Edge function error on STRICT panel:', creationError);
         return {
           success: false,
-          error: `Panel "${panel.name}" connection failed: ${creationError.message}`
+          error: `VPN CREATION FAILED: Panel "${panel.name}" (${panel.panel_url}) connection failed. Error: ${creationError.message}. No fallback panels used - this plan requires this specific panel.`
         };
       }
 
@@ -138,17 +178,17 @@ export class PanelUserCreationService {
         console.error('PANEL_USER_CREATION: User creation failed on STRICT panel:', creationResult?.error);
         return {
           success: false,
-          error: creationResult?.error || `User creation failed on panel "${panel.name}"`
+          error: `VPN CREATION FAILED: User creation failed on panel "${panel.name}" (${panel.panel_url}). Error: ${creationResult?.error || 'Unknown creation error'}. No fallback panels used - this plan requires this specific panel.`
         };
       }
 
-      // Step 5: Extract user creation data
+      // Step 6: Extract user creation data
       const userCreation = creationResult.userCreation;
       if (!userCreation?.success) {
         console.error('PANEL_USER_CREATION: User creation unsuccessful on STRICT panel:', userCreation?.error);
         return {
           success: false,
-          error: userCreation?.error || `User creation failed on panel "${panel.name}"`
+          error: `VPN USER CREATION FAILED: ${userCreation?.error || `User creation failed on panel "${panel.name}"`}. No fallback panels used - this plan requires this specific panel.`
         };
       }
 
@@ -156,10 +196,12 @@ export class PanelUserCreationService {
         username: userCreation.username,
         hasSubscriptionUrl: !!userCreation.subscriptionUrl,
         panelUsed: panel.name,
-        panelId: panel.id
+        panelId: panel.id,
+        panelUrl: panel.panel_url,
+        planName: planConfig.name_en
       });
 
-      // Step 6: Return success response with STRICT panel info
+      // Step 7: Return success response with STRICT panel info
       const responseData = {
         username: userCreation.username,
         subscription_url: userCreation.subscriptionUrl,
@@ -167,7 +209,8 @@ export class PanelUserCreationService {
         data_limit: request.dataLimitGB * 1073741824, // Convert GB to bytes
         panel_type: panel.type,
         panel_name: panel.name,
-        panel_id: panel.id
+        panel_id: panel.id,
+        panel_url: panel.panel_url
       };
 
       console.log('PANEL_USER_CREATION: STRICT SUCCESS - Returning response:', responseData);
@@ -179,9 +222,9 @@ export class PanelUserCreationService {
     } catch (error) {
       console.error('PANEL_USER_CREATION: Unexpected error in STRICT binding:', error);
       
-      let errorMessage = 'Unexpected error occurred during user creation';
+      let errorMessage = 'Unexpected error occurred during user creation with strict panel assignment';
       if (error instanceof Error) {
-        errorMessage = error.message;
+        errorMessage = `STRICT PANEL ERROR: ${error.message}`;
       }
       
       return {
@@ -210,7 +253,7 @@ export class PanelUserCreationService {
         
         const { data: plan, error } = await supabase
           .from('subscription_plans')
-          .select('id')
+          .select('id, name_en')
           .eq('plan_id', planIdOrUuid)
           .eq('is_active', true)
           .single();
@@ -219,12 +262,12 @@ export class PanelUserCreationService {
           console.error('PANEL_USER_CREATION: Could not find plan by name for STRICT binding:', planIdOrUuid, error);
           return {
             success: false,
-            error: `Plan "${planIdOrUuid}" not found or inactive`
+            error: `Plan "${planIdOrUuid}" not found or inactive. Cannot create free trial without valid plan.`
           };
         }
         
         actualPlanId = plan.id;
-        console.log('PANEL_USER_CREATION: Resolved plan name to UUID for STRICT binding:', { name: planIdOrUuid, uuid: actualPlanId });
+        console.log('PANEL_USER_CREATION: Resolved plan name to UUID for STRICT binding:', { name: planIdOrUuid, uuid: actualPlanId, planName: plan.name_en });
       }
       
       // Use STRICT plan-to-panel binding
@@ -240,7 +283,7 @@ export class PanelUserCreationService {
       console.error('PANEL_USER_CREATION: Error in createFreeTrial with STRICT binding:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error in free trial creation'
+        error: error instanceof Error ? `Free trial creation failed: ${error.message}` : 'Unknown error in free trial creation'
       };
     }
   }
@@ -268,7 +311,7 @@ export class PanelUserCreationService {
         
         const { data: plan, error } = await supabase
           .from('subscription_plans')
-          .select('id')
+          .select('id, name_en')
           .eq('plan_id', planIdOrUuid)
           .eq('is_active', true)
           .single();
@@ -277,12 +320,12 @@ export class PanelUserCreationService {
           console.error('PANEL_USER_CREATION: Could not find plan by name for STRICT binding:', planIdOrUuid, error);
           return {
             success: false,
-            error: `Plan "${planIdOrUuid}" not found or inactive`
+            error: `Plan "${planIdOrUuid}" not found or inactive. Cannot create paid subscription without valid plan.`
           };
         }
         
         actualPlanId = plan.id;
-        console.log('PANEL_USER_CREATION: Resolved plan name to UUID for STRICT binding:', { name: planIdOrUuid, uuid: actualPlanId });
+        console.log('PANEL_USER_CREATION: Resolved plan name to UUID for STRICT binding:', { name: planIdOrUuid, uuid: actualPlanId, planName: plan.name_en });
       }
       
       // Use STRICT plan-to-panel binding
@@ -299,7 +342,7 @@ export class PanelUserCreationService {
       console.error('PANEL_USER_CREATION: Error in createPaidSubscription with STRICT binding:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error in paid subscription creation'
+        error: error instanceof Error ? `Paid subscription creation failed: ${error.message}` : 'Unknown error in paid subscription creation'
       };
     }
   }

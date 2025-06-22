@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { PlanService } from '@/services/planService';
 import QRCodeCanvas from 'qrcode';
 import Navigation from '@/components/Navigation';
 
@@ -23,6 +22,7 @@ interface SubscriptionData {
   panel_name?: string;
   panel_id?: string;
   panel_url?: string;
+  plan_name?: string;
 }
 
 const DeliveryPage = () => {
@@ -45,13 +45,12 @@ const DeliveryPage = () => {
         setError(null);
         setPanelStatus('checking');
 
-        console.log('DELIVERY: Loading subscription data with DYNAMIC panel selection...');
+        console.log('DELIVERY: Loading subscription data with STRICT panel selection...');
         console.log('DELIVERY: Location state:', location.state);
         console.log('DELIVERY: URL search params:', Object.fromEntries(searchParams.entries()));
 
         // Check different sources for subscription data
         let data: SubscriptionData | null = null;
-        let planId: string | null = null;
 
         // 1. From URL state (navigation from subscription form)
         if (location.state?.subscriptionData) {
@@ -67,15 +66,30 @@ const DeliveryPage = () => {
             console.error('DELIVERY: Failed to parse subscription data from localStorage:', parseError);
           }
         }
-        // 3. From URL parameter 'id' - fetch from database
+        // 3. From URL parameter 'id' - fetch from database with STRICT plan-panel mapping
         else if (searchParams.get('id')) {
           const subscriptionId = searchParams.get('id');
-          console.log('DELIVERY: Fetching subscription from database with ID:', subscriptionId);
+          console.log('DELIVERY: Fetching subscription from database with STRICT plan-panel mapping, ID:', subscriptionId);
           
           try {
             const { data: subscription, error: dbError } = await supabase
               .from('subscriptions')
-              .select('*, subscription_plans(*)')
+              .select(`
+                *,
+                subscription_plans!plan_id (
+                  *,
+                  panel_servers!assigned_panel_id (
+                    id,
+                    name,
+                    panel_url,
+                    type,
+                    username,
+                    password,
+                    is_active,
+                    health_status
+                  )
+                )
+              `)
               .eq('id', subscriptionId)
               .single();
 
@@ -85,29 +99,22 @@ const DeliveryPage = () => {
             }
 
             if (subscription) {
-              console.log('DELIVERY: Fetched subscription with plan data:', subscription);
-              planId = subscription.plan_id;
+              console.log('DELIVERY: Fetched subscription with STRICT plan-panel data:', subscription);
               
-              // Get panel info from plan using PlanService
+              // Extract panel info using STRICT plan assignment
               let panelInfo = null;
-              if (planId) {
-                try {
-                  const plan = await PlanService.getPlanById(planId);
-                  if (plan) {
-                    const primaryPanel = PlanService.getPrimaryPanel(plan);
-                    if (primaryPanel) {
-                      panelInfo = {
-                        panel_type: primaryPanel.type,
-                        panel_name: primaryPanel.name,
-                        panel_id: primaryPanel.id,
-                        panel_url: primaryPanel.panel_url
-                      };
-                      console.log('DELIVERY: Using dynamic panel info from plan:', panelInfo);
-                    }
-                  }
-                } catch (planError) {
-                  console.warn('DELIVERY: Could not fetch plan info:', planError);
-                }
+              if (subscription.subscription_plans?.panel_servers) {
+                const panel = subscription.subscription_plans.panel_servers;
+                panelInfo = {
+                  panel_type: panel.type,
+                  panel_name: panel.name,
+                  panel_id: panel.id,
+                  panel_url: panel.panel_url,
+                  plan_name: subscription.subscription_plans.name_en
+                };
+                console.log('DELIVERY: Using STRICT panel info from plan assignment:', panelInfo);
+              } else {
+                console.warn('DELIVERY: STRICT WARNING - No panel assigned to plan:', subscription.subscription_plans?.name_en);
               }
               
               data = {
@@ -119,7 +126,7 @@ const DeliveryPage = () => {
                 used_traffic: 0,
                 ...panelInfo
               };
-              console.log('DELIVERY: Using subscription data with dynamic panel info:', data);
+              console.log('DELIVERY: Using subscription data with STRICT panel assignment:', data);
             } else {
               throw new Error('Subscription not found in database');
             }
@@ -133,53 +140,62 @@ const DeliveryPage = () => {
           throw new Error('No subscription data found');
         }
 
-        console.log('DELIVERY: Using subscription data with DYNAMIC panel configuration:', { 
+        console.log('DELIVERY: Using subscription data with STRICT panel configuration:', { 
           username: data.username, 
           panelType: data.panel_type,
           panelUrl: data.panel_url,
-          panelName: data.panel_name
+          panelName: data.panel_name,
+          planName: data.plan_name
         });
 
-        // Try to fetch fresh data from the panel using dynamic configuration
+        // Try to fetch fresh data from the STRICTLY ASSIGNED panel
         try {
-          console.log('DELIVERY: Refreshing data using DYNAMIC panel configuration');
+          console.log('DELIVERY: Refreshing data using STRICT plan-assigned panel configuration');
           
-          // Use the panel type from the subscription data or fallback to marzban
-          const panelType = data.panel_type || 'marzban';
-          
-          const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
-            body: {
-              username: data.username,
-              panelType: panelType,
-              panelUrl: data.panel_url, // Pass dynamic panel URL
-              panelId: data.panel_id // Pass panel ID for credentials
-            }
-          });
+          // Only proceed if we have proper panel configuration
+          if (data.panel_id && data.panel_type) {
+            const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
+              body: {
+                username: data.username,
+                panelType: data.panel_type,
+                panelUrl: data.panel_url,
+                panelId: data.panel_id // Use STRICT panel assignment
+              }
+            });
 
-          if (panelResult?.success && panelResult.data) {
-            console.log('DELIVERY: DYNAMIC panel data received:', panelResult.data);
-            
-            // Merge panel data with existing data, preferring panel data for critical fields
-            const mergedData = {
-              ...data,
-              subscription_url: panelResult.data.subscription_url || data.subscription_url,
-              expire: panelResult.data.expire ? panelResult.data.expire : data.expire,
-              data_limit: panelResult.data.data_limit || data.data_limit,
-              status: panelResult.data.status || data.status,
-              used_traffic: panelResult.data.used_traffic || data.used_traffic || 0
-            };
-            
-            setSubscriptionData(mergedData);
-            setPanelStatus('online');
-            
-            // Store updated data in localStorage
-            localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
-            
-            if (mergedData.subscription_url) {
-              await generateQRCode(mergedData.subscription_url);
+            if (panelResult?.success && panelResult.data) {
+              console.log('DELIVERY: STRICT panel data received from assigned panel:', panelResult.data);
+              
+              // Merge panel data with existing data, preferring panel data for critical fields
+              const mergedData = {
+                ...data,
+                subscription_url: panelResult.data.subscription_url || data.subscription_url,
+                expire: panelResult.data.expire ? panelResult.data.expire : data.expire,
+                data_limit: panelResult.data.data_limit || data.data_limit,
+                status: panelResult.data.status || data.status,
+                used_traffic: panelResult.data.used_traffic || data.used_traffic || 0
+              };
+              
+              setSubscriptionData(mergedData);
+              setPanelStatus('online');
+              
+              // Store updated data in localStorage
+              localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
+              
+              if (mergedData.subscription_url) {
+                await generateQRCode(mergedData.subscription_url);
+              }
+            } else {
+              console.warn('DELIVERY: STRICT panel data fetch failed, using fallback data:', panelError);
+              setSubscriptionData(data);
+              setPanelStatus('offline');
+              
+              if (data.subscription_url) {
+                await generateQRCode(data.subscription_url);
+              }
             }
           } else {
-            console.warn('DELIVERY: Panel data fetch failed, using fallback data:', panelError);
+            console.warn('DELIVERY: No panel configuration available, using subscription data as-is');
             setSubscriptionData(data);
             setPanelStatus('offline');
             
@@ -188,7 +204,7 @@ const DeliveryPage = () => {
             }
           }
         } catch (panelError) {
-          console.error('DELIVERY: Failed to fetch from panel, using fallback data:', panelError);
+          console.error('DELIVERY: Failed to fetch from STRICT assigned panel, using fallback data:', panelError);
           setSubscriptionData(data);
           setPanelStatus('offline');
           
@@ -254,51 +270,58 @@ const DeliveryPage = () => {
 
     setIsRefreshing(true);
     try {
-      console.log('DELIVERY: Refreshing subscription data using DYNAMIC panel configuration...');
+      console.log('DELIVERY: Refreshing subscription data using STRICT plan-assigned panel configuration...');
       
-      const panelType = subscriptionData.panel_type || 'marzban';
-      
-      const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
-        body: {
-          username: subscriptionData.username,
-          panelType: panelType,
-          panelUrl: subscriptionData.panel_url,
-          panelId: subscriptionData.panel_id
-        }
-      });
-
-      if (panelResult?.success && panelResult.data) {
-        console.log('DELIVERY: DYNAMIC refresh data received from panel');
-        
-        const updatedData = {
-          ...subscriptionData,
-          subscription_url: panelResult.data.subscription_url || subscriptionData.subscription_url,
-          expire: panelResult.data.expire ? panelResult.data.expire : subscriptionData.expire,
-          data_limit: panelResult.data.data_limit || subscriptionData.data_limit,
-          status: panelResult.data.status || subscriptionData.status,
-          used_traffic: panelResult.data.used_traffic || subscriptionData.used_traffic || 0
-        };
-        
-        setSubscriptionData(updatedData);
-        setPanelStatus('online');
-        localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
-        
-        if (updatedData.subscription_url) {
-          await generateQRCode(updatedData.subscription_url);
-        }
-        
-        toast({
-          title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
-          description: language === 'fa' ? 
-            'اطلاعات اشتراک بروزرسانی شد' : 
-            'Subscription data updated',
+      // Only refresh if we have proper panel configuration
+      if (subscriptionData.panel_id && subscriptionData.panel_type) {
+        const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
+          body: {
+            username: subscriptionData.username,
+            panelType: subscriptionData.panel_type,
+            panelUrl: subscriptionData.panel_url,
+            panelId: subscriptionData.panel_id // Use STRICT panel assignment
+          }
         });
+
+        if (panelResult?.success && panelResult.data) {
+          console.log('DELIVERY: STRICT refresh data received from assigned panel');
+          
+          const updatedData = {
+            ...subscriptionData,
+            subscription_url: panelResult.data.subscription_url || subscriptionData.subscription_url,
+            expire: panelResult.data.expire ? panelResult.data.expire : subscriptionData.expire,
+            data_limit: panelResult.data.data_limit || subscriptionData.data_limit,
+            status: panelResult.data.status || subscriptionData.status,
+            used_traffic: panelResult.data.used_traffic || subscriptionData.used_traffic || 0
+          };
+          
+          setSubscriptionData(updatedData);
+          setPanelStatus('online');
+          localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
+          
+          if (updatedData.subscription_url) {
+            await generateQRCode(updatedData.subscription_url);
+          }
+          
+          toast({
+            title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
+            description: language === 'fa' ? 
+              'اطلاعات اشتراک بروزرسانی شد' : 
+              'Subscription data updated',
+          });
+        } else {
+          console.error('DELIVERY: STRICT refresh failed:', panelError);
+          setPanelStatus('offline');
+          toast({
+            title: language === 'fa' ? 'خطا' : 'Error',
+            description: language === 'fa' ? 'خطا در بروزرسانی' : 'Failed to refresh',
+            variant: 'destructive'
+          });
+        }
       } else {
-        console.error('DELIVERY: Refresh failed:', panelError);
-        setPanelStatus('offline');
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
-          description: language === 'fa' ? 'خطا در بروزرسانی' : 'Failed to refresh',
+          description: language === 'fa' ? 'اطلاعات پنل موجود نیست' : 'Panel information not available',
           variant: 'destructive'
         });
       }
@@ -477,7 +500,7 @@ const DeliveryPage = () => {
                         <Label className="text-sm text-muted-foreground">
                           {language === 'fa' ? 'پنل' : 'Panel'}
                         </Label>
-                        <p className="font-bold">{subscriptionData.panel_name}</p>
+                        <p className="font-bold">{subscriptionData.plan_name ? `${subscriptionData.plan_name} - ${subscriptionData.panel_name}` : subscriptionData.panel_name}</p>
                       </div>
                     )}
                   </div>
@@ -533,7 +556,7 @@ const DeliveryPage = () => {
               )}
             </div>
 
-            {/* Right Column - QR Code */}
+            {/* Right Column - QR Code and Instructions */}
             <div className="space-y-6">
               {qrCodeDataUrl && (
                 <Card>

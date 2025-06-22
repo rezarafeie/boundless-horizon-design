@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
 import { DiscountCode } from '@/types/subscription';
 import { PlanService, PlanWithPanels } from '@/services/planService';
+import { PanelUserCreationService } from '@/services/panelUserCreationService';
 
 export const useMultiStepForm = () => {
   const { language } = useLanguage();
@@ -132,7 +133,7 @@ export const useMultiStepForm = () => {
     setIsCreatingSubscription(true);
     
     try {
-      console.log('MULTI STEP FORM: Creating subscription record with plan:', formData.selectedPlan);
+      console.log('MULTI STEP FORM: Creating subscription record with STRICT plan enforcement:', formData.selectedPlan);
       
       const totalPrice = calculateTotalPrice();
       
@@ -167,44 +168,43 @@ export const useMultiStepForm = () => {
 
       console.log('MULTI STEP FORM: Subscription created with ID:', data.id);
 
-      // If price is 0, create VPN user immediately using PlanService
+      // If price is 0, create VPN user immediately using STRICT PanelUserCreationService
       if (totalPrice === 0) {
         try {
-          console.log('MULTI STEP FORM: Creating VPN user for free subscription using PlanService');
+          console.log('MULTI STEP FORM: Creating VPN user for free subscription using STRICT PanelUserCreationService');
           
-          const vpnResult = await PlanService.createSubscription(
-            formData.selectedPlan.id,
-            {
-              username: uniqueUsername,
-              mobile: formData.mobile,
-              dataLimitGB: formData.dataLimit,
-              durationDays: formData.duration,
-              notes: `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name_en}`
-            }
-          );
+          const vpnResult = await PanelUserCreationService.createUserFromPanel({
+            planId: formData.selectedPlan.id,
+            username: uniqueUsername,
+            dataLimitGB: formData.dataLimit,
+            durationDays: formData.duration,
+            notes: `Free subscription via discount: ${appliedDiscount?.code || 'N/A'} - Plan: ${formData.selectedPlan.name_en}`,
+            subscriptionId: data.id,
+            isFreeTriaL: false
+          });
           
-          console.log('MULTI STEP FORM: VPN creation response:', vpnResult);
+          console.log('MULTI STEP FORM: STRICT VPN creation response:', vpnResult);
           
-          if (vpnResult) {
-            console.log('MULTI STEP FORM: Free subscription completed successfully');
+          if (vpnResult.success && vpnResult.data) {
+            console.log('MULTI STEP FORM: Free subscription completed successfully with STRICT panel assignment');
             
             // Update subscription with VPN details
             await supabase
               .from('subscriptions')
               .update({
                 status: 'active',
-                subscription_url: vpnResult.subscription_url,
-                expire_at: vpnResult.expire,
+                subscription_url: vpnResult.data.subscription_url,
+                expire_at: new Date(vpnResult.data.expire * 1000).toISOString(),
                 marzban_user_created: true
               })
               .eq('id', data.id);
             
             // Set result to skip payment step
             const subscriptionResult: SubscriptionResponse = {
-              username: vpnResult.username,
-              subscription_url: vpnResult.subscription_url,
-              expire: vpnResult.expire,
-              data_limit: vpnResult.data_limit
+              username: vpnResult.data.username,
+              subscription_url: vpnResult.data.subscription_url,
+              expire: vpnResult.data.expire,
+              data_limit: vpnResult.data.data_limit
             };
             
             setResult(subscriptionResult);
@@ -223,19 +223,19 @@ export const useMultiStepForm = () => {
             
             return data.id;
           } else {
-            console.warn('MULTI STEP FORM: VPN user creation failed');
+            console.error('MULTI STEP FORM: STRICT VPN user creation failed:', vpnResult.error);
             
             toast({
-              title: language === 'fa' ? 'خطای جزئی' : 'Partial Error',
+              title: language === 'fa' ? 'خطای جزئی'  : 'Partial Error',
               description: language === 'fa' ? 
-                'سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد. پس از پرداخت، VPN شما ایجاد خواهد شد.' :
-                'Order saved but VPN creation failed. Your VPN will be created after payment.',
+                `سفارش ثبت شد اما ایجاد VPN با خطا مواجه شد: ${vpnResult.error}` :
+                `Order saved but VPN creation failed: ${vpnResult.error}`,
               variant: 'destructive'
             });
           }
           
         } catch (vpnError) {
-          console.error('MULTI STEP FORM: VPN creation failed for free subscription:', vpnError);
+          console.error('MULTI STEP FORM: VPN creation failed for free subscription with STRICT enforcement:', vpnError);
           toast({
             title: language === 'fa' ? 'خطای جزئی' : 'Partial Error',
             description: language === 'fa' ? 
