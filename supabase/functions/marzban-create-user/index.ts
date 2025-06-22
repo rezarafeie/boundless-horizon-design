@@ -1,395 +1,221 @@
 
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-interface MarzbanUserRequest {
-  username: string;
-  data_limit: number;
-  expire_strategy: string;
-  expire_date: string;
-  inbounds: string[];
-  note: string;
-  enabled: boolean;
-}
-
-interface MarzbanUserResponse {
-  username: string;
-  subscription_url: string;
-  expire: number;
-  data_limit: number;
-}
-
-const logStep = (step: string, details?: any) => {
-  const timestamp = new Date().toISOString();
-  const detailsStr = details ? ` - ${JSON.stringify(details, null, 2)}` : '';
-  console.log(`[${timestamp}] [MARZBAN-CREATE] ${step}${detailsStr}`);
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const logError = (step: string, error: any) => {
-  const timestamp = new Date().toISOString();
-  console.error(`[${timestamp}] [MARZBAN-ERROR] ${step}:`, {
-    message: error?.message || 'Unknown error',
-    stack: error?.stack || 'No stack trace',
-    details: error
-  });
-};
-
-async function getPanelCredentials(panelId: string) {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-  logStep('Fetching panel credentials', { panelId });
-  
-  const { data: panel, error } = await supabase
-    .from('panel_servers')
-    .select('*')
-    .eq('id', panelId)
-    .single();
-
-  if (error || !panel) {
-    throw new Error(`Panel not found: ${error?.message || 'Unknown error'}`);
-  }
-
-  logStep('Panel credentials retrieved', {
-    panelName: panel.name,
-    panelUrl: panel.panel_url,
-    enabledProtocols: panel.enabled_protocols
-  });
-
-  return {
-    baseUrl: panel.panel_url.replace(/\/+$/, ''),
-    username: panel.username,
-    password: panel.password,
-    enabledProtocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
-  };
-}
-
-async function getAuthToken(baseUrl: string, username: string, password: string): Promise<string> {
-  const authUrl = `${baseUrl}/api/admin/token`;
-  logStep('Attempting authentication', { url: authUrl });
-  
-  const formData = new FormData();
-  formData.append('username', username);
-  formData.append('password', password);
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const tokenResponse = await fetch(authUrl, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    logStep('Auth response', { 
-      status: tokenResponse.status, 
-      statusText: tokenResponse.statusText,
-      contentType: tokenResponse.headers.get('content-type')
-    });
-
-    if (tokenResponse.ok) {
-      const tokenData = await tokenResponse.json();
-      if (tokenData.access_token) {
-        logStep('Authentication successful', { 
-          tokenType: tokenData.token_type || 'bearer',
-          tokenLength: tokenData.access_token.length 
-        });
-        return tokenData.access_token;
-      }
-    } else {
-      const errorText = await tokenResponse.text().catch(() => 'Unable to read error response');
-      logStep('Auth failed', { 
-        status: tokenResponse.status, 
-        error: errorText 
-      });
-    }
-  } catch (error) {
-    logError('Authentication failed', error);
-    if (error instanceof Error && error.name === 'AbortError') {
-      logStep('Authentication timed out');
-    }
-  }
-
-  throw new Error('Authentication failed. Please verify your credentials and panel URL.');
-}
-
-async function createMarzbanUser(
-  baseUrl: string,
-  token: string,
-  userData: {
-    username: string;
-    dataLimitGB: number;
-    durationDays: number;
-    notes: string;
-    enabledProtocols: string[];
-  }
-): Promise<MarzbanUserResponse> {
-  
-  logStep('Starting user creation process', {
-    username: userData.username,
-    dataLimitGB: userData.dataLimitGB,
-    durationDays: userData.durationDays,
-    enabledProtocols: userData.enabledProtocols
-  });
-  
-  // Calculate expiration date
-  const expireDate = new Date();
-  expireDate.setDate(expireDate.getDate() + userData.durationDays);
-  const expireDateString = expireDate.toISOString().split('T')[0];
-  
-  // Convert GB to bytes
-  const dataLimitBytes = userData.dataLimitGB * 1073741824;
-  
-  // Use dynamic protocols instead of hardcoded ones
-  const inbounds = userData.enabledProtocols.length > 0 ? userData.enabledProtocols : ["vmess", "vless", "trojan", "shadowsocks"];
-  
-  const userRequest: MarzbanUserRequest = {
-    username: userData.username,
-    data_limit: dataLimitBytes,
-    expire_strategy: "fixed_date",
-    expire_date: expireDateString,
-    inbounds: inbounds,
-    note: `Purchased via bnets.co - ${userData.notes || 'No additional notes'}`,
-    enabled: true
-  };
-  
-  logStep('Prepared user creation request', userRequest);
-
-  // Try multiple API endpoints/methods
-  const endpoints = [
-    { method: 'POST', url: `${baseUrl}/api/users` },
-    { method: 'PUT', url: `${baseUrl}/api/users` },
-    { method: 'POST', url: `${baseUrl}/api/user` },
-    { method: 'PUT', url: `${baseUrl}/api/user` }
-  ];
-
-  for (const endpoint of endpoints) {
-    try {
-      logStep(`Trying ${endpoint.method} ${endpoint.url}`);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-      
-      const response = await fetch(endpoint.url, {
-        method: endpoint.method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(userRequest),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      logStep(`${endpoint.method} ${endpoint.url} response`, { 
-        status: response.status, 
-        statusText: response.statusText,
-        contentType: response.headers.get('content-type')
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        logStep('User creation successful', {
-          username: result.username,
-          hasSubscriptionUrl: !!result.subscription_url
-        });
-        
-        // Construct subscription URL
-        let subscriptionUrl = result.subscription_url || `${baseUrl}/sub/${userData.username}`;
-        
-        // Calculate expire timestamp
-        const expireTimestamp = Math.floor(expireDate.getTime() / 1000);
-        
-        const marzbanResponse: MarzbanUserResponse = {
-          username: result.username || userData.username,
-          subscription_url: subscriptionUrl,
-          expire: result.expire || expireTimestamp,
-          data_limit: result.data_limit || dataLimitBytes
-        };
-        
-        logStep('Final Marzban response prepared', marzbanResponse);
-        return marzbanResponse;
-      } else {
-        const errorData = await response.json().catch(async () => {
-          const textError = await response.text().catch(() => 'Unable to read error response');
-          return { detail: textError };
-        });
-        
-        logStep(`${endpoint.method} ${endpoint.url} failed`, { 
-          status: response.status, 
-          statusText: response.statusText,
-          errorData 
-        });
-
-        // Don't throw error yet, try next endpoint
-        continue;
-      }
-    } catch (error) {
-      logError(`${endpoint.method} ${endpoint.url} error`, error);
-      // Continue to next endpoint
-      continue;
-    }
-  }
-
-  // If we get here, all endpoints failed
-  throw new Error('All API endpoints failed. The Marzban panel may not support user creation via API or may be misconfigured.');
-}
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    logStep('Marzban create user function started');
+    const { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols } = await req.json();
     
-    const requestBody = await req.json();
-    logStep('Request body parsed', {
-      hasUsername: !!requestBody.username,
-      hasDataLimit: !!requestBody.dataLimitGB,
-      hasDuration: !!requestBody.durationDays,
-      hasPanelId: !!requestBody.panelId,
-      hasEnabledProtocols: !!requestBody.enabledProtocols,
-      usernameLength: requestBody.username?.length || 0
+    console.log('🔵 [MARZBAN-CREATE-USER] Starting user creation with STRICT panel selection:', {
+      username,
+      dataLimitGB,
+      durationDays,
+      panelId: panelId || 'NOT PROVIDED',
+      enabledProtocols
     });
 
-    const { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols } = requestBody;
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Input validation
-    if (!username || typeof username !== 'string' || username.trim().length === 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Username is required and must be a non-empty string' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    let panelConfig = null;
 
-    if (!dataLimitGB || typeof dataLimitGB !== 'number' || dataLimitGB <= 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Valid data limit (in GB) is required and must be a positive number' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    // ✅ CRITICAL FIX: Use the EXACT panel specified by panelId, no fallbacks
+    if (panelId) {
+      console.log('🔵 [MARZBAN-CREATE-USER] Using STRICT panel selection with panelId:', panelId);
+      
+      const { data: panel, error: panelError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('id', panelId)
+        .eq('type', 'marzban')
+        .eq('is_active', true)
+        .single();
 
-    if (!durationDays || typeof durationDays !== 'number' || durationDays <= 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Valid duration (in days) is required and must be a positive number' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!panelId || typeof panelId !== 'string') {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Panel ID is required' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Get panel-specific credentials and configuration
-    const { baseUrl, username: panelUsername, password: panelPassword, enabledProtocols: panelProtocols } = await getPanelCredentials(panelId);
-    
-    // Use provided protocols or fall back to panel's enabled protocols
-    const finalProtocols = enabledProtocols && Array.isArray(enabledProtocols) && enabledProtocols.length > 0 
-      ? enabledProtocols 
-      : panelProtocols;
-    
-    // Get authentication token
-    const token = await getAuthToken(baseUrl, panelUsername, panelPassword);
-    
-    // Create the user
-    const result = await createMarzbanUser(
-      baseUrl,
-      token,
-      { 
-        username: username.trim(), 
-        dataLimitGB, 
-        durationDays, 
-        notes: notes || '',
-        enabledProtocols: finalProtocols
+      if (panelError || !panel) {
+        console.error('❌ [MARZBAN-CREATE-USER] STRICT panel selection failed:', panelError);
+        throw new Error(`Specified panel not found or inactive: ${panelId}`);
       }
-    );
 
-    logStep('Marzban user creation completed successfully', {
-      username: result.username,
-      success: true
+      panelConfig = panel;
+      console.log('🟢 [MARZBAN-CREATE-USER] Using STRICTLY SPECIFIED panel:', {
+        panelId: panel.id,
+        panelName: panel.name,
+        panelUrl: panel.panel_url,
+        panelType: panel.type,
+        isActive: panel.is_active,
+        healthStatus: panel.health_status
+      });
+    } else {
+      // ❌ FALLBACK: Only use if no specific panel is provided (should not happen in strict mode)
+      console.log('⚠️ [MARZBAN-CREATE-USER] No panelId provided, using fallback panel selection');
+      
+      const { data: panels, error: panelsError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('type', 'marzban')
+        .eq('is_active', true)
+        .eq('health_status', 'online')
+        .order('created_at', { ascending: true });
+
+      if (panelsError || !panels || panels.length === 0) {
+        console.error('❌ [MARZBAN-CREATE-USER] No active Marzban panels found:', panelsError);
+        throw new Error('No active Marzban panels available');
+      }
+
+      panelConfig = panels[0];
+      console.log('⚠️ [MARZBAN-CREATE-USER] Using FALLBACK panel (not recommended):', {
+        panelId: panelConfig.id,
+        panelName: panelConfig.name,
+        panelUrl: panelConfig.panel_url
+      });
+    }
+
+    // ✅ CRITICAL LOG: Show exactly which panel API will be used
+    console.log('🔵 [MARZBAN-CREATE-USER] Creating user on panel:', {
+      panelName: panelConfig.name,
+      panelUrl: panelConfig.panel_url,
+      panelId: panelConfig.id,
+      username: panelConfig.username,
+      expectedDomain: panelConfig.panel_url.includes('cp.rain.rest') ? 'Plus Panel' : 'Lite Panel'
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: result
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    // Step 1: Authenticate with the SPECIFIC panel
+    const authResponse = await fetch(`${panelConfig.panel_url}/api/admin/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: panelConfig.username,
+        password: panelConfig.password
+      })
+    });
+
+    if (!authResponse.ok) {
+      console.error('❌ [MARZBAN-CREATE-USER] Authentication failed:', {
+        status: authResponse.status,
+        statusText: authResponse.statusText,
+        panelUrl: panelConfig.panel_url
+      });
+      throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
+    }
+
+    const authData = await authResponse.json();
+    const accessToken = authData.access_token;
+
+    console.log('🟢 [MARZBAN-CREATE-USER] Authentication successful on panel:', panelConfig.panel_url);
+
+    // Step 2: Get template user configuration (usually 'reza')
+    const templateUserResponse = await fetch(`${panelConfig.panel_url}/api/user/reza`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
       }
-    );
+    });
+
+    if (!templateUserResponse.ok) {
+      console.error('❌ [MARZBAN-CREATE-USER] Template user fetch failed:', templateUserResponse.status);
+      throw new Error(`Template user fetch failed: ${templateUserResponse.status}`);
+    }
+
+    const templateUser = await templateUserResponse.json();
+    console.log('🟢 [MARZBAN-CREATE-USER] Template user fetched successfully');
+
+    // Step 3: Create the new user with template configuration
+    const dataLimitBytes = dataLimitGB * 1073741824; // Convert GB to bytes
+    const expireTimestamp = Math.floor(Date.now() / 1000) + (durationDays * 24 * 60 * 60);
+
+    const newUserData = {
+      username: username,
+      proxies: templateUser.proxies,
+      expire: expireTimestamp,
+      data_limit: dataLimitBytes,
+      data_limit_reset_strategy: templateUser.data_limit_reset_strategy || "no_reset",
+      inbounds: templateUser.inbounds,
+      note: notes || `Created via bnets.co - Subscription`,
+      status: "active",
+      excluded_inbounds: templateUser.excluded_inbounds || {}
+    };
+
+    console.log('🔵 [MARZBAN-CREATE-USER] Creating user with data:', {
+      username: newUserData.username,
+      expire: new Date(expireTimestamp * 1000).toISOString(),
+      dataLimitGB: dataLimitGB,
+      panelUrl: panelConfig.panel_url
+    });
+
+    const createUserResponse = await fetch(`${panelConfig.panel_url}/api/user`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(newUserData)
+    });
+
+    if (!createUserResponse.ok) {
+      const errorText = await createUserResponse.text();
+      console.error('❌ [MARZBAN-CREATE-USER] User creation failed:', {
+        status: createUserResponse.status,
+        statusText: createUserResponse.statusText,
+        error: errorText,
+        panelUrl: panelConfig.panel_url
+      });
+      throw new Error(`User creation failed: ${createUserResponse.status} - ${errorText}`);
+    }
+
+    const createdUser = await createUserResponse.json();
+    
+    // ✅ CRITICAL VERIFICATION: Log the subscription URL domain
+    const subscriptionDomain = createdUser.subscription_url?.split('/')[2] || 'unknown';
+    
+    console.log('🟢 [MARZBAN-CREATE-USER] User created successfully:', {
+      username: createdUser.username,
+      subscriptionUrl: createdUser.subscription_url,
+      subscriptionDomain,
+      panelUsed: panelConfig.name,
+      panelUrl: panelConfig.panel_url,
+      expire: createdUser.expire
+    });
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        username: createdUser.username,
+        subscription_url: createdUser.subscription_url,
+        expire: createdUser.expire,
+        data_limit: createdUser.data_limit,
+        status: createdUser.status,
+        panel_type: 'marzban',
+        panel_name: panelConfig.name,
+        panel_id: panelConfig.id,
+        panel_url: panelConfig.panel_url
+      }
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
 
   } catch (error) {
-    logError('Function execution failed', error);
+    console.error('❌ [MARZBAN-CREATE-USER] Error:', error);
     
-    let errorMessage = 'Failed to create user';
-    let statusCode = 500;
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      
-      if (error.message.includes('Panel not found')) {
-        statusCode = 404;
-      } else if (error.message.includes('already taken')) {
-        statusCode = 409;
-      } else if (error.message.includes('Validation error')) {
-        statusCode = 422;
-      } else if (error.message.includes('timeout')) {
-        statusCode = 503;
-      } else if (error.message.includes('authentication') || 
-                 error.message.includes('Authentication')) {
-        statusCode = 502;
-      }
-    }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: errorMessage
-      }),
-      { 
-        status: statusCode, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+    });
   }
 });

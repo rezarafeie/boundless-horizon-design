@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface PanelUserCreationRequest {
@@ -28,11 +29,11 @@ export interface PanelUserCreationResponse {
 export class PanelUserCreationService {
   
   static async createUserFromPanel(request: PanelUserCreationRequest): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Starting STRICT plan-to-panel user creation:', request);
+    console.log('🔵 PANEL_USER_CREATION: Starting STRICT plan-to-panel user creation:', request);
     
     try {
       // Step 1: Get plan with its STRICTLY assigned panel - NO FALLBACKS ALLOWED
-      console.log('PANEL_USER_CREATION: Looking up plan with STRICT panel binding:', request.planId);
+      console.log('🔵 PANEL_USER_CREATION: Looking up plan with STRICT panel binding:', request.planId);
       
       const { data: planConfig, error: planError } = await supabase
         .from('subscription_plans')
@@ -56,23 +57,24 @@ export class PanelUserCreationService {
         .single();
 
       if (planError || !planConfig) {
-        console.error('PANEL_USER_CREATION: Plan not found:', planError);
+        console.error('❌ PANEL_USER_CREATION: Plan not found:', planError);
         return {
           success: false,
           error: `Plan not found: ${request.planId}. Error: ${planError?.message || 'Unknown error'}`
         };
       }
 
-      console.log('PANEL_USER_CREATION: Plan loaded with STRICT binding:', {
+      console.log('🔵 PANEL_USER_CREATION: Plan loaded with STRICT binding:', {
         planId: planConfig.id,
         planName: planConfig.name_en,
+        planIdentifier: planConfig.plan_id,
         hasAssignedPanel: !!planConfig.panel_servers,
         assignedPanelId: planConfig.assigned_panel_id
       });
 
       // Step 2: ABSOLUTE STRICT VALIDATION - Plan MUST have assigned panel, NO EXCEPTIONS
       if (!planConfig.assigned_panel_id || !planConfig.panel_servers) {
-        console.error('PANEL_USER_CREATION: STRICT VALIDATION FAILED - No panel assigned to plan');
+        console.error('❌ PANEL_USER_CREATION: STRICT VALIDATION FAILED - No panel assigned to plan');
         return {
           success: false,
           error: `CRITICAL ERROR: Plan "${planConfig.name_en}" has NO assigned panel. This plan cannot create VPN users. Please contact admin to assign a panel to this plan.`
@@ -83,7 +85,7 @@ export class PanelUserCreationService {
       
       // Step 3: STRICT PANEL HEALTH VALIDATION - Panel must be active and healthy
       if (!panel.is_active) {
-        console.error('PANEL_USER_CREATION: STRICT VALIDATION FAILED - Assigned panel is not active');
+        console.error('❌ PANEL_USER_CREATION: STRICT VALIDATION FAILED - Assigned panel is not active');
         return {
           success: false,
           error: `PANEL ERROR: The assigned panel "${panel.name}" for plan "${planConfig.name_en}" is currently INACTIVE. VPN creation is not possible. Please contact admin.`
@@ -91,25 +93,28 @@ export class PanelUserCreationService {
       }
 
       if (panel.health_status === 'offline') {
-        console.error('PANEL_USER_CREATION: STRICT VALIDATION FAILED - Assigned panel is offline');
+        console.error('❌ PANEL_USER_CREATION: STRICT VALIDATION FAILED - Assigned panel is offline');
         return {
           success: false,
           error: `PANEL ERROR: The assigned panel "${panel.name}" for plan "${planConfig.name_en}" is currently OFFLINE. VPN creation is not possible. Please try again later or contact admin.`
         };
       }
 
-      console.log('PANEL_USER_CREATION: Using STRICTLY ASSIGNED panel (NO FALLBACKS):', {
+      // ✅ CRITICAL FIX: Log the exact panel being used to verify correct routing
+      console.log('🟢 PANEL_USER_CREATION: Using STRICTLY ASSIGNED panel (NO FALLBACKS):', {
+        planIdentifier: planConfig.plan_id,
+        planName: planConfig.name_en,
         panelId: panel.id,
         panelName: panel.name,
         panelType: panel.type,
         panelUrl: panel.panel_url,
         healthStatus: panel.health_status,
         isActive: panel.is_active,
-        planName: planConfig.name_en
+        expectedDomain: panel.panel_url.includes('cp.rain.rest') ? 'cp.rain.rest (Plus)' : 'file.shopifysb.xyz (Lite)'
       });
 
       // Step 4: CRITICAL FIX - Call the CORRECT edge function based on panel type
-      console.log('PANEL_USER_CREATION: Determining correct edge function for panel type:', panel.type);
+      console.log('🔵 PANEL_USER_CREATION: Determining correct edge function for panel type:', panel.type);
       
       let edgeFunctionName: string;
       const userCreationData = {
@@ -117,42 +122,56 @@ export class PanelUserCreationService {
         dataLimitGB: request.dataLimitGB,
         durationDays: request.durationDays,
         notes: request.notes || `Plan: ${planConfig.name_en || planConfig.plan_id}, ${request.isFreeTriaL ? 'Free Trial' : 'Paid Subscription'}`,
-        panelId: panel.id,
+        panelId: panel.id, // ✅ CRITICAL: Pass the exact panel ID to ensure correct API usage
         enabledProtocols: panel.enabled_protocols
       };
 
       // FIXED: Route to correct edge function based on panel type
       if (panel.type === 'marzban') {
         edgeFunctionName = 'marzban-create-user';
-        console.log('PANEL_USER_CREATION: Using MARZBAN edge function for Marzban panel');
+        console.log('🟢 PANEL_USER_CREATION: Using MARZBAN edge function for Marzban panel');
       } else if (panel.type === 'marzneshin') {
         edgeFunctionName = 'marzneshin-create-user';  
-        console.log('PANEL_USER_CREATION: Using MARZNESHIN edge function for Marzneshin panel');
+        console.log('🟢 PANEL_USER_CREATION: Using MARZNESHIN edge function for Marzneshin panel');
       } else {
-        console.error('PANEL_USER_CREATION: Unsupported panel type:', panel.type);
+        console.error('❌ PANEL_USER_CREATION: Unsupported panel type:', panel.type);
         return {
           success: false,
           error: `PANEL ERROR: Unsupported panel type "${panel.type}" for panel "${panel.name}". Only Marzban and Marzneshin are supported.`
         };
       }
 
-      // Step 5: Create user using the CORRECTLY ROUTED edge function
-      console.log(`PANEL_USER_CREATION: Calling ${edgeFunctionName} for ${panel.type} panel`);
+      // ✅ CRITICAL LOG: Log the exact API call being made
+      console.log(`🔵 PANEL_USER_CREATION: About to call ${edgeFunctionName} with:`, {
+        edgeFunction: edgeFunctionName,
+        targetPanelId: panel.id,
+        targetPanelUrl: panel.panel_url,
+        targetPanelName: panel.name,
+        planType: planConfig.plan_id,
+        userCreationData
+      });
+
+      // Step 5: Create user using the CORRECTLY ROUTED edge function with EXACT panel ID
+      console.log(`🔵 PANEL_USER_CREATION: Calling ${edgeFunctionName} for ${panel.type} panel at ${panel.panel_url}`);
       
       const { data: creationResult, error: creationError } = await supabase.functions.invoke(edgeFunctionName, {
         body: userCreationData
       });
 
-      console.log(`PANEL_USER_CREATION: ${edgeFunctionName} response:`, { 
+      console.log(`🔵 PANEL_USER_CREATION: ${edgeFunctionName} response:`, { 
         success: creationResult?.success,
         error: creationError || creationResult?.error,
         panelUsed: panel.name,
         panelUrl: panel.panel_url,
-        panelType: panel.type
+        panelType: panel.type,
+        responseData: creationResult?.data ? {
+          username: creationResult.data.username,
+          subscriptionUrlDomain: creationResult.data.subscription_url?.split('/')[2] || 'unknown'
+        } : null
       });
 
       if (creationError) {
-        console.error(`PANEL_USER_CREATION: ${edgeFunctionName} edge function error:`, creationError);
+        console.error(`❌ PANEL_USER_CREATION: ${edgeFunctionName} edge function error:`, creationError);
         return {
           success: false,
           error: `VPN CREATION FAILED: ${panel.type} panel "${panel.name}" (${panel.panel_url}) connection failed. Error: ${creationError.message}. No fallback panels used - this plan requires this specific panel.`
@@ -160,7 +179,7 @@ export class PanelUserCreationService {
       }
 
       if (!creationResult?.success) {
-        console.error(`PANEL_USER_CREATION: ${edgeFunctionName} creation failed:`, creationResult?.error);
+        console.error(`❌ PANEL_USER_CREATION: ${edgeFunctionName} creation failed:`, creationResult?.error);
         return {
           success: false,
           error: `VPN CREATION FAILED: User creation failed on ${panel.type} panel "${panel.name}" (${panel.panel_url}). Error: ${creationResult?.error || 'Unknown creation error'}. No fallback panels used - this plan requires this specific panel.`
@@ -170,21 +189,39 @@ export class PanelUserCreationService {
       // Step 6: Extract user creation data
       const userData = creationResult.data;
       if (!userData) {
-        console.error(`PANEL_USER_CREATION: No user data in ${edgeFunctionName} response`);
+        console.error(`❌ PANEL_USER_CREATION: No user data in ${edgeFunctionName} response`);
         return {
           success: false,
           error: `VPN USER CREATION FAILED: No user data received from ${panel.type} panel "${panel.name}". No fallback panels used - this plan requires this specific panel.`
         };
       }
 
-      console.log(`PANEL_USER_CREATION: User created successfully on STRICT ${panel.type} panel:`, {
+      // ✅ CRITICAL VERIFICATION: Log the subscription URL domain to verify correct panel usage
+      const subscriptionDomain = userData.subscription_url?.split('/')[2] || 'unknown';
+      const isCorrectDomain = (
+        (planConfig.plan_id === 'plus' && subscriptionDomain.includes('rain')) ||
+        (planConfig.plan_id === 'lite' && subscriptionDomain.includes('shopifysb'))
+      );
+
+      console.log(`🟢 PANEL_USER_CREATION: User created successfully on STRICT ${panel.type} panel:`, {
         username: userData.username,
-        hasSubscriptionUrl: !!userData.subscription_url,
+        subscriptionUrl: userData.subscription_url,
+        subscriptionDomain,
+        isCorrectDomain,
+        planType: planConfig.plan_id,
         panelUsed: panel.name,
         panelId: panel.id,
         panelUrl: panel.panel_url,
         planName: planConfig.name_en
       });
+
+      if (!isCorrectDomain) {
+        console.error('❌ PANEL_USER_CREATION: DOMAIN MISMATCH DETECTED!', {
+          expectedDomainForPlan: planConfig.plan_id === 'plus' ? 'rain domain' : 'shopifysb domain',
+          actualDomain: subscriptionDomain,
+          planType: planConfig.plan_id
+        });
+      }
 
       // Step 7: Return success response with STRICT panel info
       const responseData = {
@@ -198,14 +235,14 @@ export class PanelUserCreationService {
         panel_url: panel.panel_url
       };
 
-      console.log(`PANEL_USER_CREATION: STRICT SUCCESS - Returning response for ${panel.type}:`, responseData);
+      console.log(`🟢 PANEL_USER_CREATION: STRICT SUCCESS - Returning response for ${panel.type}:`, responseData);
       return {
         success: true,
         data: responseData
       };
 
     } catch (error) {
-      console.error('PANEL_USER_CREATION: Unexpected error in STRICT binding:', error);
+      console.error('❌ PANEL_USER_CREATION: Unexpected error in STRICT binding:', error);
       
       let errorMessage = 'Unexpected error occurred during user creation with strict panel assignment';
       if (error instanceof Error) {
