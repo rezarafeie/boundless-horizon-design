@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface PanelUserCreationRequest {
@@ -109,92 +108,78 @@ export class PanelUserCreationService {
         planName: planConfig.name_en
       });
 
-      // Step 4: HEALTH CHECK - Verify panel is reachable before creating user
-      console.log('PANEL_USER_CREATION: Performing panel health check before user creation');
+      // Step 4: CRITICAL FIX - Call the CORRECT edge function based on panel type
+      console.log('PANEL_USER_CREATION: Determining correct edge function for panel type:', panel.type);
       
-      try {
-        const { data: healthCheck, error: healthError } = await supabase.functions.invoke('test-panel-connection', {
-          body: {
-            panelId: panel.id,
-            createUser: false // Just test connection
-          }
-        });
-
-        if (healthError || !healthCheck?.success) {
-          console.error('PANEL_USER_CREATION: Panel health check FAILED:', healthError || healthCheck?.error);
-          return {
-            success: false,
-            error: `PANEL HEALTH CHECK FAILED: Panel "${panel.name}" (${panel.panel_url}) is not responding. Error: ${healthError?.message || healthCheck?.error || 'Unknown health check error'}`
-          };
-        }
-
-        console.log('PANEL_USER_CREATION: Panel health check passed');
-      } catch (healthCheckError) {
-        console.error('PANEL_USER_CREATION: Panel health check threw error:', healthCheckError);
-        return {
-          success: false,
-          error: `PANEL HEALTH CHECK ERROR: Unable to verify panel "${panel.name}" health. Error: ${healthCheckError instanceof Error ? healthCheckError.message : 'Unknown error'}`
-        };
-      }
-
-      // Step 5: Create user using the STRICTLY ASSIGNED and VERIFIED panel
-      console.log('PANEL_USER_CREATION: Creating user via STRICT panel assignment (health verified)');
-      
+      let edgeFunctionName: string;
       const userCreationData = {
         username: request.username,
         dataLimitGB: request.dataLimitGB,
         durationDays: request.durationDays,
         notes: request.notes || `Plan: ${planConfig.name_en || planConfig.plan_id}, ${request.isFreeTriaL ? 'Free Trial' : 'Paid Subscription'}`,
-        panelType: panel.type,
-        subscriptionId: request.subscriptionId,
-        isFreeTriaL: request.isFreeTriaL || false
+        panelId: panel.id,
+        enabledProtocols: panel.enabled_protocols
       };
 
-      const { data: creationResult, error: creationError } = await supabase.functions.invoke('test-panel-connection', {
-        body: {
-          panelId: panel.id, // Use STRICTLY ASSIGNED panel
-          createUser: true,
-          userData: userCreationData
-        }
+      // FIXED: Route to correct edge function based on panel type
+      if (panel.type === 'marzban') {
+        edgeFunctionName = 'marzban-create-user';
+        console.log('PANEL_USER_CREATION: Using MARZBAN edge function for Marzban panel');
+      } else if (panel.type === 'marzneshin') {
+        edgeFunctionName = 'marzneshin-create-user';  
+        console.log('PANEL_USER_CREATION: Using MARZNESHIN edge function for Marzneshin panel');
+      } else {
+        console.error('PANEL_USER_CREATION: Unsupported panel type:', panel.type);
+        return {
+          success: false,
+          error: `PANEL ERROR: Unsupported panel type "${panel.type}" for panel "${panel.name}". Only Marzban and Marzneshin are supported.`
+        };
+      }
+
+      // Step 5: Create user using the CORRECTLY ROUTED edge function
+      console.log(`PANEL_USER_CREATION: Calling ${edgeFunctionName} for ${panel.type} panel`);
+      
+      const { data: creationResult, error: creationError } = await supabase.functions.invoke(edgeFunctionName, {
+        body: userCreationData
       });
 
-      console.log('PANEL_USER_CREATION: User creation response from STRICT panel:', { 
+      console.log(`PANEL_USER_CREATION: ${edgeFunctionName} response:`, { 
         success: creationResult?.success,
         error: creationError || creationResult?.error,
-        userCreation: creationResult?.userCreation,
         panelUsed: panel.name,
-        panelUrl: panel.panel_url
+        panelUrl: panel.panel_url,
+        panelType: panel.type
       });
 
       if (creationError) {
-        console.error('PANEL_USER_CREATION: Edge function error on STRICT panel:', creationError);
+        console.error(`PANEL_USER_CREATION: ${edgeFunctionName} edge function error:`, creationError);
         return {
           success: false,
-          error: `VPN CREATION FAILED: Panel "${panel.name}" (${panel.panel_url}) connection failed. Error: ${creationError.message}. No fallback panels used - this plan requires this specific panel.`
+          error: `VPN CREATION FAILED: ${panel.type} panel "${panel.name}" (${panel.panel_url}) connection failed. Error: ${creationError.message}. No fallback panels used - this plan requires this specific panel.`
         };
       }
 
       if (!creationResult?.success) {
-        console.error('PANEL_USER_CREATION: User creation failed on STRICT panel:', creationResult?.error);
+        console.error(`PANEL_USER_CREATION: ${edgeFunctionName} creation failed:`, creationResult?.error);
         return {
           success: false,
-          error: `VPN CREATION FAILED: User creation failed on panel "${panel.name}" (${panel.panel_url}). Error: ${creationResult?.error || 'Unknown creation error'}. No fallback panels used - this plan requires this specific panel.`
+          error: `VPN CREATION FAILED: User creation failed on ${panel.type} panel "${panel.name}" (${panel.panel_url}). Error: ${creationResult?.error || 'Unknown creation error'}. No fallback panels used - this plan requires this specific panel.`
         };
       }
 
       // Step 6: Extract user creation data
-      const userCreation = creationResult.userCreation;
-      if (!userCreation?.success) {
-        console.error('PANEL_USER_CREATION: User creation unsuccessful on STRICT panel:', userCreation?.error);
+      const userData = creationResult.data;
+      if (!userData) {
+        console.error(`PANEL_USER_CREATION: No user data in ${edgeFunctionName} response`);
         return {
           success: false,
-          error: `VPN USER CREATION FAILED: ${userCreation?.error || `User creation failed on panel "${panel.name}"`}. No fallback panels used - this plan requires this specific panel.`
+          error: `VPN USER CREATION FAILED: No user data received from ${panel.type} panel "${panel.name}". No fallback panels used - this plan requires this specific panel.`
         };
       }
 
-      console.log('PANEL_USER_CREATION: User created successfully on STRICT panel:', {
-        username: userCreation.username,
-        hasSubscriptionUrl: !!userCreation.subscriptionUrl,
+      console.log(`PANEL_USER_CREATION: User created successfully on STRICT ${panel.type} panel:`, {
+        username: userData.username,
+        hasSubscriptionUrl: !!userData.subscription_url,
         panelUsed: panel.name,
         panelId: panel.id,
         panelUrl: panel.panel_url,
@@ -203,9 +188,9 @@ export class PanelUserCreationService {
 
       // Step 7: Return success response with STRICT panel info
       const responseData = {
-        username: userCreation.username,
-        subscription_url: userCreation.subscriptionUrl,
-        expire: userCreation.expire || Math.floor(Date.now() / 1000) + (request.durationDays * 24 * 60 * 60),
+        username: userData.username,
+        subscription_url: userData.subscription_url,
+        expire: userData.expire || Math.floor(Date.now() / 1000) + (request.durationDays * 24 * 60 * 60),
         data_limit: request.dataLimitGB * 1073741824, // Convert GB to bytes
         panel_type: panel.type,
         panel_name: panel.name,
@@ -213,7 +198,7 @@ export class PanelUserCreationService {
         panel_url: panel.panel_url
       };
 
-      console.log('PANEL_USER_CREATION: STRICT SUCCESS - Returning response:', responseData);
+      console.log(`PANEL_USER_CREATION: STRICT SUCCESS - Returning response for ${panel.type}:`, responseData);
       return {
         success: true,
         data: responseData
