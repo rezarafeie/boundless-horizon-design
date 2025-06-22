@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -276,9 +275,8 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
     }
   };
 
-  const handleManualRefresh = async ()
-
-  setIsRefreshing(true);
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
     console.log('STATUS_MONITOR: Manual refresh triggered');
     await checkStatus();
     setTimeout(() => {
