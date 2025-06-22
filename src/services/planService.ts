@@ -15,6 +15,11 @@ export interface PlanWithPanels {
   is_active: boolean;
   is_visible: boolean;
   assigned_panel_id?: string;
+  available_countries?: Array<{
+    code: string;
+    name: string;
+    flag: string;
+  }>;
   panels: {
     id: string;
     name: string;

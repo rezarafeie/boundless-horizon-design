@@ -70,7 +70,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
   }
 
   const handlePlanSelect = (plan: PlanWithPanels) => {
-    console.log('PlanSelector - Plan selected with STRICT validation:', {
+    console.log('PlanSelector - Plan selected with ULTRA STRICT validation:', {
       planId: plan.id,
       planName: plan.name_en,
       assignedPanelId: plan.assigned_panel_id,
@@ -78,9 +78,9 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       panelCount: plan.panels?.length || 0
     });
     
-    // STRICT VALIDATION: Ensure plan has assigned panel
+    // ULTRA STRICT VALIDATION: Ensure plan has assigned panel
     if (!plan.assigned_panel_id) {
-      console.error('PlanSelector - REJECTED: Plan has no assigned panel:', plan);
+      console.error('PlanSelector - ULTRA STRICT REJECTION: Plan has no assigned panel:', plan);
       return;
     }
     
