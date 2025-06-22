@@ -31,17 +31,28 @@ const StepContentRenderer = ({
   onPrevious
 }: StepContentRendererProps) => {
   console.log('StepContentRenderer - Current step:', currentStep);
-  console.log('StepContentRenderer - Form data:', formData);
+  console.log('StepContentRenderer - Form data selected plan:', formData.selectedPlan);
   console.log('StepContentRenderer - Subscription ID:', subscriptionId);
   
   switch (currentStep) {
     case 1:
       return (
         <PlanSelector
-          selectedPlan={formData.selectedPlan?.id || formData.selectedPlan?.plan_id || ''}
-          onPlanSelect={(plan: any) => {
-            console.log('StepContentRenderer - Plan selected:', plan);
-            // Convert the plan to PlanWithPanels format if needed
+          selectedPlan={formData.selectedPlan?.id || ''}
+          onPlanSelect={(plan: PlanWithPanels) => {
+            console.log('StepContentRenderer - Plan selected with STRICT enforcement:', {
+              planId: plan.id,
+              planName: plan.name_en,
+              assignedPanelId: plan.assigned_panel_id,
+              hasAssignedPanel: !!plan.assigned_panel_id
+            });
+            
+            // STRICT VALIDATION: Only allow plans with assigned panels
+            if (!plan.assigned_panel_id) {
+              console.error('StepContentRenderer - REJECTED: Plan has no assigned panel');
+              return;
+            }
+            
             onUpdateFormData('selectedPlan', plan);
           }}
           dataLimit={formData.dataLimit}

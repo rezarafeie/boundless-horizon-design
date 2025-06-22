@@ -5,90 +5,35 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CheckCircle, Globe, Loader } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { Country } from '@/data/countries';
-import { SubscriptionPlan } from '@/types/subscription';
-
-interface Plan {
-  id: string;
-  plan_id: string;
-  name_en: string;
-  name_fa: string;
-  description_en?: string;
-  description_fa?: string;
-  price_per_gb: number;
-  available_countries?: Country[];
-  api_type: string;
-}
+import { PlanService, PlanWithPanels } from '@/services/planService';
 
 interface PlanSelectorProps {
   selectedPlan: string | null;
-  onPlanSelect: (plan: SubscriptionPlan) => void;
+  onPlanSelect: (plan: PlanWithPanels) => void;
   dataLimit: number;
 }
 
 const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorProps) => {
   const { language } = useLanguage();
-  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plans, setPlans] = useState<PlanWithPanels[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('PlanSelector - Selected plan:', selectedPlan);
+    console.log('PlanSelector - Selected plan ID:', selectedPlan);
     console.log('PlanSelector - Data limit:', dataLimit);
   }, [selectedPlan, dataLimit]);
 
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        console.log('PlanSelector - Fetching plans...');
-        const { data, error } = await supabase
-          .from('subscription_plans')
-          .select('*')
-          .eq('is_active', true)
-          .eq('is_visible', true)
-          .order('price_per_gb', { ascending: true });
-
-        if (error) {
-          console.error('PlanSelector - Error fetching plans:', error);
-          throw error;
+        console.log('PlanSelector - Fetching plans from PlanService...');
+        const plansData = await PlanService.getAvailablePlans();
+        console.log('PlanSelector - Plans fetched:', plansData);
+        setPlans(plansData);
+        
+        if (plansData.length === 0) {
+          console.warn('PlanSelector - No plans available');
         }
-        
-        console.log('PlanSelector - Raw plans data:', data);
-        
-        // Transform the data to ensure available_countries is properly typed
-        const transformedPlans: Plan[] = (data || []).map(plan => {
-          let availableCountries: Country[] = [];
-          
-          // Safely parse available_countries from Json to Country[]
-          if (plan.available_countries && Array.isArray(plan.available_countries)) {
-            availableCountries = (plan.available_countries as unknown[]).filter((country: any) => 
-              country && 
-              typeof country === 'object' && 
-              typeof country.code === 'string' && 
-              typeof country.name === 'string' && 
-              typeof country.flag === 'string'
-            ).map((country: any) => ({
-              code: country.code,
-              name: country.name,
-              flag: country.flag
-            }));
-          }
-          
-          return {
-            id: plan.id,
-            plan_id: plan.plan_id,
-            name_en: plan.name_en,
-            name_fa: plan.name_fa,
-            description_en: plan.description_en,
-            description_fa: plan.description_fa,
-            price_per_gb: plan.price_per_gb,
-            api_type: plan.api_type,
-            available_countries: availableCountries
-          };
-        });
-        
-        console.log('PlanSelector - Transformed plans:', transformedPlans);
-        setPlans(transformedPlans);
       } catch (error) {
         console.error('PlanSelector - Error fetching plans:', error);
       } finally {
@@ -124,28 +69,22 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
     );
   }
 
-  const handlePlanSelect = (plan: Plan) => {
-    console.log('PlanSelector - Plan selected:', plan);
+  const handlePlanSelect = (plan: PlanWithPanels) => {
+    console.log('PlanSelector - Plan selected with STRICT validation:', {
+      planId: plan.id,
+      planName: plan.name_en,
+      assignedPanelId: plan.assigned_panel_id,
+      hasAssignedPanel: !!plan.assigned_panel_id,
+      panelCount: plan.panels?.length || 0
+    });
     
-    // Create a complete SubscriptionPlan object with all required fields
-    const subscriptionPlan: SubscriptionPlan = {
-      id: plan.id,
-      plan_id: plan.plan_id,
-      name: plan.name_en,
-      name_en: plan.name_en,
-      name_fa: plan.name_fa,
-      description: plan.description_en || '',
-      description_en: plan.description_en,
-      description_fa: plan.description_fa,
-      pricePerGB: plan.price_per_gb,
-      price_per_gb: plan.price_per_gb,
-      apiType: plan.api_type as 'marzban' | 'marzneshin',
-      api_type: plan.api_type as 'marzban' | 'marzneshin',
-      available_countries: plan.available_countries
-    };
+    // STRICT VALIDATION: Ensure plan has assigned panel
+    if (!plan.assigned_panel_id) {
+      console.error('PlanSelector - REJECTED: Plan has no assigned panel:', plan);
+      return;
+    }
     
-    console.log('PlanSelector - Passing complete plan object:', subscriptionPlan);
-    onPlanSelect(subscriptionPlan);
+    onPlanSelect(plan);
   };
 
   return (
@@ -165,7 +104,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {plans.map((plan) => {
           const totalPrice = plan.price_per_gb * dataLimit;
-          const isSelected = selectedPlan === plan.id || selectedPlan === plan.plan_id;
+          const isSelected = selectedPlan === plan.id;
           
           return (
             <Card 
@@ -187,6 +126,10 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
                 <CardDescription>
                   {language === 'fa' ? plan.description_fa : plan.description_en}
                 </CardDescription>
+                {/* Panel Assignment Info */}
+                <div className="text-xs text-gray-500">
+                  Panel: {plan.assigned_panel_id ? '✅ Assigned' : '❌ No Panel'}
+                </div>
               </CardHeader>
               
               <CardContent className="space-y-4">
@@ -222,7 +165,7 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {plan.available_countries.slice(0, 6).map((country: Country) => (
+                      {plan.available_countries.slice(0, 6).map((country: any) => (
                         <Badge key={country.code} variant="outline" className="text-xs">
                           <span className="mr-1">{country.flag}</span>
                           {country.name}
@@ -240,15 +183,19 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
                 <Button 
                   variant={isSelected ? "default" : "outline"} 
                   className="w-full"
+                  disabled={!plan.assigned_panel_id}
                   onClick={(e) => {
                     e.stopPropagation();
                     handlePlanSelect(plan);
                   }}
                 >
-                  {isSelected 
-                    ? (language === 'fa' ? 'انتخاب شده' : 'Selected')
-                    : (language === 'fa' ? 'انتخاب پلن' : 'Select Plan')
-                  }
+                  {!plan.assigned_panel_id ? (
+                    language === 'fa' ? 'پلن غیرفعال' : 'Plan Unavailable'
+                  ) : isSelected ? (
+                    language === 'fa' ? 'انتخاب شده' : 'Selected'
+                  ) : (
+                    language === 'fa' ? 'انتخاب پلن' : 'Select Plan'
+                  )}
                 </Button>
               </CardContent>
             </Card>

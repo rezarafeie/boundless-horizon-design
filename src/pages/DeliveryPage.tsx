@@ -1,243 +1,226 @@
+
 import { useState, useEffect } from 'react';
-import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
-import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
+import { Copy, Download, RefreshCw, AlertCircle, CheckCircle, Clock, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import QRCodeCanvas from 'qrcode';
+import { useLanguage } from '@/contexts/LanguageContext';
 import Navigation from '@/components/Navigation';
+import FooterSection from '@/components/FooterSection';
 
 interface SubscriptionData {
+  id: string;
   username: string;
-  subscription_url: string | null;
-  expire: number;
-  data_limit: number;
+  mobile: string;
+  data_limit_gb: number;
+  duration_days: number;
   status: string;
-  used_traffic?: number;
-  panel_type?: string;
-  panel_name?: string;
-  panel_id?: string;
-  panel_url?: string;
-  plan_name?: string;
+  subscription_url: string | null;
+  expire_at: string | null;
+  created_at: string;
+  plan_id: string;
+  marzban_user_created: boolean;
+  price_toman: number;
+  notes: string | null;
+  subscription_plans?: {
+    id: string;
+    name_en: string;
+    name_fa: string;
+    assigned_panel_id: string | null;
+    panel_servers?: {
+      id: string;
+      name: string;
+      panel_url: string;
+      type: string;
+      health_status: string;
+    } | null;
+  } | null;
 }
 
 const DeliveryPage = () => {
-  const { language } = useLanguage();
-  const { toast } = useToast();
-  const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [panelStatus, setPanelStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { language } = useLanguage();
+  const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [countdown, setCountdown] = useState<string>('');
+
+  const subscriptionId = searchParams.get('id');
 
   useEffect(() => {
-    const loadSubscriptionData = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        setPanelStatus('checking');
+    if (!subscriptionId) {
+      navigate('/');
+      return;
+    }
+    fetchSubscription();
+  }, [subscriptionId, navigate]);
 
-        console.log('DELIVERY: Loading subscription data with STRICT panel selection...');
-        console.log('DELIVERY: Location state:', location.state);
-        console.log('DELIVERY: URL search params:', Object.fromEntries(searchParams.entries()));
+  // Countdown timer
+  useEffect(() => {
+    if (subscription?.expire_at) {
+      const timer = setInterval(() => {
+        const now = new Date().getTime();
+        const expiry = new Date(subscription.expire_at!).getTime();
+        const diff = expiry - now;
 
-        // Check different sources for subscription data
-        let data: SubscriptionData | null = null;
-
-        // 1. From URL state (navigation from subscription form)
-        if (location.state?.subscriptionData) {
-          console.log('DELIVERY: Found subscription data in location state:', location.state.subscriptionData);
-          data = location.state.subscriptionData;
+        if (diff > 0) {
+          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          setCountdown(`${days}d ${hours}h ${minutes}m`);
+        } else {
+          setCountdown('Expired');
         }
-        // 2. From localStorage (fallback)
-        else if (localStorage.getItem('deliverySubscriptionData')) {
-          try {
-            data = JSON.parse(localStorage.getItem('deliverySubscriptionData')!);
-            console.log('DELIVERY: Found subscription data in localStorage:', data);
-          } catch (parseError) {
-            console.error('DELIVERY: Failed to parse subscription data from localStorage:', parseError);
-          }
-        }
-        // 3. From URL parameter 'id' - fetch from database with STRICT plan-panel mapping
-        else if (searchParams.get('id')) {
-          const subscriptionId = searchParams.get('id');
-          console.log('DELIVERY: Fetching subscription from database with STRICT plan-panel mapping, ID:', subscriptionId);
-          
-          try {
-            const { data: subscription, error: dbError } = await supabase
-              .from('subscriptions')
-              .select(`
-                *,
-                subscription_plans!plan_id (
-                  *,
-                  panel_servers!assigned_panel_id (
-                    id,
-                    name,
-                    panel_url,
-                    type,
-                    username,
-                    password,
-                    is_active,
-                    health_status
-                  )
-                )
-              `)
-              .eq('id', subscriptionId)
-              .single();
+      }, 60000);
 
-            if (dbError) {
-              console.error('DELIVERY: Database fetch error:', dbError);
-              throw new Error(`Database error: ${dbError.message}`);
-            }
+      return () => clearInterval(timer);
+    }
+  }, [subscription?.expire_at]);
 
-            if (subscription) {
-              console.log('DELIVERY: Fetched subscription with STRICT plan-panel data:', subscription);
-              
-              // Extract panel info using STRICT plan assignment
-              let panelInfo = null;
-              if (subscription.subscription_plans?.panel_servers) {
-                const panel = subscription.subscription_plans.panel_servers;
-                panelInfo = {
-                  panel_type: panel.type,
-                  panel_name: panel.name,
-                  panel_id: panel.id,
-                  panel_url: panel.panel_url,
-                  plan_name: subscription.subscription_plans.name_en
-                };
-                console.log('DELIVERY: Using STRICT panel info from plan assignment:', panelInfo);
-              } else {
-                console.warn('DELIVERY: STRICT WARNING - No panel assigned to plan:', subscription.subscription_plans?.name_en);
-              }
-              
-              data = {
-                username: subscription.username,
-                subscription_url: subscription.subscription_url,
-                expire: subscription.expire_at ? new Date(subscription.expire_at).getTime() : Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000),
-                data_limit: subscription.data_limit_gb * 1073741824,
-                status: subscription.status || 'active',
-                used_traffic: 0,
-                ...panelInfo
-              };
-              console.log('DELIVERY: Using subscription data with STRICT panel assignment:', data);
-            } else {
-              throw new Error('Subscription not found in database');
-            }
-          } catch (fetchError) {
-            console.error('DELIVERY: Failed to fetch subscription from database:', fetchError);
-            throw new Error(`Could not load subscription: ${fetchError.message}`);
-          }
-        }
+  const fetchSubscription = async () => {
+    if (!subscriptionId) return;
 
-        if (!data || !data.username) {
-          throw new Error('No subscription data found');
-        }
-
-        console.log('DELIVERY: Using subscription data with STRICT panel configuration:', { 
-          username: data.username, 
-          panelType: data.panel_type,
-          panelUrl: data.panel_url,
-          panelName: data.panel_name,
-          planName: data.plan_name
-        });
-
-        // Try to fetch fresh data from the STRICTLY ASSIGNED panel
-        try {
-          console.log('DELIVERY: Refreshing data using STRICT plan-assigned panel configuration');
-          
-          // Only proceed if we have proper panel configuration
-          if (data.panel_id && data.panel_type) {
-            const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
-              body: {
-                username: data.username,
-                panelType: data.panel_type,
-                panelUrl: data.panel_url,
-                panelId: data.panel_id // Use STRICT panel assignment
-              }
-            });
-
-            if (panelResult?.success && panelResult.data) {
-              console.log('DELIVERY: STRICT panel data received from assigned panel:', panelResult.data);
-              
-              // Merge panel data with existing data, preferring panel data for critical fields
-              const mergedData = {
-                ...data,
-                subscription_url: panelResult.data.subscription_url || data.subscription_url,
-                expire: panelResult.data.expire ? panelResult.data.expire : data.expire,
-                data_limit: panelResult.data.data_limit || data.data_limit,
-                status: panelResult.data.status || data.status,
-                used_traffic: panelResult.data.used_traffic || data.used_traffic || 0
-              };
-              
-              setSubscriptionData(mergedData);
-              setPanelStatus('online');
-              
-              // Store updated data in localStorage
-              localStorage.setItem('deliverySubscriptionData', JSON.stringify(mergedData));
-              
-              if (mergedData.subscription_url) {
-                await generateQRCode(mergedData.subscription_url);
-              }
-            } else {
-              console.warn('DELIVERY: STRICT panel data fetch failed, using fallback data:', panelError);
-              setSubscriptionData(data);
-              setPanelStatus('offline');
-              
-              if (data.subscription_url) {
-                await generateQRCode(data.subscription_url);
-              }
-            }
-          } else {
-            console.warn('DELIVERY: No panel configuration available, using subscription data as-is');
-            setSubscriptionData(data);
-            setPanelStatus('offline');
-            
-            if (data.subscription_url) {
-              await generateQRCode(data.subscription_url);
-            }
-          }
-        } catch (panelError) {
-          console.error('DELIVERY: Failed to fetch from STRICT assigned panel, using fallback data:', panelError);
-          setSubscriptionData(data);
-          setPanelStatus('offline');
-          
-          if (data.subscription_url) {
-            await generateQRCode(data.subscription_url);
-          }
-        }
-
-      } catch (error: any) {
-        console.error('DELIVERY: Error loading subscription data:', error);
-        setError(error.message || (language === 'fa' ? 'خطا در بارگذاری اطلاعات' : 'Error loading subscription data'));
-        setPanelStatus('offline');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadSubscriptionData();
-  }, [location.state, searchParams, language]);
-
-  const generateQRCode = async (url: string) => {
     try {
-      const qrDataUrl = await QRCodeCanvas.toDataURL(url, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
+      console.log('DELIVERY_PAGE: Fetching subscription with STRICT plan-to-panel binding:', subscriptionId);
+      
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select(`
+          *,
+          subscription_plans!plan_id (
+            id,
+            name_en,
+            name_fa,
+            assigned_panel_id,
+            panel_servers!assigned_panel_id (
+              id,
+              name,
+              panel_url,
+              type,
+              health_status
+            )
+          )
+        `)
+        .eq('id', subscriptionId)
+        .single();
+
+      if (error) {
+        console.error('DELIVERY_PAGE: Error fetching subscription:', error);
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 'خطا در بارگذاری اطلاعات اشتراک' : 'Failed to load subscription data',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      console.log('DELIVERY_PAGE: Subscription fetched with STRICT binding:', {
+        subscriptionId: data.id,
+        planId: data.plan_id,
+        planName: data.subscription_plans?.name_en,
+        assignedPanelId: data.subscription_plans?.assigned_panel_id,
+        panelName: data.subscription_plans?.panel_servers?.name,
+        panelUrl: data.subscription_plans?.panel_servers?.panel_url,
+        status: data.status
+      });
+
+      setSubscription(data);
+    } catch (error) {
+      console.error('DELIVERY_PAGE: Error:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'خطا در اتصال به سرور' : 'Connection error',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshSubscription = async () => {
+    if (!subscription?.subscription_plans?.panel_servers) {
+      console.error('DELIVERY_PAGE: Cannot refresh - no panel assigned to plan');
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'پنل اختصاصی برای این پلن یافت نشد' : 
+          'No assigned panel found for this plan',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      console.log('DELIVERY_PAGE: Refreshing subscription using STRICTLY assigned panel:', {
+        subscriptionId: subscription.id,
+        username: subscription.username,
+        planName: subscription.subscription_plans.name_en,
+        assignedPanelId: subscription.subscription_plans.assigned_panel_id,
+        panelName: subscription.subscription_plans.panel_servers.name,
+        panelUrl: subscription.subscription_plans.panel_servers.panel_url
+      });
+
+      const { data, error } = await supabase.functions.invoke('get-subscription-from-panel', {
+        body: {
+          username: subscription.username,
+          panelType: subscription.subscription_plans.panel_servers.type,
+          panelUrl: subscription.subscription_plans.panel_servers.panel_url,
+          panelId: subscription.subscription_plans.panel_servers.id
         }
       });
-      setQrCodeDataUrl(qrDataUrl);
+
+      if (error) {
+        console.error('DELIVERY_PAGE: Refresh error:', error);
+        throw error;
+      }
+
+      console.log('DELIVERY_PAGE: Refresh response from STRICTLY assigned panel:', data);
+
+      if (data.success && data.subscription) {
+        // Update subscription with fresh data from the STRICTLY assigned panel
+        const { error: updateError } = await supabase
+          .from('subscriptions')
+          .update({
+            subscription_url: data.subscription.subscription_url,
+            expire_at: data.subscription.expire_at,
+            status: 'active',
+            marzban_user_created: true
+          })
+          .eq('id', subscription.id);
+
+        if (updateError) {
+          console.error('DELIVERY_PAGE: Update error:', updateError);
+          throw updateError;
+        }
+
+        // Refresh the local data
+        await fetchSubscription();
+        
+        toast({
+          title: language === 'fa' ? 'موفق' : 'Success',
+          description: language === 'fa' ? 
+            'اطلاعات اشتراک بروزرسانی شد' : 
+            'Subscription data updated successfully'
+        });
+      } else {
+        throw new Error(data.error || 'Failed to fetch subscription from panel');
+      }
     } catch (error) {
-      console.error('Error generating QR code:', error);
+      console.error('DELIVERY_PAGE: Refresh failed:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: error instanceof Error ? error.message : 
+          (language === 'fa' ? 'خطا در بروزرسانی اطلاعات' : 'Failed to refresh data'),
+        variant: 'destructive'
+      });
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -245,399 +228,349 @@ const DeliveryPage = () => {
     navigator.clipboard.writeText(text);
     toast({
       title: language === 'fa' ? 'کپی شد' : 'Copied',
-      description: language === 'fa' ? 
-        'لینک اشتراک کپی شد' : 
-        'Subscription link copied to clipboard',
+      description: language === 'fa' ? 'لینک کپی شد' : 'Link copied to clipboard'
     });
   };
 
   const downloadConfig = () => {
-    if (!subscriptionData?.subscription_url) return;
+    if (!subscription?.subscription_url) return;
     
-    const blob = new Blob([subscriptionData.subscription_url], { type: 'text/plain' });
+    const blob = new Blob([subscription.subscription_url], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${subscriptionData.username}-subscription.txt`;
+    a.download = `${subscription.username}-config.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const refreshSubscription = async () => {
-    if (!subscriptionData) return;
-
-    setIsRefreshing(true);
-    try {
-      console.log('DELIVERY: Refreshing subscription data using STRICT plan-assigned panel configuration...');
-      
-      // Only refresh if we have proper panel configuration
-      if (subscriptionData.panel_id && subscriptionData.panel_type) {
-        const { data: panelResult, error: panelError } = await supabase.functions.invoke('get-subscription-from-panel', {
-          body: {
-            username: subscriptionData.username,
-            panelType: subscriptionData.panel_type,
-            panelUrl: subscriptionData.panel_url,
-            panelId: subscriptionData.panel_id // Use STRICT panel assignment
-          }
-        });
-
-        if (panelResult?.success && panelResult.data) {
-          console.log('DELIVERY: STRICT refresh data received from assigned panel');
-          
-          const updatedData = {
-            ...subscriptionData,
-            subscription_url: panelResult.data.subscription_url || subscriptionData.subscription_url,
-            expire: panelResult.data.expire ? panelResult.data.expire : subscriptionData.expire,
-            data_limit: panelResult.data.data_limit || subscriptionData.data_limit,
-            status: panelResult.data.status || subscriptionData.status,
-            used_traffic: panelResult.data.used_traffic || subscriptionData.used_traffic || 0
-          };
-          
-          setSubscriptionData(updatedData);
-          setPanelStatus('online');
-          localStorage.setItem('deliverySubscriptionData', JSON.stringify(updatedData));
-          
-          if (updatedData.subscription_url) {
-            await generateQRCode(updatedData.subscription_url);
-          }
-          
-          toast({
-            title: language === 'fa' ? 'بروزرسانی شد' : 'Refreshed',
-            description: language === 'fa' ? 
-              'اطلاعات اشتراک بروزرسانی شد' : 
-              'Subscription data updated',
-          });
-        } else {
-          console.error('DELIVERY: STRICT refresh failed:', panelError);
-          setPanelStatus('offline');
-          toast({
-            title: language === 'fa' ? 'خطا' : 'Error',
-            description: language === 'fa' ? 'خطا در بروزرسانی' : 'Failed to refresh',
-            variant: 'destructive'
-          });
-        }
-      } else {
-        toast({
-          title: language === 'fa' ? 'خطا' : 'Error',
-          description: language === 'fa' ? 'اطلاعات پنل موجود نیست' : 'Panel information not available',
-          variant: 'destructive'
-        });
-      }
-    } catch (error) {
-      console.error('DELIVERY: Error refreshing subscription:', error);
-      setPanelStatus('offline');
-      toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'خطا در بروزرسانی' : 'Failed to refresh',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsRefreshing(false);
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-100 text-green-800 border-green-200';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'expired': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  if (isLoading) {
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active': return <CheckCircle className="w-4 h-4" />;
+      case 'pending': return <Clock className="w-4 h-4" />;
+      case 'expired': return <AlertCircle className="w-4 h-4" />;
+      default: return <AlertCircle className="w-4 h-4" />;
+    }
+  };
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
         <Navigation />
-        <div className="pt-20 flex items-center justify-center min-h-[60vh]">
-          <Card className="w-full max-w-md mx-4">
-            <CardContent className="pt-6">
-              <div className="text-center space-y-4">
-                <Loader className="w-12 h-12 animate-spin mx-auto text-blue-600" />
-                <h2 className="text-xl font-semibold">
-                  {language === 'fa' ? 'در حال بارگذاری اطلاعات اشتراک...' : 'Loading subscription data...'}
-                </h2>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="pt-20 flex items-center justify-center min-h-[80vh]">
+          <div className="text-center">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-300">
+              {language === 'fa' ? 'در حال بارگذاری...' : 'Loading...'}
+            </p>
+          </div>
         </div>
+        <FooterSection />
       </div>
     );
   }
 
-  if (error || !subscriptionData) {
+  if (!subscription) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
         <Navigation />
-        <div className="pt-20 flex items-center justify-center min-h-[60vh]">
-          <Card className="w-full max-w-md mx-4 border-red-200">
-            <CardHeader>
-              <CardTitle className="text-red-600 flex items-center gap-2">
-                <AlertCircle className="w-5 h-5" />
-                {language === 'fa' ? 'خطا' : 'Error'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground">
-                {error || (language === 'fa' ? 'اطلاعات اشتراک یافت نشد' : 'Subscription data not found')}
+        <div className="pt-20 flex items-center justify-center min-h-[80vh]">
+          <Card className="max-w-md mx-auto">
+            <CardContent className="text-center py-8">
+              <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold mb-2">
+                {language === 'fa' ? 'اشتراک یافت نشد' : 'Subscription Not Found'}
+              </h2>
+              <p className="text-gray-600 mb-4">
+                {language === 'fa' ? 
+                  'اشتراک مورد نظر یافت نشد یا حذف شده است' : 
+                  'The requested subscription was not found or has been removed'
+                }
               </p>
-              <div className="flex gap-2">
-                <Button onClick={() => navigate('/subscription')} variant="outline" className="flex-1">
-                  {language === 'fa' ? 'اشتراک جدید' : 'New Subscription'}
-                </Button>
-                <Button onClick={() => navigate('/')} className="flex-1">
-                  {language === 'fa' ? 'صفحه اصلی' : 'Home'}
-                </Button>
-              </div>
+              <Button onClick={() => navigate('/')}>
+                {language === 'fa' ? 'بازگشت به صفحه اصلی' : 'Back to Home'}
+              </Button>
             </CardContent>
           </Card>
         </div>
+        <FooterSection />
       </div>
     );
   }
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      active: { color: 'bg-green-500', text: language === 'fa' ? 'فعال' : 'Active' },
-      pending: { color: 'bg-yellow-500', text: language === 'fa' ? 'در انتظار' : 'Pending' },
-      paid: { color: 'bg-blue-500', text: language === 'fa' ? 'پرداخت شده' : 'Paid' },
-      expired: { color: 'bg-red-500', text: language === 'fa' ? 'منقضی' : 'Expired' }
-    };
-    
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.active;
-    return <Badge className={`${config.color} text-white`}>{config.text}</Badge>;
-  };
-
-  const getPanelStatusBadge = () => {
-    const statusConfig = {
-      checking: { color: 'bg-gray-500', text: language === 'fa' ? 'در حال بررسی' : 'Checking' },
-      online: { color: 'bg-green-500', text: language === 'fa' ? 'آنلاین' : 'Online' },
-      offline: { color: 'bg-red-500', text: language === 'fa' ? 'آفلاین' : 'Offline' }
-    };
-    
-    const config = statusConfig[panelStatus];
-    return <Badge className={`${config.color} text-white text-xs`}>{config.text}</Badge>;
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
       <Navigation />
-      <div className="pt-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="pt-20 pb-12">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {language === 'fa' ? 'اشتراک آماده است!' : 'Subscription Ready!'}
-              </h1>
-            </div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              {language === 'fa' ? 'تحویل اشتراک' : 'Subscription Delivery'}
+            </h1>
             <p className="text-gray-600 dark:text-gray-300">
               {language === 'fa' ? 
-                'اشتراک VPN شما با موفقیت ایجاد شد' : 
-                'Your VPN subscription has been successfully created'
+                'اطلاعات کامل اشتراک و پیکربندی شما' : 
+                'Complete subscription information and configuration'
               }
             </p>
           </div>
 
-          {/* Subscription Details */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Left Column - Details */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>
-                    {language === 'fa' ? 'جزئیات اشتراک' : 'Subscription Details'}
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    {getStatusBadge(subscriptionData.status)}
-                    {getPanelStatusBadge()}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={refreshSubscription}
-                      disabled={isRefreshing}
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    </Button>
+          {/* Subscription Status */}
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  {getStatusIcon(subscription.status)}
+                  {language === 'fa' ? 'وضعیت اشتراک' : 'Subscription Status'}
+                </CardTitle>
+                <Badge className={getStatusColor(subscription.status)}>
+                  {subscription.status === 'active' && (language === 'fa' ? 'فعال' : 'Active')}
+                  {subscription.status === 'pending' && (language === 'fa' ? 'در انتظار' : 'Pending')}
+                  {subscription.status === 'expired' && (language === 'fa' ? 'منقضی' : 'Expired')}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {language === 'fa' ? 'نام کاربری' : 'Username'}
+                  </label>
+                  <p className="font-mono text-lg">{subscription.username}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {language === 'fa' ? 'حجم داده' : 'Data Limit'}
+                  </label>
+                  <p className="text-lg">{subscription.data_limit_gb} GB</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {language === 'fa' ? 'مدت زمان' : 'Duration'}
+                  </label>
+                  <p className="text-lg">{subscription.duration_days} {language === 'fa' ? 'روز' : 'days'}</p>
+                </div>
+              </div>
+
+              {/* Plan and Panel Information */}
+              {subscription.subscription_plans && (
+                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">
+                    {language === 'fa' ? 'اطلاعات پلن و پنل' : 'Plan & Panel Information'}
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium">
+                        {language === 'fa' ? 'پلن:' : 'Plan:'}
+                      </span>{' '}
+                      {language === 'fa' ? subscription.subscription_plans.name_fa : subscription.subscription_plans.name_en}
+                    </div>
+                    {subscription.subscription_plans.panel_servers && (
+                      <>
+                        <div>
+                          <span className="font-medium">
+                            {language === 'fa' ? 'پنل:' : 'Panel:'}
+                          </span>{' '}
+                          {subscription.subscription_plans.panel_servers.name}
+                        </div>
+                        <div>
+                          <span className="font-medium">
+                            {language === 'fa' ? 'آدرس پنل:' : 'Panel URL:'}
+                          </span>{' '}
+                          <a 
+                            href={subscription.subscription_plans.panel_servers.panel_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
+                          >
+                            {subscription.subscription_plans.panel_servers.panel_url}
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                        <div>
+                          <span className="font-medium">
+                            {language === 'fa' ? 'وضعیت پنل:' : 'Panel Status:'}
+                          </span>{' '}
+                          <Badge variant={subscription.subscription_plans.panel_servers.health_status === 'online' ? 'default' : 'destructive'}>
+                            {subscription.subscription_plans.panel_servers.health_status}
+                          </Badge>
+                        </div>
+                      </>
+                    )}
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm text-muted-foreground">
-                        {language === 'fa' ? 'نام کاربری' : 'Username'}
-                      </Label>
-                      <p className="font-mono text-lg font-bold">{subscriptionData.username}</p>
+                </div>
+              )}
+
+              {/* Expiry countdown */}
+              {subscription.expire_at && countdown && (
+                <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                  <div className="flex items-center gap-2 text-orange-800 dark:text-orange-200">
+                    <Clock className="w-4 h-4" />
+                    <span className="font-medium">
+                      {language === 'fa' ? 'زمان باقی‌مانده:' : 'Time Remaining:'}
+                    </span>
+                    <span className="font-mono">{countdown}</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Configuration */}
+          {subscription.subscription_url ? (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>{language === 'fa' ? 'پیکربندی VPN' : 'VPN Configuration'}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refreshSubscription}
+                    disabled={refreshing}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                    {language === 'fa' ? 'بروزرسانی' : 'Refresh'}
+                  </Button>
+                </CardTitle>
+                <CardDescription>
+                  {language === 'fa' ? 
+                    'لینک پیکربندی VPN شما آماده است' : 
+                    'Your VPN configuration link is ready'
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                        {language === 'fa' ? 'لینک اشتراک' : 'Subscription Link'}
+                      </label>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyToClipboard(subscription.subscription_url!)}
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={downloadConfig}
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-sm text-muted-foreground">
-                        {language === 'fa' ? 'وضعیت' : 'Status'}
-                      </Label>
-                      <div className="mt-1">{getStatusBadge(subscriptionData.status)}</div>
-                    </div>
-                    <div>
-                      <Label className="text-sm text-muted-foreground">
-                        {language === 'fa' ? 'حجم داده' : 'Data Limit'}
-                      </Label>
-                      <p className="font-bold">{Math.round(subscriptionData.data_limit / 1073741824)} GB</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm text-muted-foreground">
-                        {language === 'fa' ? 'تاریخ انقضا' : 'Expiry Date'}
-                      </Label>
-                      <p className="font-bold">
-                        {new Date(subscriptionData.expire).toLocaleDateString(
-                          language === 'fa' ? 'fa-IR' : 'en-US'
-                        )}
-                      </p>
-                    </div>
-                    {subscriptionData.used_traffic !== undefined && (
-                      <div className="col-span-2">
-                        <Label className="text-sm text-muted-foreground">
-                          {language === 'fa' ? 'ترافیک مصرف شده' : 'Used Traffic'}
-                        </Label>
-                        <p className="font-bold">
-                          {(subscriptionData.used_traffic / 1073741824).toFixed(2)} GB
+                    <code className="text-xs break-all text-gray-800 dark:text-gray-200 block">
+                      {subscription.subscription_url}
+                    </code>
+                  </div>
+
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
+                      <div className="text-sm text-green-800 dark:text-green-200">
+                        <p className="font-semibold mb-1">
+                          {language === 'fa' ? 'پیکربندی آماده است!' : 'Configuration Ready!'}
+                        </p>
+                        <p className="text-green-700 dark:text-green-300">
+                          {language === 'fa' ? 
+                            'لینک پیکربندی را در برنامه VPN خود وارد کنید' : 
+                            'Import the configuration link into your VPN app'
+                          }
                         </p>
                       </div>
-                    )}
-                    {subscriptionData.panel_name && (
-                      <div className="col-span-2">
-                        <Label className="text-sm text-muted-foreground">
-                          {language === 'fa' ? 'پنل' : 'Panel'}
-                        </Label>
-                        <p className="font-bold">{subscriptionData.plan_name ? `${subscriptionData.plan_name} - ${subscriptionData.panel_name}` : subscriptionData.panel_name}</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Connection Info */}
-              {subscriptionData.subscription_url ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      {language === 'fa' ? 'لینک اتصال' : 'Connection Link'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="bg-muted p-3 rounded-lg">
-                      <code className="text-xs break-all">{subscriptionData.subscription_url}</code>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => copyToClipboard(subscriptionData.subscription_url!)}
-                      >
-                        <Copy className="w-4 h-4 mr-2" />
-                        {language === 'fa' ? 'کپی' : 'Copy'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={downloadConfig}
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        {language === 'fa' ? 'دانلود' : 'Download'}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20">
-                  <CardContent className="pt-6">
-                    <div className="text-center space-y-2">
-                      <AlertCircle className="w-8 h-8 mx-auto text-yellow-600" />
-                      <p className="text-yellow-800 dark:text-yellow-200">
-                        {language === 'fa' ? 
-                          'اشتراک در حال پردازش است. لینک اتصال به زودی ایجاد خواهد شد.' : 
-                          'Subscription is being processed. Connection link will be available soon.'
-                        }
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-
-            {/* Right Column - QR Code and Instructions */}
-            <div className="space-y-6">
-              {qrCodeDataUrl && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-center">
-                      {language === 'fa' ? 'کد QR' : 'QR Code'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-center space-y-4">
-                      <div className="flex justify-center">
-                        <div className="p-4 bg-white rounded-lg shadow-lg">
-                          <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-64 h-64" />
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {language === 'fa' ? 
-                          'این کد را با اپ V2Ray اسکن کنید' : 
-                          'Scan this QR code with your V2Ray app'
-                        }
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Instructions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    {language === 'fa' ? 'راهنمای استفاده' : 'How to Use'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-start gap-3">
-                      <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
-                      <p>
-                        {language === 'fa' ? 
-                          'یک اپ V2Ray یا VLESS دانلود کنید' : 
-                          'Download a V2Ray or VLESS client app'
-                        }
-                      </p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
-                      <p>
-                        {language === 'fa' ? 
-                          'لینک اتصال را کپی کنید یا کد QR را اسکن کنید' : 
-                          'Copy the connection link or scan the QR code'
-                        }
-                      </p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
-                      <p>
-                        {language === 'fa' ? 
-                          'اتصال را فعال کنید و از اینترنت آزاد لذت ببرید' : 
-                          'Activate the connection and enjoy free internet'
-                        }
-                      </p>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="mb-6">
+              <CardContent className="text-center py-8">
+                <Clock className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">
+                  {language === 'fa' ? 'در حال آماده‌سازی...' : 'Preparing Configuration...'}
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {language === 'fa' ? 
+                    'پیکربندی VPN شما در حال آماده‌سازی است. لطفاً چند دقیقه صبر کنید.' : 
+                    'Your VPN configuration is being prepared. Please wait a few minutes.'
+                  }
+                </p>
+                <Button onClick={refreshSubscription} disabled={refreshing}>
+                  <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                  {language === 'fa' ? 'بررسی مجدد' : 'Check Again'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Back Button */}
-          <div className="mt-8 text-center">
-            <Button
-              variant="outline"
-              onClick={() => navigate('/')}
-              className="inline-flex items-center gap-2"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              {language === 'fa' ? 'بازگشت به صفحه اصلی' : 'Back to Home'}
-            </Button>
-          </div>
+          {/* Instructions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {language === 'fa' ? 'راهنمای استفاده' : 'Usage Instructions'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-semibold mb-2">
+                    {language === 'fa' ? '۱. نصب برنامه' : '1. Install App'}
+                  </h4>
+                  <p className="text-gray-600 dark:text-gray-300">
+                    {language === 'fa' ? 
+                      'برنامه‌های پیشنهادی: V2rayNG (اندروید)، V2rayN (ویندوز)، Qv2ray (لینوکس/مک)' : 
+                      'Recommended apps: V2rayNG (Android), V2rayN (Windows), Qv2ray (Linux/Mac)'
+                    }
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2">
+                    {language === 'fa' ? '۲. وارد کردن پیکربندی' : '2. Import Configuration'}
+                  </h4>
+                  <p className="text-gray-600 dark:text-gray-300">
+                    {language === 'fa' ? 
+                      'لینک اشتراک را کپی کرده و در برنامه VPN وارد کنید' : 
+                      'Copy the subscription link and import it into your VPN app'
+                    }
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2">
+                    {language === 'fa' ? '۳. اتصال' : '3. Connect'}
+                  </h4>
+                  <p className="text-gray-600 dark:text-gray-300">
+                    {language === 'fa' ? 
+                      'پس از وارد کردن پیکربندی، روی اتصال کلیک کنید' : 
+                      'After importing the configuration, click connect'
+                    }
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
         </div>
       </div>
+      <FooterSection />
     </div>
   );
 };

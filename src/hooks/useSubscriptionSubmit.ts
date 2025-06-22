@@ -27,20 +27,26 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
     setIsSubmitting(true);
     
     try {
-      console.log('SUBSCRIPTION_SUBMIT: Starting submission with STRICT panel enforcement for plan:', data.selectedPlan?.name_en);
+      console.log('SUBSCRIPTION_SUBMIT: Starting submission with ULTRA STRICT panel enforcement for plan:', data.selectedPlan?.name_en);
       
-      // Validate that we have the required plan data
+      // ULTRA STRICT VALIDATION: Validate that we have the required plan data
       if (!data.selectedPlan?.id) {
         throw new Error('Plan ID is missing. Please select a valid plan.');
       }
 
-      // Get the latest plan data with STRICT panel assignment
+      // ULTRA STRICT: Get the latest plan data with MANDATORY panel assignment
       const latestPlan = await PlanService.getPlanById(data.selectedPlan.id);
       if (!latestPlan) {
         throw new Error('Selected plan is no longer available. Please refresh the page and select another plan.');
       }
 
-      console.log('SUBSCRIPTION_SUBMIT: Using plan with STRICT panel assignment:', {
+      // ULTRA STRICT VALIDATION: Plan MUST have assigned panel - NO EXCEPTIONS
+      if (!latestPlan.assigned_panel_id) {
+        console.error('SUBSCRIPTION_SUBMIT: ULTRA STRICT REJECTION - Plan has NO assigned panel:', latestPlan);
+        throw new Error(`CRITICAL ERROR: Plan "${latestPlan.name_en}" has NO assigned panel. This plan cannot create VPN users. Please contact admin.`);
+      }
+
+      console.log('SUBSCRIPTION_SUBMIT: Using plan with ULTRA STRICT panel assignment:', {
         planName: latestPlan.name_en,
         planId: latestPlan.id,
         assignedPanelId: latestPlan.assigned_panel_id,
@@ -60,7 +66,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       const uniqueUsername = data.username.includes('_') ? 
         data.username : `${data.username}_${timestamp}`;
       
-      // Insert subscription into database with plan_id
+      // Insert subscription into database with CORRECT plan_id
       const subscriptionData = {
         username: uniqueUsername,
         mobile: data.mobile,
@@ -69,11 +75,11 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         price_toman: finalPrice,
         status: 'pending',
         user_id: null, // Allow anonymous subscriptions
-        plan_id: selectedPlanId, // Use the plan UUID
-        notes: `Plan: ${latestPlan.name_en} (${latestPlan.plan_id})${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
+        plan_id: selectedPlanId, // Use the CORRECT plan UUID
+        notes: `Plan: ${latestPlan.name_en} (${latestPlan.plan_id}) - Assigned Panel: ${latestPlan.assigned_panel_id}${data.appliedDiscount ? `, Discount: ${data.appliedDiscount.code}` : ''}`
       };
       
-      console.log('SUBSCRIPTION_SUBMIT: Inserting subscription to database:', subscriptionData);
+      console.log('SUBSCRIPTION_SUBMIT: Inserting subscription to database with ULTRA STRICT plan data:', subscriptionData);
       
       const { data: subscription, error: insertError } = await supabase
         .from('subscriptions')
@@ -88,13 +94,13 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       
       console.log('SUBSCRIPTION_SUBMIT: Subscription inserted successfully:', subscription);
       
-      // If price is 0, create VPN user immediately using STRICT PanelUserCreationService
+      // If price is 0, create VPN user immediately using ULTRA STRICT PanelUserCreationService
       if (finalPrice === 0) {
         try {
-          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using STRICT PanelUserCreationService');
+          console.log('SUBSCRIPTION_SUBMIT: Creating VPN user for free subscription using ULTRA STRICT PanelUserCreationService');
           
           const result = await PanelUserCreationService.createUserFromPanel({
-            planId: selectedPlanId,
+            planId: selectedPlanId, // Use the CORRECT plan ID
             username: uniqueUsername,
             dataLimitGB: data.dataLimit,
             durationDays: data.duration,
@@ -103,10 +109,10 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
             isFreeTriaL: false
           });
           
-          console.log('SUBSCRIPTION_SUBMIT: STRICT VPN creation response:', result);
+          console.log('SUBSCRIPTION_SUBMIT: ULTRA STRICT VPN creation response:', result);
           
           if (result.success && result.data) {
-            console.log('SUBSCRIPTION_SUBMIT: Free subscription completed successfully with STRICT panel assignment');
+            console.log('SUBSCRIPTION_SUBMIT: Free subscription completed successfully with ULTRA STRICT panel assignment');
             
             // Update subscription with VPN details
             await supabase
@@ -124,7 +130,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
               description: 'Free subscription created successfully!',
             });
           } else {
-            console.error('SUBSCRIPTION_SUBMIT: STRICT VPN user creation failed:', result.error);
+            console.error('SUBSCRIPTION_SUBMIT: ULTRA STRICT VPN user creation failed:', result.error);
             
             toast({
               title: 'Subscription Created',
@@ -136,7 +142,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
           return subscription.id;
           
         } catch (vpnError) {
-          console.error('SUBSCRIPTION_SUBMIT: VPN creation failed for free subscription with STRICT enforcement:', vpnError);
+          console.error('SUBSCRIPTION_SUBMIT: VPN creation failed for free subscription with ULTRA STRICT enforcement:', vpnError);
           toast({
             title: 'Subscription Created',
             description: 'Subscription saved but VPN creation failed. Please contact support.',

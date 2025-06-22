@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -63,14 +64,41 @@ export const useMultiStepForm = () => {
   };
 
   const updateFormData = (field: keyof FormData, value: any) => {
-    console.log('MULTI STEP FORM: Updating form data:', field, value);
+    console.log('MULTI STEP FORM: Updating form data with STRICT validation:', field, value);
+    
+    // STRICT VALIDATION for plan selection
+    if (field === 'selectedPlan' && value) {
+      console.log('MULTI STEP FORM: STRICT plan validation:', {
+        planId: value.id,
+        planName: value.name_en,
+        assignedPanelId: value.assigned_panel_id,
+        hasAssignedPanel: !!value.assigned_panel_id
+      });
+      
+      if (!value.assigned_panel_id) {
+        console.error('MULTI STEP FORM: REJECTED plan - no assigned panel:', value);
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 
+            'این پلن پنل اختصاصی ندارد و قابل انتخاب نیست' : 
+            'This plan has no assigned panel and cannot be selected',
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+    
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   // Auto-advance from plan selection step when plan is selected
   useEffect(() => {
     if (currentStep === 1 && formData.selectedPlan && formData.selectedPlan.id) {
-      console.log('MULTI STEP FORM: Auto-advancing to step 2 with selected plan:', formData.selectedPlan);
+      console.log('MULTI STEP FORM: Auto-advancing to step 2 with STRICTLY validated plan:', {
+        planId: formData.selectedPlan.id,
+        planName: formData.selectedPlan.name_en,
+        assignedPanelId: formData.selectedPlan.assigned_panel_id
+      });
       const timer = setTimeout(() => {
         setCurrentStep(2);
       }, 300);
@@ -81,8 +109,16 @@ export const useMultiStepForm = () => {
   const canProceedFromStep = (step: StepNumber): boolean => {
     switch (step) {
       case 1:
-        const hasValidPlan = !!(formData.selectedPlan && formData.selectedPlan.id);
-        console.log('MULTI STEP FORM: Can proceed from step 1:', hasValidPlan, formData.selectedPlan);
+        const hasValidPlan = !!(
+          formData.selectedPlan && 
+          formData.selectedPlan.id && 
+          formData.selectedPlan.assigned_panel_id
+        );
+        console.log('MULTI STEP FORM: Can proceed from step 1 with STRICT validation:', hasValidPlan, {
+          hasSelectedPlan: !!formData.selectedPlan,
+          hasPlanId: !!formData.selectedPlan?.id,
+          hasAssignedPanel: !!formData.selectedPlan?.assigned_panel_id
+        });
         return hasValidPlan;
       case 2:
         const hasRequiredFields = !!(
@@ -118,6 +154,19 @@ export const useMultiStepForm = () => {
       return null;
     }
 
+    // STRICT VALIDATION: Ensure plan has assigned panel
+    if (!formData.selectedPlan.assigned_panel_id) {
+      console.error('MULTI STEP FORM: STRICT VALIDATION FAILED - Selected plan has no assigned panel:', formData.selectedPlan);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'پلن انتخابی پنل اختصاصی ندارد' : 
+          'Selected plan has no assigned panel',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
     // Validate required fields
     if (!formData.username?.trim() || !formData.mobile?.trim()) {
       toast({
@@ -133,7 +182,11 @@ export const useMultiStepForm = () => {
     setIsCreatingSubscription(true);
     
     try {
-      console.log('MULTI STEP FORM: Creating subscription record with STRICT plan enforcement:', formData.selectedPlan);
+      console.log('MULTI STEP FORM: Creating subscription record with STRICT plan enforcement:', {
+        planId: formData.selectedPlan.id,
+        planName: formData.selectedPlan.name_en,
+        assignedPanelId: formData.selectedPlan.assigned_panel_id
+      });
       
       const totalPrice = calculateTotalPrice();
       
@@ -148,12 +201,12 @@ export const useMultiStepForm = () => {
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
-        plan_id: formData.selectedPlan.id,
-        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id})`,
+        plan_id: formData.selectedPlan.id, // Use the CORRECT plan ID
+        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id}) - Panel: ${formData.selectedPlan.assigned_panel_id}`,
         status: 'pending' as const
       };
 
-      console.log('MULTI STEP FORM: Creating subscription with data:', subscriptionData);
+      console.log('MULTI STEP FORM: Creating subscription with STRICT plan data:', subscriptionData);
 
       const { data, error } = await supabase
         .from('subscriptions')
@@ -174,7 +227,7 @@ export const useMultiStepForm = () => {
           console.log('MULTI STEP FORM: Creating VPN user for free subscription using STRICT PanelUserCreationService');
           
           const vpnResult = await PanelUserCreationService.createUserFromPanel({
-            planId: formData.selectedPlan.id,
+            planId: formData.selectedPlan.id, // Use the CORRECT plan ID
             username: uniqueUsername,
             dataLimitGB: formData.dataLimit,
             durationDays: formData.duration,
@@ -297,7 +350,7 @@ export const useMultiStepForm = () => {
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
           description: language === 'fa' ? 
-            'لطفاً یک پلن انتخاب کنید' : 'Please select a plan',
+            'لطفاً یک پلن با پنل اختصاصی انتخاب کنید' : 'Please select a plan with assigned panel',
           variant: 'destructive'
         });
       } else if (currentStep === 2) {
@@ -366,7 +419,9 @@ export const useMultiStepForm = () => {
       (basePrice * appliedDiscount.percentage) / 100 : 0;
     const finalPrice = Math.max(0, basePrice - discountAmount);
     
-    console.log('MULTI STEP FORM: Calculated price:', {
+    console.log('MULTI STEP FORM: Calculated price with STRICT plan:', {
+      planId: formData.selectedPlan.id,
+      planName: formData.selectedPlan.name_en,
       pricePerGB,
       dataLimit: formData.dataLimit,
       basePrice,
