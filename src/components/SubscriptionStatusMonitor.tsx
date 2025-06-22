@@ -18,6 +18,8 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
   const [status, setStatus] = useState<'pending' | 'active' | 'rejected'>('pending');
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [lastCheckTime, setLastCheckTime] = useState<Date>(new Date());
 
   const checkStatus = async () => {
     try {
@@ -35,6 +37,7 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
       }
 
       console.log('STATUS_MONITOR: Current subscription data:', subscription);
+      setLastCheckTime(new Date());
 
       if (subscription.status === 'active' && subscription.admin_decision === 'approved') {
         console.log('STATUS_MONITOR: Subscription is now active, redirecting to delivery page');
@@ -51,9 +54,12 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
         setStatus('rejected');
         setIsMonitoring(false);
         onStatusUpdate('rejected');
+      } else {
+        setRetryCount(prev => prev + 1);
       }
     } catch (error) {
       console.error('STATUS_MONITOR: Error in checkStatus:', error);
+      setRetryCount(prev => prev + 1);
     }
   };
 
@@ -72,20 +78,26 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
     // Check immediately
     checkStatus();
 
-    // Set up polling every 3 seconds
-    const interval = setInterval(checkStatus, 3000);
+    // Set up polling every 3 seconds with exponential backoff after many retries
+    const getInterval = () => {
+      if (retryCount < 10) return 3000; // 3 seconds for first 10 attempts
+      if (retryCount < 20) return 5000; // 5 seconds for next 10 attempts
+      return 10000; // 10 seconds after that
+    };
 
-    // Clean up after 5 minutes
+    const interval = setInterval(checkStatus, getInterval());
+
+    // Clean up after 10 minutes
     const timeout = setTimeout(() => {
       setIsMonitoring(false);
       clearInterval(interval);
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
 
     return () => {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [subscriptionId, isMonitoring, onStatusUpdate, navigate]);
+  }, [subscriptionId, isMonitoring, retryCount, onStatusUpdate, navigate]);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -161,11 +173,19 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
               </Button>
               
               {isMonitoring && (
-                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="w-4 h-4" />
-                  <span>
-                    {language === 'fa' ? 'بررسی خودکار هر 3 ثانیه...' : 'Auto-checking every 3 seconds...'}
-                  </span>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="w-4 h-4" />
+                    <span>
+                      {language === 'fa' ? 'بررسی خودکار...' : 'Auto-checking...'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {language === 'fa' ? 'آخرین بررسی:' : 'Last check:'} {lastCheckTime.toLocaleTimeString()}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {language === 'fa' ? 'تلاش شماره:' : 'Attempt:'} {retryCount}
+                  </div>
                 </div>
               )}
             </div>

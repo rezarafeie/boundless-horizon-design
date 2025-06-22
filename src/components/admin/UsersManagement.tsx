@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Search, User, Calendar, DollarSign, RefreshCw, Image, Receipt, Server, Package } from 'lucide-react';
 import { ManualPaymentActions } from './ManualPaymentActions';
 import { UserCreationLogs } from './UserCreationLogs';
+import { UserActionButtons } from './UserActionButtons';
 
 interface Subscription {
   id: string;
@@ -414,20 +415,28 @@ export const UsersManagement = () => {
                     </div>
                   )}
 
-                  {/* NEW: User Creation Logs */}
+                  {/* User Creation Logs */}
                   <div className="border-t pt-4">
                     <UserCreationLogs subscriptionId={subscription.id} />
                   </div>
 
-                  {/* Manual Payment Actions */}
-                  <ManualPaymentActions
-                    subscriptionId={subscription.id}
-                    status={subscription.status}
-                    adminDecision={subscription.admin_decision}
-                    username={subscription.username}
-                    amount={subscription.price_toman}
-                    onStatusUpdate={handleRefresh}
-                  />
+                  {/* Action Buttons */}
+                  <div className="border-t pt-4">
+                    <div className="flex justify-between items-center">
+                      <UserActionButtons 
+                        subscription={subscription} 
+                        onUpdate={handleRefresh}
+                      />
+                      <ManualPaymentActions
+                        subscriptionId={subscription.id}
+                        status={subscription.status}
+                        adminDecision={subscription.admin_decision}
+                        username={subscription.username}
+                        amount={subscription.price_toman}
+                        onStatusUpdate={handleRefresh}
+                      />
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

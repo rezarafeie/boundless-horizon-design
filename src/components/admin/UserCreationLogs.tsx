@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, AlertCircle, CheckCircle, Clock, Server, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertCircle, CheckCircle, Clock, Server, Zap, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface UserCreationLog {
@@ -30,7 +30,7 @@ interface UserCreationLogsProps {
 export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  const { data: logs, isLoading, error } = useQuery({
+  const { data: logs, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['user-creation-logs', subscriptionId],
     queryFn: async () => {
       console.log('Fetching user creation logs for subscription:', subscriptionId);
@@ -52,7 +52,12 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
     enabled: !!subscriptionId,
   });
 
-  if (isLoading) {
+  const handleRetry = async () => {
+    console.log('Retrying user creation logs fetch...');
+    await refetch();
+  };
+
+  if (isLoading && !isFetching) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Clock className="w-4 h-4" />
@@ -66,6 +71,19 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
       <div className="flex items-center gap-2 text-sm text-red-600">
         <AlertCircle className="w-4 h-4" />
         Error loading creation logs
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRetry}
+          disabled={isFetching}
+          className="ml-2"
+        >
+          {isFetching ? (
+            <Clock className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+        </Button>
       </div>
     );
   }
@@ -75,6 +93,20 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Zap className="w-4 h-4" />
         No creation logs found
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRetry}
+          disabled={isFetching}
+          className="ml-2"
+        >
+          {isFetching ? (
+            <Clock className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+          Retry
+        </Button>
       </div>
     );
   }
@@ -89,6 +121,22 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
           {logs.some(log => !log.success) && (
             <AlertCircle className="w-4 h-4 ml-1 text-red-500" />
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRetry();
+            }}
+            disabled={isFetching}
+            className="ml-2"
+          >
+            {isFetching ? (
+              <Clock className="w-3 h-3 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3" />
+            )}
+          </Button>
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
