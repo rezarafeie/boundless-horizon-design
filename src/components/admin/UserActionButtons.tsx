@@ -108,62 +108,95 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
     setIsCreatingVpn(true);
     
     try {
-      console.log('Manually creating VPN user for subscription:', subscription.id);
+      console.log('🔵 MANUAL_VPN: Manually creating VPN user for subscription:', subscription.id);
       
-      // Get plan information to determine the correct API and panel
+      // CRITICAL FIX: Get the CORRECT panel based on subscription's plan
       let panelInfo = null;
       let apiType = 'marzban'; // Default
       
       try {
-        // Get plan details with panel mapping
+        console.log('🔍 MANUAL_VPN: Looking up CORRECT assigned panel for plan_id:', subscription.plan_id);
+        
+        // Get the subscription plan with its assigned panel
         const { data: planData, error: planError } = await supabase
           .from('subscription_plans')
           .select(`
             *,
-            plan_panel_mappings!inner(
-              panel_id,
-              is_primary,
-              panel_servers!inner(
-                id,
-                name,
-                type,
-                panel_url,
-                username,
-                password,
-                is_active,
-                health_status
-              )
+            panel_servers!assigned_panel_id(
+              id,
+              name,
+              type,
+              panel_url,
+              username,
+              password,
+              is_active,
+              health_status
             )
           `)
           .eq('plan_id', subscription.plan_id || 'lite')
-          .eq('plan_panel_mappings.is_primary', true)
+          .eq('is_active', true)
           .single();
 
-        if (!planError && planData?.plan_panel_mappings?.[0]) {
-          const mapping = planData.plan_panel_mappings[0];
-          panelInfo = mapping.panel_servers;
+        if (!planError && planData?.panel_servers) {
+          panelInfo = planData.panel_servers;
           apiType = planData.api_type || 'marzban';
+          
+          console.log('🟢 MANUAL_VPN: Found CORRECT assigned panel:', {
+            planId: planData.plan_id,
+            planName: planData.name_en,
+            panelName: panelInfo.name,
+            panelUrl: panelInfo.panel_url,
+            panelType: panelInfo.type
+          });
         } else {
-          // Fallback to any active panel
+          console.error('❌ MANUAL_VPN: No assigned panel found for plan:', subscription.plan_id, planError);
+          
+          // STRICT FALLBACK: Only use panels that match the plan type
+          const targetPanelType = subscription.plan_id === 'plus' ? 'cp.rain.rest' : 'file.shopifysb.xyz';
+          console.log('🔍 MANUAL_VPN: Using STRICT fallback for plan type:', subscription.plan_id, 'targeting:', targetPanelType);
+          
           const { data: fallbackPanel } = await supabase
             .from('panel_servers')
             .select('*')
             .eq('type', 'marzban')
             .eq('is_active', true)
             .eq('health_status', 'online')
+            .like('panel_url', `%${targetPanelType}%`)
             .limit(1)
             .single();
           
           if (fallbackPanel) {
             panelInfo = fallbackPanel;
+            console.log('🟡 MANUAL_VPN: Using STRICT fallback panel:', {
+              planType: subscription.plan_id,
+              panelName: panelInfo.name,
+              panelUrl: panelInfo.panel_url
+            });
           }
         }
       } catch (error) {
-        console.error('Error getting panel info:', error);
+        console.error('❌ MANUAL_VPN: Error getting panel info:', error);
       }
 
       if (!panelInfo) {
-        throw new Error('No active panel available for VPN creation');
+        throw new Error(`No active panel available for plan "${subscription.plan_id}" VPN creation`);
+      }
+
+      // CRITICAL VERIFICATION: Ensure correct panel is being used
+      const isCorrectPanel = (
+        (subscription.plan_id === 'plus' && panelInfo.panel_url.includes('rain')) ||
+        (subscription.plan_id === 'lite' && panelInfo.panel_url.includes('shopifysb'))
+      );
+
+      console.log('🔍 MANUAL_VPN: Panel verification:', {
+        subscriptionPlan: subscription.plan_id,
+        panelUrl: panelInfo.panel_url,
+        isCorrectPanel,
+        panelName: panelInfo.name
+      });
+
+      if (!isCorrectPanel) {
+        throw new Error(`PANEL MISMATCH: Plan "${subscription.plan_id}" cannot use panel "${panelInfo.name}" (${panelInfo.panel_url})`);
       }
 
       // Prepare request data
@@ -176,7 +209,11 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
         subscriptionId: subscription.id
       };
 
-      console.log(`Creating VPN user via ${apiType} API...`);
+      console.log(`🔵 MANUAL_VPN: Creating VPN user via ${apiType} API on CORRECT panel:`, {
+        panel: panelInfo.name,
+        url: panelInfo.panel_url,
+        planType: subscription.plan_id
+      });
 
       let result;
       if (apiType === 'marzban') {
@@ -228,7 +265,7 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
 
       // Update notes
       const existingNotes = subscription.notes || '';
-      updateData.notes = `${existingNotes} - VPN created manually on ${new Date().toLocaleDateString()}`;
+      updateData.notes = `${existingNotes} - VPN created manually on correct panel ${new Date().toLocaleDateString()}`;
 
       const { error: updateError } = await supabase
         .from('subscriptions')
@@ -241,19 +278,19 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
 
       toast({
         title: 'VPN User Created',
-        description: 'VPN user has been created successfully',
+        description: 'VPN user has been created successfully on the correct panel',
       });
 
       onUpdate();
       
     } catch (error) {
-      console.error('Error creating VPN user:', error);
+      console.error('❌ MANUAL_VPN: Error creating VPN user:', error);
       
       // Log the failed attempt
       await supabase.from('user_creation_logs').insert({
         subscription_id: subscription.id,
         edge_function_name: 'manual-vpn-creation',
-        request_data: { username: subscription.username },
+        request_data: { username: subscription.username, plan_id: subscription.plan_id },
         response_data: {},
         success: false,
         error_message: error instanceof Error ? error.message : 'Unknown error'

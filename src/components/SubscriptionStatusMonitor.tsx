@@ -27,64 +27,96 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
 
   const createVpnUser = async (subscription: any) => {
     setIsCreatingVpn(true);
-    console.log('STATUS_MONITOR: Attempting to create VPN user for approved subscription');
+    console.log('🔵 STATUS_MONITOR: Attempting to create VPN user for approved subscription');
     
     try {
-      // Get plan information to determine the correct API and panel
+      // CRITICAL FIX: Get the CORRECT panel based on subscription's plan
       let panelInfo = null;
       let apiType = 'marzban'; // Default
       
       try {
-        // Get plan details with panel mapping
+        console.log('🔍 STATUS_MONITOR: Looking up CORRECT assigned panel for plan_id:', subscription.plan_id);
+        
+        // Get the subscription plan with its assigned panel
         const { data: planData, error: planError } = await supabase
           .from('subscription_plans')
           .select(`
             *,
-            plan_panel_mappings!inner(
-              panel_id,
-              is_primary,
-              panel_servers!inner(
-                id,
-                name,
-                type,
-                panel_url,
-                username,
-                password,
-                is_active,
-                health_status
-              )
+            panel_servers!assigned_panel_id(
+              id,
+              name,
+              type,
+              panel_url,
+              username,
+              password,
+              is_active,
+              health_status
             )
           `)
           .eq('plan_id', subscription.plan_id || 'lite')
-          .eq('plan_panel_mappings.is_primary', true)
+          .eq('is_active', true)
           .single();
 
-        if (!planError && planData?.plan_panel_mappings?.[0]) {
-          const mapping = planData.plan_panel_mappings[0];
-          panelInfo = mapping.panel_servers;
+        if (!planError && planData?.panel_servers) {
+          panelInfo = planData.panel_servers;
           apiType = planData.api_type || 'marzban';
+          
+          console.log('🟢 STATUS_MONITOR: Found CORRECT assigned panel:', {
+            planId: planData.plan_id,
+            planName: planData.name_en,
+            panelName: panelInfo.name,
+            panelUrl: panelInfo.panel_url,
+            panelType: panelInfo.type
+          });
         } else {
-          console.warn('STATUS_MONITOR: No panel mapping found, using fallback');
-          // Fallback to any active panel
+          console.error('❌ STATUS_MONITOR: No assigned panel found for plan:', subscription.plan_id, planError);
+          
+          // STRICT FALLBACK: Only use panels that match the plan type
+          const targetPanelType = subscription.plan_id === 'plus' ? 'cp.rain.rest' : 'file.shopifysb.xyz';
+          console.log('🔍 STATUS_MONITOR: Using STRICT fallback for plan type:', subscription.plan_id, 'targeting:', targetPanelType);
+          
           const { data: fallbackPanel } = await supabase
             .from('panel_servers')
             .select('*')
             .eq('type', 'marzban')
             .eq('is_active', true)
             .eq('health_status', 'online')
+            .like('panel_url', `%${targetPanelType}%`)
             .limit(1)
             .single();
           
           if (fallbackPanel) {
             panelInfo = fallbackPanel;
+            console.log('🟡 STATUS_MONITOR: Using STRICT fallback panel:', {
+              planType: subscription.plan_id,
+              panelName: panelInfo.name,
+              panelUrl: panelInfo.panel_url
+            });
           }
         }
       } catch (error) {
-        console.error('STATUS_MONITOR: Error getting panel info:', error);
+        console.error('❌ STATUS_MONITOR: Error getting panel info:', error);
       }
 
       if (!panelInfo) {
-        throw new Error('No active panel available for VPN creation');
+        throw new Error(`No active panel available for plan "${subscription.plan_id}" VPN creation`);
+      }
+
+      // CRITICAL VERIFICATION: Ensure correct panel is being used
+      const isCorrectPanel = (
+        (subscription.plan_id === 'plus' && panelInfo.panel_url.includes('rain')) ||
+        (subscription.plan_id === 'lite' && panelInfo.panel_url.includes('shopifysb'))
+      );
+
+      console.log('🔍 STATUS_MONITOR: Panel verification:', {
+        subscriptionPlan: subscription.plan_id,
+        panelUrl: panelInfo.panel_url,
+        isCorrectPanel,
+        panelName: panelInfo.name
+      });
+
+      if (!isCorrectPanel) {
+        throw new Error(`PANEL MISMATCH: Plan "${subscription.plan_id}" cannot use panel "${panelInfo.name}" (${panelInfo.panel_url})`);
       }
 
       // Prepare request data
@@ -97,7 +129,11 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
         subscriptionId: subscription.id
       };
 
-      console.log(`STATUS_MONITOR: Creating VPN user via ${apiType} API...`);
+      console.log(`🔵 STATUS_MONITOR: Creating VPN user via ${apiType} API on CORRECT panel:`, {
+        panel: panelInfo.name,
+        url: panelInfo.panel_url,
+        planType: subscription.plan_id
+      });
 
       let result;
       let functionName;
@@ -150,14 +186,14 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
 
         // Update notes
         const existingNotes = subscription.notes || '';
-        updateData.notes = `${existingNotes} - VPN created automatically on ${new Date().toLocaleDateString()}`;
+        updateData.notes = `${existingNotes} - VPN created automatically on correct panel ${new Date().toLocaleDateString()}`;
 
         await supabase
           .from('subscriptions')
           .update(updateData)
           .eq('id', subscription.id);
 
-        console.log('STATUS_MONITOR: VPN user created successfully, redirecting to delivery');
+        console.log('🟢 STATUS_MONITOR: VPN user created successfully, redirecting to delivery');
         navigate(`/delivery?id=${subscriptionId}`, { replace: true });
         onStatusUpdate('active', result.data?.subscription_url);
         return true;
@@ -166,7 +202,7 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
       }
       
     } catch (error) {
-      console.error('STATUS_MONITOR: VPN creation failed:', error);
+      console.error('❌ STATUS_MONITOR: VPN creation failed:', error);
       
       toast({
         title: language === 'fa' ? 'خطای ایجاد VPN' : 'VPN Creation Error',
@@ -240,8 +276,9 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
     }
   };
 
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true);
+  const handleManualRefresh = async ()
+
+  setIsRefreshing(true);
     console.log('STATUS_MONITOR: Manual refresh triggered');
     await checkStatus();
     setTimeout(() => {

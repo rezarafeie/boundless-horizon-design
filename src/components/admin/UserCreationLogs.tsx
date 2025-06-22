@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -64,7 +63,7 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
     setIsRetrying(true);
     
     try {
-      console.log('Retrying VPN creation for subscription:',subscriptionId);
+      console.log('🔵 RETRY: Retrying VPN creation for subscription:', subscriptionId);
       
       // Get subscription details first
       const { data: subscription, error: subError } = await supabase
@@ -77,61 +76,95 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
         throw new Error('Failed to fetch subscription details');
       }
 
-      // Get plan information to determine the correct API and panel
+      console.log('🔍 RETRY: Got subscription details, plan_id:', subscription.plan_id);
+
+      // CRITICAL FIX: Get the CORRECT panel based on subscription's plan
       let panelInfo = null;
       let apiType = 'marzban'; // Default
       
       try {
-        // Get plan details with panel mapping
+        console.log('🔍 RETRY: Looking up CORRECT assigned panel for plan_id:', subscription.plan_id);
+        
+        // Get the subscription plan with its assigned panel
         const { data: planData, error: planError } = await supabase
           .from('subscription_plans')
           .select(`
             *,
-            plan_panel_mappings!inner(
-              panel_id,
-              is_primary,
-              panel_servers!inner(
-                id,
-                name,
-                type,
-                panel_url,
-                username,
-                password,
-                is_active,
-                health_status
-              )
+            panel_servers!assigned_panel_id(
+              id,
+              name,
+              type,
+              panel_url,
+              username,
+              password,
+              is_active,
+              health_status
             )
           `)
           .eq('plan_id', subscription.plan_id || 'lite')
-          .eq('plan_panel_mappings.is_primary', true)
+          .eq('is_active', true)
           .single();
 
-        if (!planError && planData?.plan_panel_mappings?.[0]) {
-          const mapping = planData.plan_panel_mappings[0];
-          panelInfo = mapping.panel_servers;
+        if (!planError && planData?.panel_servers) {
+          panelInfo = planData.panel_servers;
           apiType = planData.api_type || 'marzban';
+          
+          console.log('🟢 RETRY: Found CORRECT assigned panel:', {
+            planId: planData.plan_id,
+            planName: planData.name_en,
+            panelName: panelInfo.name,
+            panelUrl: panelInfo.panel_url,
+            panelType: panelInfo.type
+          });
         } else {
-          console.warn('No panel mapping found, using fallback');
-          // Fallback to any active panel
+          console.error('❌ RETRY: No assigned panel found for plan:', subscription.plan_id, planError);
+          
+          // STRICT FALLBACK: Only use panels that match the plan type
+          const targetPanelType = subscription.plan_id === 'plus' ? 'cp.rain.rest' : 'file.shopifysb.xyz';
+          console.log('🔍 RETRY: Using STRICT fallback for plan type:', subscription.plan_id, 'targeting:', targetPanelType);
+          
           const { data: fallbackPanel } = await supabase
             .from('panel_servers')
             .select('*')
             .eq('type', 'marzban')
             .eq('is_active', true)
             .eq('health_status', 'online')
+            .like('panel_url', `%${targetPanelType}%`)
             .limit(1)
             .single();
           
           if (fallbackPanel) {
             panelInfo = fallbackPanel;
+            console.log('🟡 RETRY: Using STRICT fallback panel:', {
+              planType: subscription.plan_id,
+              panelName: panelInfo.name,
+              panelUrl: panelInfo.panel_url
+            });
           }
         }
       } catch (error) {
-        console.error('Error getting panel info:', error);
+        console.error('❌ RETRY: Error getting panel info:', error);
       }
 
       if (!panelInfo) {
-        throw new Error('No active panel available for VPN creation');
+        throw new Error(`No active panel available for plan "${subscription.plan_id}" VPN creation`);
+      }
+
+      // CRITICAL VERIFICATION: Ensure correct panel is being used
+      const isCorrectPanel = (
+        (subscription.plan_id === 'plus' && panelInfo.panel_url.includes('rain')) ||
+        (subscription.plan_id === 'lite' && panelInfo.panel_url.includes('shopifysb'))
+      );
+
+      console.log('🔍 RETRY: Panel verification:', {
+        subscriptionPlan: subscription.plan_id,
+        panelUrl: panelInfo.panel_url,
+        isCorrectPanel,
+        panelName: panelInfo.name
+      });
+
+      if (!isCorrectPanel) {
+        throw new Error(`PANEL MISMATCH: Plan "${subscription.plan_id}" cannot use panel "${panelInfo.name}" (${panelInfo.panel_url})`);
       }
 
       // Prepare request data
@@ -144,7 +177,11 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
         subscriptionId: subscription.id
       };
 
-      console.log(`Retrying VPN creation via ${apiType} API...`);
+      console.log(`🔵 RETRY: Creating VPN user via ${apiType} API on CORRECT panel:`, {
+        panel: panelInfo.name,
+        url: panelInfo.panel_url,
+        planType: subscription.plan_id
+      });
 
       let result;
       let functionName;
@@ -197,7 +234,7 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
 
         // Update notes
         const existingNotes = subscription.notes || '';
-        updateData.notes = `${existingNotes} - VPN created via retry on ${new Date().toLocaleDateString()}`;
+        updateData.notes = `${existingNotes} - VPN created via retry on correct panel ${new Date().toLocaleDateString()}`;
 
         await supabase
           .from('subscriptions')
@@ -206,7 +243,7 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
 
         toast({
           title: 'VPN Creation Successful',
-          description: 'VPN user has been created successfully via retry',
+          description: 'VPN user has been created successfully via retry on the correct panel',
         });
       } else {
         throw new Error(result?.error || 'VPN creation failed');
@@ -216,7 +253,7 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
       await refetch();
       
     } catch (error) {
-      console.error('Error during VPN creation retry:', error);
+      console.error('❌ RETRY: Error during VPN creation retry:', error);
       
       toast({
         title: 'Retry Failed',
