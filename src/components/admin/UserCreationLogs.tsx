@@ -6,8 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, AlertCircle, CheckCircle, Clock, Server, Zap, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertCircle, CheckCircle, Clock, Server, Zap, RefreshCw, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 interface UserCreationLog {
   id: string;
@@ -29,6 +30,8 @@ interface UserCreationLogsProps {
 
 export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const { toast } = useToast();
 
   const { data: logs, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['user-creation-logs', subscriptionId],
@@ -52,9 +55,180 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
     enabled: !!subscriptionId,
   });
 
-  const handleRetry = async () => {
-    console.log('Retrying user creation logs fetch...');
+  const handleRefreshLogs = async () => {
+    console.log('Refreshing user creation logs...');
     await refetch();
+  };
+
+  const retryVpnCreation = async () => {
+    setIsRetrying(true);
+    
+    try {
+      console.log('Retrying VPN creation for subscription:',subscriptionId);
+      
+      // Get subscription details first
+      const { data: subscription, error: subError } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('id', subscriptionId)
+        .single();
+
+      if (subError || !subscription) {
+        throw new Error('Failed to fetch subscription details');
+      }
+
+      // Get plan information to determine the correct API and panel
+      let panelInfo = null;
+      let apiType = 'marzban'; // Default
+      
+      try {
+        // Get plan details with panel mapping
+        const { data: planData, error: planError } = await supabase
+          .from('subscription_plans')
+          .select(`
+            *,
+            plan_panel_mappings!inner(
+              panel_id,
+              is_primary,
+              panel_servers!inner(
+                id,
+                name,
+                type,
+                panel_url,
+                username,
+                password,
+                is_active,
+                health_status
+              )
+            )
+          `)
+          .eq('plan_id', subscription.plan_id || 'lite')
+          .eq('plan_panel_mappings.is_primary', true)
+          .single();
+
+        if (!planError && planData?.plan_panel_mappings?.[0]) {
+          const mapping = planData.plan_panel_mappings[0];
+          panelInfo = mapping.panel_servers;
+          apiType = planData.api_type || 'marzban';
+        } else {
+          console.warn('No panel mapping found, using fallback');
+          // Fallback to any active panel
+          const { data: fallbackPanel } = await supabase
+            .from('panel_servers')
+            .select('*')
+            .eq('type', 'marzban')
+            .eq('is_active', true)
+            .eq('health_status', 'online')
+            .limit(1)
+            .single();
+          
+          if (fallbackPanel) {
+            panelInfo = fallbackPanel;
+          }
+        }
+      } catch (error) {
+        console.error('Error getting panel info:', error);
+      }
+
+      if (!panelInfo) {
+        throw new Error('No active panel available for VPN creation');
+      }
+
+      // Prepare request data
+      const requestData = {
+        username: subscription.username,
+        dataLimitGB: subscription.data_limit_gb,
+        durationDays: subscription.duration_days,
+        notes: `Retry VPN creation - ${subscription.notes || ''}`,
+        panelId: panelInfo.id,
+        subscriptionId: subscription.id
+      };
+
+      console.log(`Retrying VPN creation via ${apiType} API...`);
+
+      let result;
+      let functionName;
+      
+      if (apiType === 'marzban') {
+        functionName = 'marzban-create-user';
+        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
+          body: requestData
+        });
+        
+        if (error) throw error;
+        result = data;
+      } else {
+        functionName = 'marzneshin-create-user';
+        const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
+          body: requestData
+        });
+        
+        if (error) throw error;
+        result = data;
+      }
+
+      // Log the retry attempt
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscriptionId,
+        edge_function_name: `${functionName}-retry`,
+        request_data: requestData,
+        response_data: result || {},
+        success: result?.success || false,
+        error_message: result?.error || null,
+        panel_id: panelInfo.id,
+        panel_name: panelInfo.name,
+        panel_url: panelInfo.panel_url
+      });
+
+      if (result?.success) {
+        // Update subscription with VPN details
+        const updateData: any = {
+          marzban_user_created: true,
+          updated_at: new Date().toISOString()
+        };
+
+        if (result.data?.subscription_url) {
+          updateData.subscription_url = result.data.subscription_url;
+        }
+
+        if (!subscription.expire_at && subscription.duration_days) {
+          updateData.expire_at = new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString();
+        }
+
+        // Update notes
+        const existingNotes = subscription.notes || '';
+        updateData.notes = `${existingNotes} - VPN created via retry on ${new Date().toLocaleDateString()}`;
+
+        await supabase
+          .from('subscriptions')
+          .update(updateData)
+          .eq('id', subscriptionId);
+
+        toast({
+          title: 'VPN Creation Successful',
+          description: 'VPN user has been created successfully via retry',
+        });
+      } else {
+        throw new Error(result?.error || 'VPN creation failed');
+      }
+
+      // Refresh logs to show the new attempt
+      await refetch();
+      
+    } catch (error) {
+      console.error('Error during VPN creation retry:', error);
+      
+      toast({
+        title: 'Retry Failed',
+        description: `VPN creation retry failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: 'destructive'
+      });
+      
+      // Still refresh logs to show the failed attempt
+      await refetch();
+    } finally {
+      setIsRetrying(false);
+    }
   };
 
   if (isLoading && !isFetching) {
@@ -74,7 +248,7 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
         <Button
           variant="ghost"
           size="sm"
-          onClick={handleRetry}
+          onClick={handleRefreshLogs}
           disabled={isFetching}
           className="ml-2"
         >
@@ -88,6 +262,9 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
     );
   }
 
+  const hasFailedAttempts = logs && logs.some(log => !log.success);
+  const hasSuccessfulAttempts = logs && logs.some(log => log.success);
+
   if (!logs || logs.length === 0) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -96,7 +273,7 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
         <Button
           variant="ghost"
           size="sm"
-          onClick={handleRetry}
+          onClick={handleRefreshLogs}
           disabled={isFetching}
           className="ml-2"
         >
@@ -105,7 +282,21 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
           ) : (
             <RefreshCw className="w-3 h-3" />
           )}
-          Retry
+          Refresh
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={retryVpnCreation}
+          disabled={isRetrying}
+          className="ml-1 text-blue-600 hover:text-blue-800"
+        >
+          {isRetrying ? (
+            <Clock className="w-3 h-3 animate-spin" />
+          ) : (
+            <RotateCcw className="w-3 h-3" />
+          )}
+          Try Create VPN
         </Button>
       </div>
     );
@@ -118,15 +309,18 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
           {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <Zap className="w-4 h-4 ml-1" />
           <span className="ml-2">User Creation Logs ({logs.length})</span>
-          {logs.some(log => !log.success) && (
+          {hasFailedAttempts && (
             <AlertCircle className="w-4 h-4 ml-1 text-red-500" />
+          )}
+          {hasSuccessfulAttempts && (
+            <CheckCircle className="w-4 h-4 ml-1 text-green-500" />
           )}
           <Button
             variant="ghost"
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              handleRetry();
+              handleRefreshLogs();
             }}
             disabled={isFetching}
             className="ml-2"
@@ -137,6 +331,25 @@ export const UserCreationLogs = ({ subscriptionId }: UserCreationLogsProps) => {
               <RefreshCw className="w-3 h-3" />
             )}
           </Button>
+          {hasFailedAttempts && !hasSuccessfulAttempts && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                retryVpnCreation();
+              }}
+              disabled={isRetrying}
+              className="ml-1 text-blue-600 hover:text-blue-800"
+            >
+              {isRetrying ? (
+                <Clock className="w-3 h-3 animate-spin" />
+              ) : (
+                <RotateCcw className="w-3 h-3" />
+              )}
+              Retry
+            </Button>
+          )}
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>

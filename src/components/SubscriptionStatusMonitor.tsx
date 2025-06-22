@@ -4,8 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { Loader, CheckCircle, XCircle, Clock, RefreshCw, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 
 interface SubscriptionStatusMonitorProps {
   subscriptionId: string;
@@ -15,11 +16,174 @@ interface SubscriptionStatusMonitorProps {
 export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: SubscriptionStatusMonitorProps) => {
   const { language } = useLanguage();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [status, setStatus] = useState<'pending' | 'active' | 'rejected'>('pending');
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCreatingVpn, setIsCreatingVpn] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [lastCheckTime, setLastCheckTime] = useState<Date>(new Date());
+  const [subscriptionData, setSubscriptionData] = useState<any>(null);
+
+  const createVpnUser = async (subscription: any) => {
+    setIsCreatingVpn(true);
+    console.log('STATUS_MONITOR: Attempting to create VPN user for approved subscription');
+    
+    try {
+      // Get plan information to determine the correct API and panel
+      let panelInfo = null;
+      let apiType = 'marzban'; // Default
+      
+      try {
+        // Get plan details with panel mapping
+        const { data: planData, error: planError } = await supabase
+          .from('subscription_plans')
+          .select(`
+            *,
+            plan_panel_mappings!inner(
+              panel_id,
+              is_primary,
+              panel_servers!inner(
+                id,
+                name,
+                type,
+                panel_url,
+                username,
+                password,
+                is_active,
+                health_status
+              )
+            )
+          `)
+          .eq('plan_id', subscription.plan_id || 'lite')
+          .eq('plan_panel_mappings.is_primary', true)
+          .single();
+
+        if (!planError && planData?.plan_panel_mappings?.[0]) {
+          const mapping = planData.plan_panel_mappings[0];
+          panelInfo = mapping.panel_servers;
+          apiType = planData.api_type || 'marzban';
+        } else {
+          console.warn('STATUS_MONITOR: No panel mapping found, using fallback');
+          // Fallback to any active panel
+          const { data: fallbackPanel } = await supabase
+            .from('panel_servers')
+            .select('*')
+            .eq('type', 'marzban')
+            .eq('is_active', true)
+            .eq('health_status', 'online')
+            .limit(1)
+            .single();
+          
+          if (fallbackPanel) {
+            panelInfo = fallbackPanel;
+          }
+        }
+      } catch (error) {
+        console.error('STATUS_MONITOR: Error getting panel info:', error);
+      }
+
+      if (!panelInfo) {
+        throw new Error('No active panel available for VPN creation');
+      }
+
+      // Prepare request data
+      const requestData = {
+        username: subscription.username,
+        dataLimitGB: subscription.data_limit_gb,
+        durationDays: subscription.duration_days,
+        notes: `Auto VPN creation after approval - ${subscription.notes || ''}`,
+        panelId: panelInfo.id,
+        subscriptionId: subscription.id
+      };
+
+      console.log(`STATUS_MONITOR: Creating VPN user via ${apiType} API...`);
+
+      let result;
+      let functionName;
+      
+      if (apiType === 'marzban') {
+        functionName = 'marzban-create-user';
+        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
+          body: requestData
+        });
+        
+        if (error) throw error;
+        result = data;
+      } else {
+        functionName = 'marzneshin-create-user';
+        const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
+          body: requestData
+        });
+        
+        if (error) throw error;
+        result = data;
+      }
+
+      // Log the attempt
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscription.id,
+        edge_function_name: `${functionName}-auto`,
+        request_data: requestData,
+        response_data: result || {},
+        success: result?.success || false,
+        error_message: result?.error || null,
+        panel_id: panelInfo.id,
+        panel_name: panelInfo.name,
+        panel_url: panelInfo.panel_url
+      });
+
+      if (result?.success) {
+        // Update subscription with VPN details
+        const updateData: any = {
+          marzban_user_created: true,
+          updated_at: new Date().toISOString()
+        };
+
+        if (result.data?.subscription_url) {
+          updateData.subscription_url = result.data.subscription_url;
+        }
+
+        if (!subscription.expire_at && subscription.duration_days) {
+          updateData.expire_at = new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString();
+        }
+
+        // Update notes
+        const existingNotes = subscription.notes || '';
+        updateData.notes = `${existingNotes} - VPN created automatically on ${new Date().toLocaleDateString()}`;
+
+        await supabase
+          .from('subscriptions')
+          .update(updateData)
+          .eq('id', subscription.id);
+
+        console.log('STATUS_MONITOR: VPN user created successfully, redirecting to delivery');
+        navigate(`/delivery?id=${subscriptionId}`, { replace: true });
+        onStatusUpdate('active', result.data?.subscription_url);
+        return true;
+      } else {
+        throw new Error(result?.error || 'VPN creation failed');
+      }
+      
+    } catch (error) {
+      console.error('STATUS_MONITOR: VPN creation failed:', error);
+      
+      toast({
+        title: language === 'fa' ? 'خطای ایجاد VPN' : 'VPN Creation Error',
+        description: language === 'fa' ? 
+          'ایجاد کاربر VPN ناموفق بود، اما اشتراک شما تأیید شده است' : 
+          'VPN user creation failed, but your subscription is approved',
+        variant: 'destructive'
+      });
+      
+      // Still redirect to delivery page even if VPN creation fails
+      navigate(`/delivery?id=${subscriptionId}`, { replace: true });
+      onStatusUpdate('active');
+      return false;
+    } finally {
+      setIsCreatingVpn(false);
+    }
+  };
 
   const checkStatus = async () => {
     try {
@@ -27,7 +191,7 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
       
       const { data: subscription, error } = await supabase
         .from('subscriptions')
-        .select('status, subscription_url, admin_decision')
+        .select('*')
         .eq('id', subscriptionId)
         .single();
 
@@ -38,17 +202,30 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
 
       console.log('STATUS_MONITOR: Current subscription data:', subscription);
       setLastCheckTime(new Date());
+      setSubscriptionData(subscription);
 
       if (subscription.status === 'active' && subscription.admin_decision === 'approved') {
-        console.log('STATUS_MONITOR: Subscription is now active, redirecting to delivery page');
+        console.log('STATUS_MONITOR: Subscription is approved');
         setStatus('active');
-        setIsMonitoring(false);
         
-        // Redirect to delivery page with subscription ID
-        navigate(`/delivery?id=${subscriptionId}`, { replace: true });
-        
-        // Also call the callback
-        onStatusUpdate('active', subscription.subscription_url);
+        // Check if VPN user already created
+        if (subscription.marzban_user_created && subscription.subscription_url) {
+          console.log('STATUS_MONITOR: VPN already created, redirecting to delivery');
+          setIsMonitoring(false);
+          navigate(`/delivery?id=${subscriptionId}`, { replace: true });
+          onStatusUpdate('active', subscription.subscription_url);
+        } else if (subscription.marzban_user_created) {
+          console.log('STATUS_MONITOR: VPN created but no URL, redirecting to delivery');
+          setIsMonitoring(false);
+          navigate(`/delivery?id=${subscriptionId}`, { replace: true });
+          onStatusUpdate('active');
+        } else {
+          console.log('STATUS_MONITOR: Subscription approved but VPN not created, attempting creation');
+          const vpnCreated = await createVpnUser(subscription);
+          if (vpnCreated) {
+            setIsMonitoring(false);
+          }
+        }
       } else if (subscription.admin_decision === 'rejected') {
         console.log('STATUS_MONITOR: Subscription was rejected');
         setStatus('rejected');
@@ -72,13 +249,19 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
     }, 1000);
   };
 
+  const handleManualVpnCreation = async () => {
+    if (subscriptionData && subscriptionData.status === 'active' && subscriptionData.admin_decision === 'approved') {
+      await createVpnUser(subscriptionData);
+    }
+  };
+
   useEffect(() => {
     if (!subscriptionId || !isMonitoring) return;
 
     // Check immediately
     checkStatus();
 
-    // Set up polling every 3 seconds with exponential backoff after many retries
+    // Set up polling with exponential backoff
     const getInterval = () => {
       if (retryCount < 10) return 3000; // 3 seconds for first 10 attempts
       if (retryCount < 20) return 5000; // 5 seconds for next 10 attempts
@@ -100,6 +283,10 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
   }, [subscriptionId, isMonitoring, retryCount, onStatusUpdate, navigate]);
 
   const getStatusIcon = () => {
+    if (isCreatingVpn) {
+      return <Zap className="w-8 h-8 text-blue-600 animate-pulse" />;
+    }
+    
     switch (status) {
       case 'active':
         return <CheckCircle className="w-8 h-8 text-green-600" />;
@@ -111,6 +298,10 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
   };
 
   const getStatusText = () => {
+    if (isCreatingVpn) {
+      return language === 'fa' ? 'در حال ایجاد VPN...' : 'Creating VPN...';
+    }
+    
     switch (status) {
       case 'active':
         return language === 'fa' ? 'فعال شد!' : 'Activated!';
@@ -122,6 +313,12 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
   };
 
   const getStatusDescription = () => {
+    if (isCreatingVpn) {
+      return language === 'fa' ? 
+        'پرداخت شما تأیید شد و در حال ایجاد کاربر VPN...' : 
+        'Your payment has been approved and creating VPN user...';
+    }
+    
     switch (status) {
       case 'active':
         return language === 'fa' ? 
@@ -189,6 +386,17 @@ export const SubscriptionStatusMonitor = ({ subscriptionId, onStatusUpdate }: Su
                 </div>
               )}
             </div>
+          )}
+
+          {status === 'active' && subscriptionData && !subscriptionData.marzban_user_created && !isCreatingVpn && (
+            <Button 
+              onClick={handleManualVpnCreation} 
+              variant="outline"
+              className="w-full border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              {language === 'fa' ? 'ایجاد VPN' : 'Create VPN'}
+            </Button>
           )}
         </div>
       </CardContent>
