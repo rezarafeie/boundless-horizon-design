@@ -123,10 +123,17 @@ serve(async (req) => {
     });
 
     // Step 1: Authenticate with the SPECIFIC panel
+    console.log('🔵 [MARZBAN-CREATE-USER] Attempting authentication with credentials:', {
+      panelUrl: panelConfig.panel_url,
+      username: panelConfig.username,
+      hasPassword: !!panelConfig.password
+    });
+
     const authResponse = await fetch(`${panelConfig.panel_url}/api/admin/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify({
         username: panelConfig.username,
@@ -134,11 +141,20 @@ serve(async (req) => {
       })
     });
 
+    console.log('🔵 [MARZBAN-CREATE-USER] Auth response status:', {
+      status: authResponse.status,
+      statusText: authResponse.statusText,
+      ok: authResponse.ok,
+      headers: Object.fromEntries(authResponse.headers.entries())
+    });
+
     if (!authResponse.ok) {
+      const errorText = await authResponse.text();
       console.error('❌ [MARZBAN-CREATE-USER] Authentication failed:', {
         status: authResponse.status,
         statusText: authResponse.statusText,
-        panelUrl: panelConfig.panel_url
+        panelUrl: panelConfig.panel_url,
+        errorText: errorText
       });
       
       // Log the failure
@@ -148,29 +164,51 @@ serve(async (req) => {
         edge_function_name: 'marzban-create-user',
         request_data: requestData,
         success: false,
-        error_message: `Authentication failed: ${authResponse.status} ${authResponse.statusText}`,
+        error_message: `Authentication failed: ${authResponse.status} ${authResponse.statusText} - ${errorText}`,
         panel_url: panelConfig.panel_url,
         panel_name: panelConfig.name
       });
       
-      throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
+      throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText} - ${errorText}`);
     }
 
     const authData = await authResponse.json();
     const accessToken = authData.access_token;
 
-    console.log('🟢 [MARZBAN-CREATE-USER] Authentication successful on panel:', panelConfig.panel_url);
+    if (!accessToken) {
+      console.error('❌ [MARZBAN-CREATE-USER] No access token received:', authData);
+      throw new Error('No access token received from authentication');
+    }
+
+    console.log('🟢 [MARZBAN-CREATE-USER] Authentication successful on panel:', {
+      panelUrl: panelConfig.panel_url,
+      hasToken: !!accessToken,
+      tokenType: authData.token_type
+    });
 
     // Step 2: Get template user configuration (usually 'reza')
+    console.log('🔵 [MARZBAN-CREATE-USER] Fetching template user configuration...');
+    
     const templateUserResponse = await fetch(`${panelConfig.panel_url}/api/user/reza`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       }
     });
 
+    console.log('🔵 [MARZBAN-CREATE-USER] Template user response:', {
+      status: templateUserResponse.status,
+      statusText: templateUserResponse.statusText,
+      ok: templateUserResponse.ok
+    });
+
     if (!templateUserResponse.ok) {
-      console.error('❌ [MARZBAN-CREATE-USER] Template user fetch failed:', templateUserResponse.status);
+      const errorText = await templateUserResponse.text();
+      console.error('❌ [MARZBAN-CREATE-USER] Template user fetch failed:', {
+        status: templateUserResponse.status,
+        errorText: errorText
+      });
       
       // Log the failure
       await supabase.from('user_creation_logs').insert({
@@ -179,16 +217,21 @@ serve(async (req) => {
         edge_function_name: 'marzban-create-user',
         request_data: requestData,
         success: false,
-        error_message: `Template user fetch failed: ${templateUserResponse.status}`,
+        error_message: `Template user fetch failed: ${templateUserResponse.status} - ${errorText}`,
         panel_url: panelConfig.panel_url,
         panel_name: panelConfig.name
       });
       
-      throw new Error(`Template user fetch failed: ${templateUserResponse.status}`);
+      throw new Error(`Template user fetch failed: ${templateUserResponse.status} - ${errorText}`);
     }
 
     const templateUser = await templateUserResponse.json();
-    console.log('🟢 [MARZBAN-CREATE-USER] Template user fetched successfully');
+    console.log('🟢 [MARZBAN-CREATE-USER] Template user fetched successfully:', {
+      username: templateUser.username,
+      hasProxies: !!templateUser.proxies,
+      proxiesCount: templateUser.proxies?.length || 0,
+      hasInbounds: !!templateUser.inbounds
+    });
 
     // Step 3: Create the new user with template configuration
     const dataLimitBytes = dataLimitGB * 1073741824; // Convert GB to bytes
@@ -196,11 +239,11 @@ serve(async (req) => {
 
     const newUserData = {
       username: username,
-      proxies: templateUser.proxies,
+      proxies: templateUser.proxies || {},
       expire: expireTimestamp,
       data_limit: dataLimitBytes,
       data_limit_reset_strategy: templateUser.data_limit_reset_strategy || "no_reset",
-      inbounds: templateUser.inbounds,
+      inbounds: templateUser.inbounds || {},
       note: notes || `Created via bnets.co - Subscription`,
       status: "active",
       excluded_inbounds: templateUser.excluded_inbounds || {}
@@ -210,16 +253,26 @@ serve(async (req) => {
       username: newUserData.username,
       expire: new Date(expireTimestamp * 1000).toISOString(),
       dataLimitGB: dataLimitGB,
-      panelUrl: panelConfig.panel_url
+      dataLimitBytes: dataLimitBytes,
+      panelUrl: panelConfig.panel_url,
+      hasProxies: !!newUserData.proxies,
+      hasInbounds: !!newUserData.inbounds
     });
 
     const createUserResponse = await fetch(`${panelConfig.panel_url}/api/user`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify(newUserData)
+    });
+
+    console.log('🔵 [MARZBAN-CREATE-USER] User creation response:', {
+      status: createUserResponse.status,
+      statusText: createUserResponse.statusText,
+      ok: createUserResponse.ok
     });
 
     if (!createUserResponse.ok) {
