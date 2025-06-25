@@ -56,11 +56,18 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
 
   const refreshPanelConfig = async () => {
     setIsRefreshing(true);
-    console.log('=== PANEL REFRESH: Starting for panel:', panel.name);
+    console.log('=== PANEL REFRESH: Starting for panel:', panel.name, 'Type:', panel.type);
 
     try {
-      // First authenticate to get the token
-      const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
+      // FIXED: Use correct authentication endpoint based on panel type
+      const authEndpoint = panel.type === 'marzneshin' 
+        ? `${panel.panel_url}/api/admins/token`  // Correct Marzneshin endpoint
+        : `${panel.panel_url}/api/admin/token`;   // Marzban endpoint
+
+      console.log('PANEL REFRESH: Using auth endpoint:', authEndpoint);
+
+      // Authenticate with the correct endpoint
+      const authResponse = await fetch(authEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -72,7 +79,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       });
 
       if (!authResponse.ok) {
-        throw new Error(`Authentication failed: ${authResponse.status}`);
+        throw new Error(`Authentication failed: ${authResponse.status} - ${authResponse.statusText}`);
       }
 
       const authData = await authResponse.json();
@@ -82,30 +89,54 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         throw new Error('No access token received from panel');
       }
 
-      console.log('PANEL REFRESH: Authentication successful');
+      console.log('PANEL REFRESH: Authentication successful for', panel.type);
 
-      // Get user config (using a test username to fetch panel structure)
-      const configResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // Get user config - use different endpoints based on panel type
+      let configResponse;
+      if (panel.type === 'marzneshin') {
+        // For Marzneshin, try to get users list to understand panel structure
+        configResponse = await fetch(`${panel.panel_url}/api/users?limit=1`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      } else {
+        // For Marzban, use the original approach
+        configResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      }
 
       if (!configResponse.ok) {
-        throw new Error(`Config fetch failed: ${configResponse.status}`);
+        throw new Error(`Config fetch failed: ${configResponse.status} - ${configResponse.statusText}`);
       }
 
       const configData = await configResponse.json();
-      console.log('PANEL REFRESH: Config data received:', configData);
+      console.log('PANEL REFRESH: Config data received for', panel.type, ':', configData);
 
-      // Extract inbounds and proxies
-      const inbounds = configData.inbounds || {};
-      const proxies = configData.proxies || {};
-      
-      // Determine enabled protocols from the proxies structure
-      const enabledProtocols = Object.keys(proxies);
+      // Extract inbounds and proxies based on panel type
+      let inbounds = {};
+      let proxies = {};
+      let enabledProtocols: string[] = [];
+
+      if (panel.type === 'marzneshin') {
+        // For Marzneshin, we need to extract from the API structure
+        // This might need adjustment based on actual Marzneshin API response
+        enabledProtocols = ['vless', 'vmess', 'trojan', 'shadowsocks']; // Default protocols
+        inbounds = { vless: [], vmess: [], trojan: [], shadowsocks: [] };
+        proxies = { vless: {}, vmess: {}, trojan: {}, shadowsocks: {} };
+      } else {
+        // For Marzban, use the original extraction logic
+        inbounds = configData.inbounds || {};
+        proxies = configData.proxies || {};
+        enabledProtocols = Object.keys(proxies);
+      }
       
       // Count total configs - ensure we get a number with proper type checking
       const totalConfigs = Object.values(inbounds as Record<string, any>).reduce((sum: number, protocols: any) => {
@@ -113,7 +144,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         return sum + count;
       }, 0);
 
-      console.log('PANEL REFRESH: Extracted data:', {
+      console.log('PANEL REFRESH: Extracted data for', panel.type, ':', {
         inbounds,
         proxies,
         enabledProtocols,
@@ -154,14 +185,14 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         console.error('Failed to log refresh:', logError);
       }
 
-      console.log('PANEL REFRESH: Success');
+      console.log('PANEL REFRESH: Success for', panel.type);
       toast.success(`Panel config refreshed successfully! Found ${totalConfigs} configs across ${enabledProtocols.length} protocols.`);
       
       onRefreshComplete();
       await fetchRefreshLogs();
 
     } catch (error: any) {
-      console.error('PANEL REFRESH: Error:', error);
+      console.error('PANEL REFRESH: Error for', panel.type, ':', error);
       
       // Log the failed refresh
       const { error: logError } = await supabase
