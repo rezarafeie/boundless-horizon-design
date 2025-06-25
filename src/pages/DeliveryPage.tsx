@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -364,18 +365,6 @@ const DeliveryPage = () => {
     });
   };
 
-  // Calculate exact days remaining
-  const getDaysRemaining = () => {
-    if (!subscription?.expire_at) return null;
-    
-    const now = new Date();
-    const expiryDate = new Date(subscription.expire_at);
-    const diffTime = expiryDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    return diffDays;
-  };
-
   const isExpired = subscription?.expire_at ? new Date(subscription.expire_at) < new Date() : false;
 
   if (loading) {
@@ -429,7 +418,7 @@ const DeliveryPage = () => {
       <div className="pt-16 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
-          {/* 🎯 Enhanced Hero Header Section */}
+          {/* 🎯 Hero Header Section */}
           <div className="text-center mb-8 animate-fade-in">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
@@ -754,81 +743,43 @@ const DeliveryPage = () => {
                 </Card>
               )}
 
-              {/* ♻️ Enhanced Renewal Section */}
-              <Card className={`border-0 shadow-lg ${
-                isExpired 
-                  ? 'bg-red-50 dark:bg-red-900/20 border-red-200' 
-                  : getDaysRemaining() !== null && getDaysRemaining()! <= 7
-                    ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200'
-                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200'
-              }`}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    <RotateCcw className={`w-6 h-6 ${
-                      isExpired 
-                        ? 'text-red-600' 
-                        : getDaysRemaining() !== null && getDaysRemaining()! <= 7 
-                          ? 'text-yellow-600' 
-                          : 'text-blue-600'
-                    }`} />
-                    ♻️ {language === 'fa' ? 'تمدید اشتراک' : 'Renewal'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <Calendar className={`w-5 h-5 ${
-                      isExpired 
-                        ? 'text-red-600' 
-                        : getDaysRemaining() !== null && getDaysRemaining()! <= 7 
-                          ? 'text-yellow-600' 
-                          : 'text-blue-600'
-                    } mt-0.5 flex-shrink-0`} />
-                    <div>
-                      <p className={`font-semibold mb-1 ${
-                        isExpired 
-                          ? 'text-red-800 dark:text-red-200' 
-                          : getDaysRemaining() !== null && getDaysRemaining()! <= 7 
-                            ? 'text-yellow-800 dark:text-yellow-200' 
-                            : 'text-blue-800 dark:text-blue-200'
-                      }`}>
-                        {isExpired ? 
-                          (language === 'fa' ? '🔴 اشتراک منقضی شده' : '🔴 Subscription Expired') :
-                          getDaysRemaining() !== null && (
-                            language === 'fa' ? 
-                              `⏰ اشتراک شما در ${getDaysRemaining()} روز منقضی می‌شود` :
-                              `⏰ Your subscription expires in ${getDaysRemaining()} days`
-                          )
-                        }
-                      </p>
-                      <p className={`text-sm mb-3 ${
-                        isExpired 
-                          ? 'text-red-700 dark:text-red-300' 
-                          : getDaysRemaining() !== null && getDaysRemaining()! <= 7 
-                            ? 'text-yellow-700 dark:text-yellow-300' 
-                            : 'text-blue-700 dark:text-blue-300'
-                      }`}>
-                        {language === 'fa' ? 
-                          'برای تمدید اشتراک خود به صفحه تمدید مراجعه کنید' : 
-                          'Visit the renewal page to extend your subscription'
-                        }
-                      </p>
-                      <Button 
-                        onClick={() => navigate('/renewal')}
-                        className={`${
-                          isExpired 
-                            ? 'bg-red-600 hover:bg-red-700' 
-                            : getDaysRemaining() !== null && getDaysRemaining()! <= 7 
-                              ? 'bg-yellow-600 hover:bg-yellow-700' 
-                              : 'bg-blue-600 hover:bg-blue-700'
-                        } text-white`}
-                      >
-                        <RotateCcw className="w-4 h-4 mr-2" />
-                        {language === 'fa' ? '🔄 تمدید کنید' : '🔄 Renew Now'}
-                      </Button>
+              {/* ♻️ Renewal Section */}
+              {(isExpired || countdown.includes('d')) && (
+                <Card className={`border-0 shadow-lg ${isExpired ? 'bg-red-50 dark:bg-red-900/20 border-red-200' : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200'}`}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <RotateCcw className={`w-6 h-6 ${isExpired ? 'text-red-600' : 'text-yellow-600'}`} />
+                      ♻️ {language === 'fa' ? 'تمدید اشتراک' : 'Renewal'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <Calendar className={`w-5 h-5 ${isExpired ? 'text-red-600' : 'text-yellow-600'} mt-0.5 flex-shrink-0`} />
+                      <div>
+                        <p className={`font-semibold ${isExpired ? 'text-red-800 dark:text-red-200' : 'text-yellow-800 dark:text-yellow-200'} mb-1`}>
+                          {isExpired ? 
+                            (language === 'fa' ? '🔴 اشتراک منقضی شده' : '🔴 Subscription Expired') :
+                            (language === 'fa' ? '⚠️ اشتراک به زودی منقضی می‌شود' : '⚠️ Subscription Expiring Soon')
+                          }
+                        </p>
+                        <p className={`text-sm ${isExpired ? 'text-red-700 dark:text-red-300' : 'text-yellow-700 dark:text-yellow-300'} mb-3`}>
+                          {language === 'fa' ? 
+                            'برای تمدید اشتراک خود به صفحه تمدید مراجعه کنید' : 
+                            'Visit the renewal page to extend your subscription'
+                          }
+                        </p>
+                        <Button 
+                          onClick={() => navigate('/renewal')}
+                          className={`${isExpired ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'} text-white`}
+                        >
+                          <RotateCcw className="w-4 h-4 mr-2" />
+                          {language === 'fa' ? '🔄 تمدید کنید' : '🔄 Renew Now'}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* 🎓 Setup Guides */}
               <Card className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
@@ -841,66 +792,11 @@ const DeliveryPage = () => {
                 <CardContent className="p-6">
                   <div className="space-y-4">
                     {[
-                      { 
-                        platform: 'v2rayn', 
-                        name: 'V2rayN', 
-                        icon: '💻', 
-                        description: language === 'fa' ? 'برای ویندوز' : 'For Windows',
-                        instructions: [
-                          language === 'fa' ? 'برنامه V2rayN را دانلود و نصب کنید' : 'Download and install V2rayN',
-                          language === 'fa' ? 'لینک اشتراک را کپی کنید' : 'Copy the subscription link',
-                          language === 'fa' ? 'در برنامه، گزینه "Add Subscription" را انتخاب کنید' : 'In the app, select "Add Subscription"',
-                          language === 'fa' ? 'لینک را وارد کرده و اتصال برقرار کنید' : 'Paste the link and connect'
-                        ]
-                      },
-                      { 
-                        platform: 'streisand', 
-                        name: 'Streisand', 
-                        icon: '🖥️', 
-                        description: language === 'fa' ? 'برای سرور' : 'For Server',
-                        instructions: [
-                          language === 'fa' ? 'مطابق راهنمای GitHub، Streisand را مستقر کنید' : 'Follow GitHub readme to deploy Streisand',
-                          language === 'fa' ? 'فایل کانفیگ را دانلود کنید' : 'Download the config file',
-                          language === 'fa' ? 'کانفیگ را در سرور خود وارد کنید' : 'Import config to your server',
-                          language === 'fa' ? 'اتصال را آزمایش کنید' : 'Test the connection'
-                        ]
-                      },
-                      { 
-                        platform: 'karimg', 
-                        name: 'Karimg', 
-                        icon: '📱', 
-                        description: language === 'fa' ? 'برای اندروید' : 'For Android',
-                        instructions: [
-                          language === 'fa' ? 'برنامه Karimg را از Google Play نصب کنید' : 'Install Karimg from Google Play',
-                          language === 'fa' ? 'لینک اشتراک را در برنامه وارد کنید' : 'Paste subscription link in the app',
-                          language === 'fa' ? 'پروتکل VLESS را فعال کنید' : 'Enable VLESS protocol',
-                          language === 'fa' ? 'اتصال برقرار کنید' : 'Connect'
-                        ]
-                      },
-                      { 
-                        platform: 'happynet', 
-                        name: 'Happynet', 
-                        icon: '📱', 
-                        description: language === 'fa' ? 'برای اندروید' : 'For Android',
-                        instructions: [
-                          language === 'fa' ? 'برنامه Happynet را نصب کنید' : 'Install Happynet app',
-                          language === 'fa' ? 'QR Code را اسکن کنید یا لینک را وارد کنید' : 'Scan QR code or import link',
-                          language === 'fa' ? 'کانفیگ را انتخاب کنید' : 'Select the configuration',
-                          language === 'fa' ? 'اتصال برقرار کنید' : 'Connect'
-                        ]
-                      },
-                      { 
-                        platform: 'v2box', 
-                        name: 'V2BOX', 
-                        icon: '📱', 
-                        description: language === 'fa' ? 'برای iOS' : 'For iOS',
-                        instructions: [
-                          language === 'fa' ? 'برنامه V2BOX را از App Store نصب کنید' : 'Install V2BOX from App Store',
-                          language === 'fa' ? 'QR Code را اسکن کنید یا لینک را وارد کنید' : 'Scan QR code or paste the link',
-                          language === 'fa' ? 'کانفیگ را ذخیره کنید' : 'Save the configuration',
-                          language === 'fa' ? 'اتصال برقرار کنید' : 'Connect'
-                        ]
-                      }
+                      { platform: 'android', name: 'Android', icon: '📱', app: 'V2rayNG', description: 'Best for Android devices' },
+                      { platform: 'ios', name: 'iOS', icon: '📱', app: 'FairVPN', description: 'Available on App Store' },
+                      { platform: 'windows', name: 'Windows', icon: '💻', app: 'V2rayN', description: 'Desktop application' },
+                      { platform: 'macos', name: 'macOS', icon: '💻', app: 'V2rayU', description: 'For Mac computers' },
+                      { platform: 'linux', name: 'Linux', icon: '🐧', app: 'Qv2ray', description: 'Open source client' }
                     ].map((item) => (
                       <Collapsible key={item.platform} open={showGuides[item.platform]} onOpenChange={() => toggleGuide(item.platform)}>
                         <CollapsibleTrigger asChild>
@@ -909,7 +805,8 @@ const DeliveryPage = () => {
                               <span className="text-2xl">{item.icon}</span>
                               <div className="text-left flex-1">
                                 <div className="font-semibold">{item.name}</div>
-                                <div className="text-sm text-gray-500">{item.description}</div>
+                                <div className="text-sm text-gray-500">{language === 'fa' ? 'برنامه پیشنهادی:' : 'Recommended app:'} {item.app}</div>
+                                <div className="text-xs text-gray-400">{item.description}</div>
                               </div>
                               {showGuides[item.platform] ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                             </div>
@@ -918,14 +815,42 @@ const DeliveryPage = () => {
                         <CollapsibleContent className="px-4 pb-4">
                           <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
                             <div className="text-sm space-y-3">
-                              {item.instructions.map((instruction, index) => (
-                                <div key={index} className="flex items-start gap-3">
-                                  <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                                    {index + 1}
-                                  </span>
-                                  <p>{instruction}</p>
-                                </div>
-                              ))}
+                              <div className="flex items-start gap-3">
+                                <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
+                                <p>
+                                  {language === 'fa' ? 
+                                    `برنامه ${item.app} را دانلود و نصب کنید` : 
+                                    `Download and install ${item.app}`
+                                  }
+                                </p>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
+                                <p>
+                                  {language === 'fa' ? 
+                                    'لینک اشتراک را کپی کنید' : 
+                                    'Copy the subscription link'
+                                  }
+                                </p>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
+                                <p>
+                                  {language === 'fa' ? 
+                                    'در برنامه، گزینه "Add Subscription" را انتخاب کنید' : 
+                                    'In the app, select "Add Subscription"'
+                                  }
+                                </p>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">4</span>
+                                <p>
+                                  {language === 'fa' ? 
+                                    'لینک را وارد کرده و اتصال برقرار کنید' : 
+                                    'Paste the link and connect'
+                                  }
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </CollapsibleContent>
@@ -939,7 +864,7 @@ const DeliveryPage = () => {
             {/* Right Column - Apps & Support */}
             <div className="space-y-6">
               
-              {/* 📱 Enhanced Apps Section */}
+              {/* 📱 Apps Section */}
               <Card className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
                 <CardHeader className="border-b border-gray-100 dark:border-gray-700">
                   <CardTitle className="flex items-center gap-2 text-xl">
@@ -950,48 +875,14 @@ const DeliveryPage = () => {
                 <CardContent className="p-6">
                   <div className="space-y-3">
                     {[
-                      { 
-                        name: 'V2rayN', 
-                        platform: 'Windows', 
-                        icon: '💻', 
-                        color: 'bg-blue-600 hover:bg-blue-700',
-                        url: 'https://github.com/2dust/v2rayN/releases'
-                      },
-                      { 
-                        name: 'Streisand', 
-                        platform: 'Server', 
-                        icon: '🖥️', 
-                        color: 'bg-purple-600 hover:bg-purple-700',
-                        url: 'https://github.com/StreisandEffect/streisand/releases'
-                      },
-                      { 
-                        name: 'Karimg', 
-                        platform: 'Android', 
-                        icon: '📱', 
-                        color: 'bg-green-600 hover:bg-green-700',
-                        url: 'https://play.google.com/store/apps/details?id=com.karimg.v2ray'
-                      },
-                      { 
-                        name: 'Happynet', 
-                        platform: 'Android', 
-                        icon: '📱', 
-                        color: 'bg-orange-600 hover:bg-orange-700',
-                        url: 'https://play.google.com/store/apps/details?id=com.happynet.vpn'
-                      },
-                      { 
-                        name: 'V2BOX', 
-                        platform: 'iOS', 
-                        icon: '📱', 
-                        color: 'bg-indigo-600 hover:bg-indigo-700',
-                        url: 'https://apps.apple.com/app/id6446814690'
-                      }
+                      { name: 'V2rayNG', platform: 'Android', icon: '📱', color: 'bg-green-600 hover:bg-green-700' },
+                      { name: 'Streisand', platform: 'iOS', icon: '📱', color: 'bg-blue-600 hover:bg-blue-700' },
+                      { name: 'Karimg', platform: 'Android/iOS', icon: '📱', color: 'bg-purple-600 hover:bg-purple-700' },
+                      { name: 'Happynet', platform: 'Multi-platform', icon: '🌐', color: 'bg-orange-600 hover:bg-orange-700' },
+                      { name: 'V2BOX', platform: 'iOS', icon: '📱', color: 'bg-indigo-600 hover:bg-indigo-700' },
+                      { name: 'V2rayN', platform: 'Windows', icon: '💻', color: 'bg-gray-600 hover:bg-gray-700' }
                     ].map((app, index) => (
-                      <Button 
-                        key={index} 
-                        className={`w-full justify-start ${app.color} text-white`} 
-                        size="lg"
-                        onClick={() => window.open(app.url, '_blank')}
-                      >
+                      <Button key={index} className={`w-full justify-start ${app.color} text-white`} size="lg">
                         <div className="flex items-center gap-3 w-full">
                           <span className="text-2xl">{app.icon}</span>
                           <div className="text-left flex-1">
@@ -1006,7 +897,7 @@ const DeliveryPage = () => {
                 </CardContent>
               </Card>
 
-              {/* 📞 Enhanced Support Section */}
+              {/* 📞 Support Section */}
               <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20">
                 <CardHeader className="border-b border-blue-100 dark:border-blue-800">
                   <CardTitle className="flex items-center gap-2 text-xl text-blue-700 dark:text-blue-300">
@@ -1020,11 +911,7 @@ const DeliveryPage = () => {
                       <p className="text-gray-600 dark:text-gray-300 mb-3">
                         ❓ {language === 'fa' ? 'مشکلی دارید؟ با پشتیبانی تماس بگیرید' : 'Need help? Reach out to our support team.'}
                       </p>
-                      <Button 
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
-                        size="lg"
-                        onClick={() => window.open('https://t.me/bnets_support', '_blank')}
-                      >
+                      <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" size="lg">
                         <MessageCircle className="w-5 h-5 mr-2" />
                         {language === 'fa' ? 'پشتیبانی تلگرام' : 'Telegram Support'}
                       </Button>
