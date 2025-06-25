@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -398,6 +399,11 @@ serve(async (req) => {
         'Created via bnets.co - Subscription' : 
         'Test user - will be deleted';
 
+      // Calculate expire_date for fixed_date strategy
+      const expireDate = new Date();
+      expireDate.setDate(expireDate.getDate() + targetDuration);
+      const expireDateISO = expireDate.toISOString().split('T')[0] + 'T00:00:00';
+
       addLog(detailedLogs, 'User Creation', 'info', `${isActualUserCreation ? 'Creating actual Marzneshin user' : 'Creating Marzneshin test user'}: ${targetUsername}`);
 
       // Build Marzneshin user payload
@@ -406,9 +412,18 @@ serve(async (req) => {
         data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
         usage_duration: targetDuration * 24 * 60 * 60, // Convert days to seconds
         expire_strategy: "fixed_date",
+        expire_date: expireDateISO, // Add required expire_date field
         service_ids: [1], // Default service ID
         note: targetNotes
       };
+
+      addLog(detailedLogs, 'User Creation Debug', 'info', 'Marzneshin user payload prepared', {
+        username: userPayload.username,
+        dataLimitGB: targetDataLimit,
+        durationDays: targetDuration,
+        expireDate: expireDateISO,
+        expireStrategy: userPayload.expire_strategy
+      });
 
       try {
         const createResponse = await fetch(`${panel.panel_url}/api/users`, {
@@ -439,14 +454,15 @@ serve(async (req) => {
         
         addLog(detailedLogs, 'User Creation', 'success', `Marzneshin user created successfully`, {
           username: createdUserData.username,
-          hasSubscriptionUrl: !!createdUserData.subscription_url
+          hasSubscriptionUrl: !!createdUserData.subscription_url,
+          expireDate: createdUserData.expire_date
         });
 
         testResult.userCreation = {
           success: true,
           username: createdUserData.username,
           subscriptionUrl: createdUserData.subscription_url,
-          expire: createdUserData.expire,
+          expire: createdUserData.expire_date,
           dataLimit: createdUserData.data_limit
         };
 
@@ -530,3 +546,4 @@ serve(async (req) => {
     });
   }
 });
+
