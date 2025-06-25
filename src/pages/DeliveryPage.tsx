@@ -1,11 +1,13 @@
+
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Copy, Download, RefreshCw, AlertCircle, CheckCircle, Clock, ExternalLink, QrCode, Smartphone, Monitor, ChevronDown, ChevronRight, Shield, MessageCircle, Zap } from 'lucide-react';
+import { Copy, Download, RefreshCw, AlertCircle, CheckCircle, Clock, ExternalLink, QrCode, Smartphone, Monitor, ChevronDown, ChevronRight, Shield, MessageCircle, Zap, Calendar, RotateCcw, Bookmark, Share2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -51,6 +53,7 @@ const DeliveryPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [countdown, setCountdown] = useState<string>('');
+  const [timeProgress, setTimeProgress] = useState(0);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showGuides, setShowGuides] = useState<{[key: string]: boolean}>({});
 
@@ -64,27 +67,56 @@ const DeliveryPage = () => {
     fetchSubscription();
   }, [subscriptionId, navigate]);
 
-  // Countdown timer
+  // Enhanced countdown timer with progress calculation
   useEffect(() => {
-    if (subscription?.expire_at) {
+    if (subscription?.expire_at && subscription?.created_at) {
       const timer = setInterval(() => {
         const now = new Date().getTime();
         const expiry = new Date(subscription.expire_at!).getTime();
-        const diff = expiry - now;
+        const created = new Date(subscription.created_at).getTime();
+        const totalDuration = expiry - created;
+        const timeElapsed = now - created;
+        const timeRemaining = expiry - now;
 
-        if (diff > 0) {
-          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        if (timeRemaining > 0) {
+          const days = Math.floor(timeRemaining / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const minutes = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
           setCountdown(`${days}d ${hours}h ${minutes}m`);
+          
+          // Calculate progress (0-100)
+          const progress = Math.min(100, Math.max(0, (timeElapsed / totalDuration) * 100));
+          setTimeProgress(progress);
         } else {
           setCountdown('Expired');
+          setTimeProgress(100);
         }
       }, 60000);
 
+      // Initial calculation
+      const now = new Date().getTime();
+      const expiry = new Date(subscription.expire_at!).getTime();
+      const created = new Date(subscription.created_at).getTime();
+      const totalDuration = expiry - created;
+      const timeElapsed = now - created;
+      const timeRemaining = expiry - now;
+
+      if (timeRemaining > 0) {
+        const days = Math.floor(timeRemaining / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
+        setCountdown(`${days}d ${hours}h ${minutes}m`);
+        
+        const progress = Math.min(100, Math.max(0, (timeElapsed / totalDuration) * 100));
+        setTimeProgress(progress);
+      } else {
+        setCountdown('Expired');
+        setTimeProgress(100);
+      }
+
       return () => clearInterval(timer);
     }
-  }, [subscription?.expire_at]);
+  }, [subscription?.expire_at, subscription?.created_at]);
 
   const fetchSubscription = async () => {
     if (!subscriptionId) return;
@@ -134,6 +166,10 @@ const DeliveryPage = () => {
       });
 
       setSubscription(data);
+      
+      if (data.subscription_url) {
+        await generateQRCode(data.subscription_url);
+      }
     } catch (error) {
       console.error('DELIVERY_PAGE: Error:', error);
       toast({
@@ -194,7 +230,6 @@ const DeliveryPage = () => {
       if (data.subscription && data.subscription.subscription_url) {
         console.log('DELIVERY_PAGE: Got subscription data:', data.subscription);
         
-        // Update subscription with fresh data from the STRICTLY assigned panel
         const { error: updateError } = await supabase
           .from('subscriptions')
           .update({
@@ -210,7 +245,6 @@ const DeliveryPage = () => {
           throw updateError;
         }
 
-        // Refresh the local data
         await fetchSubscription();
         
         toast({
@@ -258,6 +292,32 @@ const DeliveryPage = () => {
     URL.revokeObjectURL(url);
   };
 
+  const saveThisPage = () => {
+    if (typeof window !== 'undefined' && 'localStorage' in window) {
+      localStorage.setItem(`subscription_${subscription?.id}`, window.location.href);
+      toast({
+        title: language === 'fa' ? 'ذخیره شد' : 'Saved',
+        description: language === 'fa' ? 'لینک صفحه ذخیره شد' : 'Page saved to bookmarks'
+      });
+    }
+  };
+
+  const shareSubscription = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `VPN Subscription - ${subscription?.username}`,
+          text: 'My VPN subscription details',
+          url: window.location.href
+        });
+      } catch (error) {
+        copyToClipboard(window.location.href);
+      }
+    } else {
+      copyToClipboard(window.location.href);
+    }
+  };
+
   const generateQRCode = async (url: string) => {
     try {
       const qrDataUrl = await QRCodeCanvas.toDataURL(url, {
@@ -295,6 +355,17 @@ const DeliveryPage = () => {
   const toggleGuide = (platform: string) => {
     setShowGuides(prev => ({ ...prev, [platform]: !prev[platform] }));
   };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString(language === 'fa' ? 'fa-IR' : 'en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const isExpired = subscription?.expire_at ? new Date(subscription.expire_at) < new Date() : false;
 
   if (loading) {
     return (
@@ -345,24 +416,95 @@ const DeliveryPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-blue-900 dark:to-indigo-900">
       <Navigation />
       <div className="pt-16 pb-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
-          {/* Hero Header */}
+          {/* 🎯 Hero Header Section */}
           <div className="text-center mb-8 animate-fade-in">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-                <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+                {isExpired ? <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" /> : <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />}
               </div>
               <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                {language === 'fa' ? '🎉 اشتراک آماده است!' : '🎉 Subscription Ready!'}
+                {isExpired ? 
+                  (language === 'fa' ? '⏰ اشتراک منقضی شده' : '⏰ Subscription Expired') :
+                  (language === 'fa' ? '🎉 اشتراک فعال است!' : '🎉 Subscription Active!')
+                }
               </h1>
             </div>
-            <p className="text-gray-600 dark:text-gray-300 text-lg">
-              {language === 'fa' ? 
-                'اشتراک VPN شما با موفقیت ایجاد شد و آماده استفاده است' : 
-                'Your VPN subscription has been successfully created and is ready to use'
-              }
-            </p>
+            
+            {/* Username Display */}
+            <div className="mb-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/70 dark:bg-gray-800/70 backdrop-blur rounded-full border">
+                <Shield className="w-5 h-5 text-blue-600" />
+                <span className="font-mono text-lg font-bold text-blue-700 dark:text-blue-300">
+                  {subscription.username}
+                </span>
+              </div>
+            </div>
+
+            {/* Plan Info */}
+            <div className="text-gray-600 dark:text-gray-300 text-lg mb-6">
+              <span className="font-semibold">
+                {language === 'fa' ? subscription.subscription_plans?.name_fa : subscription.subscription_plans?.name_en}
+              </span>
+              <span className="mx-2">•</span>
+              <span>{subscription.data_limit_gb}GB</span>
+              <span className="mx-2">•</span>
+              <span>{subscription.duration_days} {language === 'fa' ? 'روز' : 'days'}</span>
+            </div>
+
+            {/* Progress Bars */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+              {/* Time Progress */}
+              <div className="p-4 bg-white/60 dark:bg-gray-800/60 backdrop-blur rounded-xl border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    ⏱️ {language === 'fa' ? 'زمان باقی‌مانده' : 'Time Remaining'}
+                  </span>
+                  <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
+                    {countdown}
+                  </span>
+                </div>
+                <Progress 
+                  value={timeProgress} 
+                  className="h-2 bg-orange-100 dark:bg-orange-900/30"
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  {subscription.expire_at && formatDate(subscription.expire_at)}
+                </div>
+              </div>
+
+              {/* Traffic Progress (Placeholder - would need actual usage data) */}
+              <div className="p-4 bg-white/60 dark:bg-gray-800/60 backdrop-blur rounded-xl border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    📊 {language === 'fa' ? 'ترافیک باقی‌مانده' : 'Traffic Remaining'}
+                  </span>
+                  <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                    {subscription.data_limit_gb}GB
+                  </span>
+                </div>
+                <Progress 
+                  value={0} 
+                  className="h-2 bg-blue-100 dark:bg-blue-900/30"
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  {language === 'fa' ? 'ترافیک کامل در دسترس' : 'Full traffic available'}
+                </div>
+              </div>
+            </div>
+
+            {/* Status Badge */}
+            <div className="mt-6">
+              <Badge className={`${getStatusColor(subscription.status)} text-lg px-4 py-2`}>
+                {getStatusIcon(subscription.status)}
+                <span className="ml-2">
+                  {isExpired ? (language === 'fa' ? '🔴 منقضی' : '🔴 Expired') : 
+                   subscription.status === 'active' && (language === 'fa' ? '🟢 فعال' : '🟢 Active')}
+                  {subscription.status === 'pending' && (language === 'fa' ? '🟡 در انتظار' : '🟡 Pending')}
+                </span>
+              </Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -370,112 +512,43 @@ const DeliveryPage = () => {
             {/* Left Column - Main Content */}
             <div className="lg:col-span-2 space-y-6">
               
-              {/* 🔐 Subscription Summary */}
-              <Card className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
-                <CardHeader className="border-b border-gray-100 dark:border-gray-700">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <Shield className="w-6 h-6 text-blue-600" />
-                      🔐 {language === 'fa' ? 'خلاصه اشتراک' : 'Subscription Summary'}
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge className={getStatusColor(subscription.status)}>
-                        {getStatusIcon(subscription.status)}
-                        <span className="ml-1">
-                          {subscription.status === 'active' && (language === 'fa' ? 'فعال' : 'Active')}
-                          {subscription.status === 'pending' && (language === 'fa' ? 'در انتظار' : 'Pending')}
-                          {subscription.status === 'expired' && (language === 'fa' ? 'منقضی' : 'Expired')}
-                        </span>
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={refreshSubscription}
-                        disabled={refreshing}
-                        className="h-8"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg">
-                        <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                          {language === 'fa' ? 'نام کاربری' : 'Username'}
-                        </div>
-                        <div className="font-mono text-lg font-bold text-blue-600 dark:text-blue-400">
-                          {subscription.username}
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                            {language === 'fa' ? 'حجم داده' : 'Data Limit'}
-                          </div>
-                          <div className="text-lg font-semibold">{subscription.data_limit_gb} GB</div>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                            {language === 'fa' ? 'مدت زمان' : 'Duration'}
-                          </div>
-                          <div className="text-lg font-semibold">{subscription.duration_days} {language === 'fa' ? 'روز' : 'days'}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      {subscription.subscription_plans && (
-                        <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg">
-                          <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                            {language === 'fa' ? 'پلن' : 'Plan'}
-                          </div>
-                          <div className="font-semibold text-purple-600 dark:text-purple-400">
-                            {language === 'fa' ? subscription.subscription_plans.name_fa : subscription.subscription_plans.name_en}
-                          </div>
-                          {subscription.subscription_plans.panel_servers && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              📍 {subscription.subscription_plans.panel_servers.name}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {countdown && (
-                        <div className="p-4 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-lg">
-                          <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
-                            <Clock className="w-4 h-4" />
-                            <div>
-                              <div className="text-sm font-medium">
-                                {language === 'fa' ? 'زمان باقی‌مانده' : 'Time Remaining'}
-                              </div>
-                              <div className="font-mono font-bold">{countdown}</div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* 🔗 Subscription URL */}
+              {/* 🔗 Subscription URL & QR Code Section */}
               {subscription.subscription_url ? (
                 <Card className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
                   <CardHeader className="border-b border-gray-100 dark:border-gray-700">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <Zap className="w-6 h-6 text-green-600" />
-                      🔗 {language === 'fa' ? 'لینک اشتراک (Sub Link)' : 'Subscription URL (Sub Link)'}
-                    </CardTitle>
-                    <CardDescription>
-                      {language === 'fa' ? 
-                        'لینک اشتراک خود را کپی کرده یا کد QR را اسکن کنید' : 
-                        'Copy your subscription link or scan the QR code'
-                      }
-                    </CardDescription>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-xl">
+                        <Zap className="w-6 h-6 text-green-600" />
+                        🔗 {language === 'fa' ? 'لینک اشتراک (Sub Link)' : 'Subscription URL (Sub Link)'}
+                      </CardTitle>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={saveThisPage}
+                          className="h-8"
+                        >
+                          <Bookmark className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={shareSubscription}
+                          className="h-8"
+                        >
+                          <Share2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={refreshSubscription}
+                          disabled={refreshing}
+                          className="h-8"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                        </Button>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="space-y-4">
@@ -508,36 +581,47 @@ const DeliveryPage = () => {
                         </code>
                       </div>
 
-                      <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                        <div className="flex items-start gap-3">
-                          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                          <div className="text-sm">
-                            <p className="font-semibold text-green-800 dark:text-green-200 mb-1">
-                              {language === 'fa' ? '✅ پیکربندی آماده است!' : '✅ Configuration Ready!'}
-                            </p>
-                            <p className="text-green-700 dark:text-green-300">
-                              {language === 'fa' ? 
-                                'لینک پیکربندی را در برنامه VPN خود وارد کنید' : 
-                                'Import the configuration link into your VPN app'
-                              }
-                            </p>
+                      {/* QR Code */}
+                      {qrCodeDataUrl && (
+                        <div className="flex justify-center">
+                          <div className="p-4 bg-white rounded-xl shadow-inner border-2 border-gray-100">
+                            <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-48 h-48 md:w-64 md:h-64" />
                           </div>
                         </div>
-                      </div>
+                      )}
 
-                      <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <div className="flex items-start gap-3">
-                          <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                          <div className="text-sm">
-                            <p className="font-semibold text-blue-800 dark:text-blue-200 mb-1">
-                              🛡️ {language === 'fa' ? 'نکته امنیتی' : 'Security Note'}
-                            </p>
-                            <p className="text-blue-700 dark:text-blue-300">
-                              {language === 'fa' ? 
-                                'این لینک را با دیگران به اشتراک نگذارید' : 
-                                'Do not share this link with others'
-                              }
-                            </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                          <div className="flex items-start gap-3">
+                            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                            <div className="text-sm">
+                              <p className="font-semibold text-green-800 dark:text-green-200 mb-1">
+                                {language === 'fa' ? '✅ پیکربندی آماده است!' : '✅ Configuration Ready!'}
+                              </p>
+                              <p className="text-green-700 dark:text-green-300">
+                                {language === 'fa' ? 
+                                  'لینک پیکربندی را در برنامه VPN خود وارد کنید' : 
+                                  'Import the configuration link into your VPN app'
+                                }
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="flex items-start gap-3">
+                            <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                            <div className="text-sm">
+                              <p className="font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                                🛡️ {language === 'fa' ? 'نکته امنیتی' : 'Security Note'}
+                              </p>
+                              <p className="text-blue-700 dark:text-blue-300">
+                                {language === 'fa' ? 
+                                  'این لینک را با دیگران به اشتراک نگذارید' : 
+                                  'Do not share this link with others'
+                                }
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -565,23 +649,24 @@ const DeliveryPage = () => {
                 </Card>
               )}
 
-              {/* 🧩 Full Configuration */}
+              {/* 🔐 Individual Protocol Configs Section */}
               {subscription.subscription_url && (
                 <Card className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
                   <CardHeader className="border-b border-gray-100 dark:border-gray-700">
                     <CardTitle className="flex items-center gap-2 text-xl">
                       <Monitor className="w-6 h-6 text-purple-600" />
-                      🧩 {language === 'fa' ? 'پیکربندی کامل' : 'Full Configuration'}
+                      🔐 {language === 'fa' ? 'پیکربندی‌های پروتکل' : 'Protocol Configurations'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-6">
                     <Tabs defaultValue="subscription" className="w-full">
-                      <TabsList className="grid w-full grid-cols-3">
+                      <TabsList className="grid w-full grid-cols-4">
                         <TabsTrigger value="subscription">
-                          {language === 'fa' ? 'لینک اشتراک' : 'Subscription'}
+                          {language === 'fa' ? 'اشتراک' : 'Subscription'}
                         </TabsTrigger>
                         <TabsTrigger value="vless">VLESS</TabsTrigger>
                         <TabsTrigger value="vmess">VMess</TabsTrigger>
+                        <TabsTrigger value="trojan">Trojan</TabsTrigger>
                       </TabsList>
                       
                       <TabsContent value="subscription" className="space-y-4">
@@ -605,26 +690,93 @@ const DeliveryPage = () => {
                       
                       <TabsContent value="vless">
                         <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                          <p className="text-sm text-purple-700 dark:text-purple-300">
+                          <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">
                             {language === 'fa' ? 
                               'پیکربندی VLESS از طریق لینک اشتراک در دسترس است' : 
                               'VLESS configuration is available through the subscription link'
                             }
                           </p>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            {language === 'fa' ? 
+                              'برای دسترسی به پیکربندی‌های جداگانه، لینک اشتراک را در اپ خود وارد کنید' :
+                              'To access individual configurations, import the subscription link in your app'
+                            }
+                          </div>
                         </div>
                       </TabsContent>
                       
                       <TabsContent value="vmess">
                         <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <p className="text-sm text-blue-700 dark:text-blue-300">
+                          <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
                             {language === 'fa' ? 
                               'پیکربندی VMess از طریق لینک اشتراک در دسترس است' : 
                               'VMess configuration is available through the subscription link'
                             }
                           </p>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            {language === 'fa' ? 
+                              'برای دسترسی به پیکربندی‌های جداگانه، لینک اشتراک را در اپ خود وارد کنید' :
+                              'To access individual configurations, import the subscription link in your app'
+                            }
+                          </div>
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="trojan">
+                        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                          <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+                            {language === 'fa' ? 
+                              'پیکربندی Trojan از طریق لینک اشتراک در دسترس است' : 
+                              'Trojan configuration is available through the subscription link'
+                            }
+                          </p>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">
+                            {language === 'fa' ? 
+                              'برای دسترسی به پیکربندی‌های جداگانه، لینک اشتراک را در اپ خود وارد کنید' :
+                              'To access individual configurations, import the subscription link in your app'
+                            }
+                          </div>
                         </div>
                       </TabsContent>
                     </Tabs>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ♻️ Renewal Section */}
+              {(isExpired || countdown.includes('d')) && (
+                <Card className={`border-0 shadow-lg ${isExpired ? 'bg-red-50 dark:bg-red-900/20 border-red-200' : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200'}`}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <RotateCcw className={`w-6 h-6 ${isExpired ? 'text-red-600' : 'text-yellow-600'}`} />
+                      ♻️ {language === 'fa' ? 'تمدید اشتراک' : 'Renewal'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <Calendar className={`w-5 h-5 ${isExpired ? 'text-red-600' : 'text-yellow-600'} mt-0.5 flex-shrink-0`} />
+                      <div>
+                        <p className={`font-semibold ${isExpired ? 'text-red-800 dark:text-red-200' : 'text-yellow-800 dark:text-yellow-200'} mb-1`}>
+                          {isExpired ? 
+                            (language === 'fa' ? '🔴 اشتراک منقضی شده' : '🔴 Subscription Expired') :
+                            (language === 'fa' ? '⚠️ اشتراک به زودی منقضی می‌شود' : '⚠️ Subscription Expiring Soon')
+                          }
+                        </p>
+                        <p className={`text-sm ${isExpired ? 'text-red-700 dark:text-red-300' : 'text-yellow-700 dark:text-yellow-300'} mb-3`}>
+                          {language === 'fa' ? 
+                            'برای تمدید اشتراک خود به صفحه تمدید مراجعه کنید' : 
+                            'Visit the renewal page to extend your subscription'
+                          }
+                        </p>
+                        <Button 
+                          onClick={() => navigate('/renewal')}
+                          className={`${isExpired ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'} text-white`}
+                        >
+                          <RotateCcw className="w-4 h-4 mr-2" />
+                          {language === 'fa' ? '🔄 تمدید کنید' : '🔄 Renew Now'}
+                        </Button>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -634,17 +786,17 @@ const DeliveryPage = () => {
                 <CardHeader className="border-b border-gray-100 dark:border-gray-700">
                   <CardTitle className="flex items-center gap-2 text-xl">
                     <Smartphone className="w-6 h-6 text-indigo-600" />
-                    📓 {language === 'fa' ? 'راهنمای نصب' : 'Setup Guides'}
+                    🎓 {language === 'fa' ? 'راهنمای نصب' : 'Setup Guides'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
                   <div className="space-y-4">
                     {[
-                      { platform: 'android', name: 'Android', icon: '📱', app: 'V2rayNG' },
-                      { platform: 'ios', name: 'iOS', icon: '📱', app: 'FairVPN' },
-                      { platform: 'windows', name: 'Windows', icon: '💻', app: 'V2rayN' },
-                      { platform: 'macos', name: 'macOS', icon: '💻', app: 'V2rayU' },
-                      { platform: 'linux', name: 'Linux', icon: '🐧', app: 'Qv2ray' }
+                      { platform: 'android', name: 'Android', icon: '📱', app: 'V2rayNG', description: 'Best for Android devices' },
+                      { platform: 'ios', name: 'iOS', icon: '📱', app: 'FairVPN', description: 'Available on App Store' },
+                      { platform: 'windows', name: 'Windows', icon: '💻', app: 'V2rayN', description: 'Desktop application' },
+                      { platform: 'macos', name: 'macOS', icon: '💻', app: 'V2rayU', description: 'For Mac computers' },
+                      { platform: 'linux', name: 'Linux', icon: '🐧', app: 'Qv2ray', description: 'Open source client' }
                     ].map((item) => (
                       <Collapsible key={item.platform} open={showGuides[item.platform]} onOpenChange={() => toggleGuide(item.platform)}>
                         <CollapsibleTrigger asChild>
@@ -654,6 +806,7 @@ const DeliveryPage = () => {
                               <div className="text-left flex-1">
                                 <div className="font-semibold">{item.name}</div>
                                 <div className="text-sm text-gray-500">{language === 'fa' ? 'برنامه پیشنهادی:' : 'Recommended app:'} {item.app}</div>
+                                <div className="text-xs text-gray-400">{item.description}</div>
                               </div>
                               {showGuides[item.platform] ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                             </div>
@@ -661,8 +814,8 @@ const DeliveryPage = () => {
                         </CollapsibleTrigger>
                         <CollapsibleContent className="px-4 pb-4">
                           <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
-                            <div className="text-sm space-y-2">
-                              <div className="flex items-start gap-2">
+                            <div className="text-sm space-y-3">
+                              <div className="flex items-start gap-3">
                                 <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
                                 <p>
                                   {language === 'fa' ? 
@@ -671,7 +824,7 @@ const DeliveryPage = () => {
                                   }
                                 </p>
                               </div>
-                              <div className="flex items-start gap-2">
+                              <div className="flex items-start gap-3">
                                 <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
                                 <p>
                                   {language === 'fa' ? 
@@ -680,7 +833,7 @@ const DeliveryPage = () => {
                                   }
                                 </p>
                               </div>
-                              <div className="flex items-start gap-2">
+                              <div className="flex items-start gap-3">
                                 <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
                                 <p>
                                   {language === 'fa' ? 
@@ -689,7 +842,7 @@ const DeliveryPage = () => {
                                   }
                                 </p>
                               </div>
-                              <div className="flex items-start gap-2">
+                              <div className="flex items-start gap-3">
                                 <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">4</span>
                                 <p>
                                   {language === 'fa' ? 
@@ -708,36 +861,9 @@ const DeliveryPage = () => {
               </Card>
             </div>
 
-            {/* Right Column - QR Code & Apps */}
+            {/* Right Column - Apps & Support */}
             <div className="space-y-6">
               
-              {/* QR Code */}
-              {qrCodeDataUrl && (
-                <Card className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
-                  <CardHeader className="text-center border-b border-gray-100 dark:border-gray-700">
-                    <CardTitle className="flex items-center justify-center gap-2">
-                      <QrCode className="w-6 h-6 text-gray-600" />
-                      {language === 'fa' ? 'کد QR' : 'QR Code'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="text-center space-y-4">
-                      <div className="flex justify-center">
-                        <div className="p-4 bg-white rounded-xl shadow-inner border-2 border-gray-100">
-                          <img src={qrCodeDataUrl} alt="Subscription QR Code" className="w-48 h-48" />
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {language === 'fa' ? 
-                          'این کد را با اپ V2Ray اسکن کنید' : 
-                          'Scan this QR code with your V2Ray app'
-                        }
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
               {/* 📱 Apps Section */}
               <Card className="border-0 shadow-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
                 <CardHeader className="border-b border-gray-100 dark:border-gray-700">
@@ -748,69 +874,98 @@ const DeliveryPage = () => {
                 </CardHeader>
                 <CardContent className="p-6">
                   <div className="space-y-3">
-                    <Button className="w-full justify-start bg-green-600 hover:bg-green-700" size="lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">📱</span>
-                        <div className="text-left">
-                          <div className="font-semibold">Android</div>
-                          <div className="text-sm opacity-90">V2rayNG</div>
+                    {[
+                      { name: 'V2rayNG', platform: 'Android', icon: '📱', color: 'bg-green-600 hover:bg-green-700' },
+                      { name: 'Streisand', platform: 'iOS', icon: '📱', color: 'bg-blue-600 hover:bg-blue-700' },
+                      { name: 'Karimg', platform: 'Android/iOS', icon: '📱', color: 'bg-purple-600 hover:bg-purple-700' },
+                      { name: 'Happynet', platform: 'Multi-platform', icon: '🌐', color: 'bg-orange-600 hover:bg-orange-700' },
+                      { name: 'V2BOX', platform: 'iOS', icon: '📱', color: 'bg-indigo-600 hover:bg-indigo-700' },
+                      { name: 'V2rayN', platform: 'Windows', icon: '💻', color: 'bg-gray-600 hover:bg-gray-700' }
+                    ].map((app, index) => (
+                      <Button key={index} className={`w-full justify-start ${app.color} text-white`} size="lg">
+                        <div className="flex items-center gap-3 w-full">
+                          <span className="text-2xl">{app.icon}</span>
+                          <div className="text-left flex-1">
+                            <div className="font-semibold">{app.name}</div>
+                            <div className="text-sm opacity-90">{app.platform}</div>
+                          </div>
+                          <ExternalLink className="w-4 h-4" />
                         </div>
-                      </div>
-                    </Button>
-                    
-                    <Button className="w-full justify-start bg-blue-600 hover:bg-blue-700" size="lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">📱</span>
-                        <div className="text-left">
-                          <div className="font-semibold">iOS</div>
-                          <div className="text-sm opacity-90">FairVPN</div>
-                        </div>
-                      </div>
-                    </Button>
-                    
-                    <Button className="w-full justify-start bg-purple-600 hover:bg-purple-700" size="lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">💻</span>
-                        <div className="text-left">
-                          <div className="font-semibold">Windows</div>
-                          <div className="text-sm opacity-90">V2rayN</div>
-                        </div>
-                      </div>
-                    </Button>
-                    
-                    <Button className="w-full justify-start bg-gray-600 hover:bg-gray-700" size="lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">💻</span>
-                        <div className="text-left">
-                          <div className="font-semibold">macOS</div>
-                          <div className="text-sm opacity-90">V2rayU</div>
-                        </div>
-                      </div>
-                    </Button>
+                      </Button>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
 
-              {/* 🛠️ Support Section */}
+              {/* 📞 Support Section */}
               <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20">
                 <CardHeader className="border-b border-blue-100 dark:border-blue-800">
                   <CardTitle className="flex items-center gap-2 text-xl text-blue-700 dark:text-blue-300">
                     <MessageCircle className="w-6 h-6" />
-                    🛠️ {language === 'fa' ? 'پشتیبانی' : 'Support'}
+                    📞 {language === 'fa' ? 'پشتیبانی' : 'Support'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
                   <div className="text-center space-y-4">
-                    <p className="text-gray-600 dark:text-gray-300">
-                      {language === 'fa' ? 'مشکلی دارید؟ با پشتیبانی تماس بگیرید' : 'Having issues? Contact support'}
-                    </p>
-                    <Button className="w-full bg-blue-600 hover:bg-blue-700" size="lg">
-                      <MessageCircle className="w-5 h-5 mr-2" />
-                      {language === 'fa' ? 'پشتیبانی تلگرام' : 'Telegram Support'}
-                    </Button>
-                    <p className="text-xs text-gray-500">
-                      @bnets_support
-                    </p>
+                    <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                      <p className="text-gray-600 dark:text-gray-300 mb-3">
+                        ❓ {language === 'fa' ? 'مشکلی دارید؟ با پشتیبانی تماس بگیرید' : 'Need help? Reach out to our support team.'}
+                      </p>
+                      <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" size="lg">
+                        <MessageCircle className="w-5 h-5 mr-2" />
+                        {language === 'fa' ? 'پشتیبانی تلگرام' : 'Telegram Support'}
+                      </Button>
+                      <p className="text-xs text-gray-500 mt-2">
+                        @bnets_support
+                      </p>
+                    </div>
+                    
+                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                      <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                        🕒 {language === 'fa' ? 'پاسخگویی ۲۴/۷' : '24/7 Support Available'}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Usage Tips */}
+              <Card className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20">
+                <CardHeader className="border-b border-green-100 dark:border-green-800">
+                  <CardTitle className="flex items-center gap-2 text-xl text-green-700 dark:text-green-300">
+                    <Zap className="w-6 h-6" />
+                    💡 {language === 'fa' ? 'نکات کاربردی' : 'Usage Tips'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="space-y-3 text-sm text-green-700 dark:text-green-300">
+                    <div className="flex items-start gap-2">
+                      <span className="text-green-600 mt-1">•</span>
+                      <p>
+                        {language === 'fa' ? 
+                          'برای بهترین عملکرد، از سرورهای نزدیک استفاده کنید' :
+                          'For best performance, use nearby servers'
+                        }
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-green-600 mt-1">•</span>
+                      <p>
+                        {language === 'fa' ? 
+                          'در صورت قطعی، پروتکل دیگری را امتحان کنید' :
+                          'If connection fails, try a different protocol'
+                        }
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-green-600 mt-1">•</span>
+                      <p>
+                        {language === 'fa' ? 
+                          'لینک اشتراک را به‌روزرسانی کنید' :
+                          'Keep your subscription link updated'
+                        }
+                      </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
