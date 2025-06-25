@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Eye, EyeOff } from 'lucide-react';
@@ -119,7 +118,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       let totalConfigs = 0;
 
       if (panel.type === 'marzneshin') {
-        console.log('PANEL REFRESH: Processing Marzneshin panel with FIXED service mapping');
+        console.log('PANEL REFRESH: Processing Marzneshin panel with UPDATED service mapping logic');
         
         // Step 1: Get reza user's service_ids
         const userResponse = await fetch(`${panel.panel_url}/api/users/reza`, {
@@ -158,36 +157,85 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         const servicesData = await servicesResponse.json();
         console.log('PANEL REFRESH: Raw services API response:', JSON.stringify(servicesData, null, 2));
 
-        // FIXED: Handle the actual API response structure
+        // UPDATED: Handle the actual API response structure with comprehensive parsing
         let allServiceIds: number[] = [];
         let serviceNames: string[] = [];
 
-        if (servicesData.service_ids && servicesData.service_names) {
-          // Direct structure
+        // Method 1: Check for paginated response with items array (most likely for Marzneshin)
+        if (servicesData.items && Array.isArray(servicesData.items)) {
+          console.log('PANEL REFRESH: Detected paginated response with items array');
+          const items = servicesData.items;
+          
+          // Extract service IDs and names from items array
+          allServiceIds = items.map((item: any) => {
+            // Handle different possible ID field names
+            return item.id || item.service_id || item.ID;
+          }).filter((id: any) => id !== undefined && id !== null);
+          
+          serviceNames = items.map((item: any) => {
+            // Handle different possible name field names
+            return item.name || item.service_name || item.title || `Service_${item.id || item.service_id || item.ID}`;
+          });
+          
+          console.log('PANEL REFRESH: Extracted from items array:', {
+            serviceIds: allServiceIds,
+            serviceNames: serviceNames
+          });
+          
+        } 
+        // Method 2: Direct structure with service_ids and service_names arrays
+        else if (servicesData.service_ids && servicesData.service_names) {
+          console.log('PANEL REFRESH: Detected direct array structure');
           allServiceIds = servicesData.service_ids;
           serviceNames = servicesData.service_names;
-        } else if (Array.isArray(servicesData)) {
-          // Array of services
+          
+        } 
+        // Method 3: Array of services
+        else if (Array.isArray(servicesData)) {
+          console.log('PANEL REFRESH: Detected services as direct array');
           allServiceIds = servicesData.map((service: any) => service.id || service.service_id);
           serviceNames = servicesData.map((service: any) => service.name || service.service_name);
+          
+        } 
+        // Method 4: Check for other common structures
+        else if (servicesData.data && Array.isArray(servicesData.data)) {
+          console.log('PANEL REFRESH: Detected data array structure');
+          const dataItems = servicesData.data;
+          allServiceIds = dataItems.map((item: any) => item.id || item.service_id);
+          serviceNames = dataItems.map((item: any) => item.name || item.service_name || `Service_${item.id || item.service_id}`);
+          
         } else {
-          console.error('PANEL REFRESH: Unexpected services API response structure:', servicesData);
-          throw new Error('Unable to parse services API response. Expected service_ids and service_names arrays.');
+          console.error('PANEL REFRESH: Unrecognized services API response structure:', {
+            hasItems: !!servicesData.items,
+            hasServiceIds: !!servicesData.service_ids,
+            hasServiceNames: !!servicesData.service_names,
+            isArray: Array.isArray(servicesData),
+            hasData: !!servicesData.data,
+            keys: Object.keys(servicesData)
+          });
+          throw new Error(`Unable to parse services API response. Response structure: ${JSON.stringify(Object.keys(servicesData))}`);
         }
         
-        console.log('PANEL REFRESH: Parsed services:', {
+        console.log('PANEL REFRESH: Final parsed services:', {
           total: allServiceIds.length,
           serviceIds: allServiceIds,
           serviceNames: serviceNames
         });
 
-        // FIXED: Validate arrays have same length
+        // Validate arrays have same length
         if (allServiceIds.length !== serviceNames.length) {
           console.error('PANEL REFRESH: Service IDs and names arrays length mismatch:', {
             serviceIdsLength: allServiceIds.length,
-            serviceNamesLength: serviceNames.length
+            serviceNamesLength: serviceNames.length,
+            serviceIds: allServiceIds,
+            serviceNames: serviceNames
           });
           throw new Error(`Service IDs (${allServiceIds.length}) and names (${serviceNames.length}) arrays have different lengths.`);
+        }
+
+        // Validate we have services
+        if (allServiceIds.length === 0) {
+          throw new Error('No services found in API response. Panel may be misconfigured.');
         }
 
         // Step 3: Create service mapping
@@ -243,7 +291,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         enabledProtocols = Object.keys(protocolGroups);
         totalConfigs = matchedServices.length;
 
-        console.log('PANEL REFRESH: FIXED Marzneshin service mapping completed:', {
+        console.log('PANEL REFRESH: UPDATED Marzneshin service mapping completed:', {
           defaultInbounds,
           enabledProtocols,
           totalConfigs,
@@ -301,7 +349,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             inbounds,
             proxies,
             last_refresh: new Date().toISOString(),
-            workaround_used: panel.type === 'marzneshin' ? 'fixed_service_mapping_v2' : false,
+            workaround_used: panel.type === 'marzneshin' ? 'updated_service_mapping_v3' : false,
             service_details: panel.type === 'marzneshin' ? {
               total_services: totalConfigs,
               protocol_breakdown: enabledProtocols.map(protocol => ({
@@ -331,7 +379,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             proxies, 
             enabledProtocols, 
             defaultInbounds,
-            workaround_used: panel.type === 'marzneshin' ? 'fixed_service_mapping_v2' : false,
+            workaround_used: panel.type === 'marzneshin' ? 'updated_service_mapping_v3' : false,
             service_mapping: panel.type === 'marzneshin' ? 
               enabledProtocols.map(protocol => ({
                 protocol,
@@ -349,7 +397,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       if (enabledProtocols.length === 0) {
         toast.error(`⚠️ No protocols enabled - panel cannot create users`);
       } else {
-        const workaroundMsg = panel.type === 'marzneshin' ? ' (using FIXED service mapping v2)' : '';
+        const workaroundMsg = panel.type === 'marzneshin' ? ' (using UPDATED service mapping v3)' : '';
         const protocolSummary = enabledProtocols.length > 1 ? 
           `${enabledProtocols.length} protocols (${enabledProtocols.join(', ')})` : 
           enabledProtocols[0];
