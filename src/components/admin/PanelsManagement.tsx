@@ -8,12 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Edit, Trash2, Server, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Server, CheckCircle, XCircle, AlertCircle, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { PanelTestConnection } from './PanelTestConnection';
 import { PanelTestHistory } from './PanelTestHistory';
 import { PanelProtocolSelector } from './PanelProtocolSelector';
 import { PanelRefreshButton } from './PanelRefreshButton';
+import { MarzneshinApiTester } from './MarzneshinApiTester';
 
 interface Panel {
   id: string;
@@ -205,268 +206,287 @@ export const PanelsManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Panel Management</h1>
-          <p className="text-gray-600">Manage your panel servers and test their connectivity</p>
-        </div>
-        <div className="flex gap-2">
-          <Select value={filterStatus} onValueChange={(value: 'all' | 'failed') => setFilterStatus(value)}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Panels</SelectItem>
-              <SelectItem value="failed">Failed Tests Only</SelectItem>
-            </SelectContent>
-          </Select>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={resetForm}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Panel
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingPanel ? 'Edit Panel' : 'Add New Panel'}
-                </DialogTitle>
-                <DialogDescription>
-                  Configure a new panel server or edit existing one
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Panel Name</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="type">Panel Type</Label>
-                    <Select value={formData.type} onValueChange={(value: 'marzban' | 'marzneshin') => setFormData({ ...formData, type: value })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="marzban">Marzban</SelectItem>
-                        <SelectItem value="marzneshin">Marzneshin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+      {/* API Tester Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            Marzneshin API Testing
+          </CardTitle>
+          <CardDescription>
+            Test Marzneshin panel API endpoints to diagnose inbound detection issues
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MarzneshinApiTester />
+        </CardContent>
+      </Card>
 
-                <div>
-                  <Label htmlFor="panel_url">Panel URL</Label>
-                  <Input
-                    id="panel_url"
-                    type="url"
-                    value={formData.panel_url}
-                    onChange={(e) => setFormData({ ...formData, panel_url: e.target.value })}
-                    placeholder="https://panel.example.com"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="country_en">Country (English)</Label>
-                    <Input
-                      id="country_en"
-                      value={formData.country_en}
-                      onChange={(e) => setFormData({ ...formData, country_en: e.target.value })}
-                      placeholder="Germany"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="country_fa">Country (Persian)</Label>
-                    <Input
-                      id="country_fa"
-                      value={formData.country_fa}
-                      onChange={(e) => setFormData({ ...formData, country_fa: e.target.value })}
-                      placeholder="آلمان"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <PanelProtocolSelector
-                  selectedProtocols={formData.enabled_protocols}
-                  onProtocolsChange={(protocols) => setFormData({ ...formData, enabled_protocols: protocols })}
-                />
-
-                <div>
-                  <Label htmlFor="default_inbounds">Default Inbounds (JSON)</Label>
-                  <Textarea
-                    id="default_inbounds"
-                    value={formData.default_inbounds}
-                    onChange={(e) => setFormData({ ...formData, default_inbounds: e.target.value })}
-                    placeholder='[{"tag": "vless", "port": 443}]'
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="is_active"
-                    checked={formData.is_active}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                  />
-                  <Label htmlFor="is_active">Active</Label>
-                </div>
-
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={formData.enabled_protocols.length === 0}>
-                    {formData.enabled_protocols.length === 0 ? 'Select Protocols First' : (editingPanel ? 'Update Panel' : 'Create Panel')}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <div className="grid gap-6">
-        {filteredPanels.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <Server className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold mb-2">
-                {filterStatus === 'failed' ? 'No Failed Panels' : 'No Panels Found'}
-              </h3>
-              <p className="text-gray-600 mb-4">
-                {filterStatus === 'failed' 
-                  ? 'All panels are working correctly!' 
-                  : 'Get started by adding your first panel server.'
-                }
-              </p>
-              {filterStatus === 'all' && (
-                <Button onClick={() => setIsDialogOpen(true)}>
+      {/* Existing Panel Management Section */}
+      <Card>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">Panel Management</h1>
+            <p className="text-gray-600">Manage your panel servers and test their connectivity</p>
+          </div>
+          <div className="flex gap-2">
+            <Select value={filterStatus} onValueChange={(value: 'all' | 'failed') => setFilterStatus(value)}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Panels</SelectItem>
+                <SelectItem value="failed">Failed Tests Only</SelectItem>
+              </SelectContent>
+            </Select>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={resetForm}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Your First Panel
+                  Add Panel
                 </Button>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          filteredPanels.map((panel) => (
-            <Card key={panel.id} className="relative">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      {getHealthStatusIcon(panel.health_status)}
-                      {panel.name}
-                      {getHealthStatusBadge(panel.health_status)}
-                      <Badge variant={panel.is_active ? 'default' : 'secondary'}>
-                        {panel.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </CardTitle>
-                    <CardDescription>
-                      {panel.type.charAt(0).toUpperCase() + panel.type.slice(1)} Panel • {panel.country_en} ({panel.country_fa})
-                    </CardDescription>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingPanel ? 'Edit Panel' : 'Add New Panel'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Configure a new panel server or edit existing one
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="name">Panel Name</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="type">Panel Type</Label>
+                      <Select value={formData.type} onValueChange={(value: 'marzban' | 'marzneshin') => setFormData({ ...formData, type: value })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="marzban">Marzban</SelectItem>
+                          <SelectItem value="marzneshin">Marzneshin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(panel)}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(panel.id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-medium">URL:</span>
-                    <p className="text-gray-600 break-all">{panel.panel_url}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium">Username:</span>
-                    <p className="text-gray-600">{panel.username}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium">Last Health Check:</span>
-                    <p className="text-gray-600">
-                      {panel.last_health_check 
-                        ? new Date(panel.last_health_check).toLocaleString()
-                        : 'Never'
-                      }
-                    </p>
-                  </div>
-                  <div>
-                    <span className="font-medium">Default Inbounds:</span>
-                    <p className="text-gray-600">
-                      {panel.default_inbounds?.length || 0} configured
-                    </p>
-                  </div>
-                </div>
 
-                <div>
-                  <span className="font-medium text-sm">Enabled Protocols:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {panel.enabled_protocols.map((protocol) => (
-                      <Badge key={protocol} variant="outline" className="text-xs">
-                        {protocol.toUpperCase()}
-                      </Badge>
-                    ))}
+                  <div>
+                    <Label htmlFor="panel_url">Panel URL</Label>
+                    <Input
+                      id="panel_url"
+                      type="url"
+                      value={formData.panel_url}
+                      onChange={(e) => setFormData({ ...formData, panel_url: e.target.value })}
+                      placeholder="https://panel.example.com"
+                      required
+                    />
                   </div>
-                  {panel.enabled_protocols.length === 0 && (
-                    <p className="text-red-600 text-sm mt-1">⚠️ No protocols enabled - panel cannot create users</p>
-                  )}
-                </div>
 
-                <div className="space-y-4">
-                  <PanelRefreshButton panel={panel} onRefreshComplete={fetchPanels} />
-                  <PanelTestConnection 
-                    panel={panel} 
-                    onTestComplete={fetchPanels}
-                    disabled={panel.enabled_protocols.length === 0}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="username">Username</Label>
+                      <Input
+                        id="username"
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="country_en">Country (English)</Label>
+                      <Input
+                        id="country_en"
+                        value={formData.country_en}
+                        onChange={(e) => setFormData({ ...formData, country_en: e.target.value })}
+                        placeholder="Germany"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="country_fa">Country (Persian)</Label>
+                      <Input
+                        id="country_fa"
+                        value={formData.country_fa}
+                        onChange={(e) => setFormData({ ...formData, country_fa: e.target.value })}
+                        placeholder="آلمان"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <PanelProtocolSelector
+                    selectedProtocols={formData.enabled_protocols}
+                    onProtocolsChange={(protocols) => setFormData({ ...formData, enabled_protocols: protocols })}
                   />
-                  <PanelTestHistory 
-                    panelId={panel.id} 
-                    panelName={panel.name}
-                    onRefresh={fetchPanels}
-                  />
-                </div>
+
+                  <div>
+                    <Label htmlFor="default_inbounds">Default Inbounds (JSON)</Label>
+                    <Textarea
+                      id="default_inbounds"
+                      value={formData.default_inbounds}
+                      onChange={(e) => setFormData({ ...formData, default_inbounds: e.target.value })}
+                      placeholder='[{"tag": "vless", "port": 443}]'
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                    />
+                    <Label htmlFor="is_active">Active</Label>
+                  </div>
+
+                  <div className="flex justify-end space-x-2">
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={formData.enabled_protocols.length === 0}>
+                      {formData.enabled_protocols.length === 0 ? 'Select Protocols First' : (editingPanel ? 'Update Panel' : 'Create Panel')}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        <div className="grid gap-6">
+          {filteredPanels.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Server className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-xl font-semibold mb-2">
+                  {filterStatus === 'failed' ? 'No Failed Panels' : 'No Panels Found'}
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {filterStatus === 'failed' 
+                    ? 'All panels are working correctly!' 
+                    : 'Get started by adding your first panel server.'
+                  }
+                </p>
+                {filterStatus === 'all' && (
+                  <Button onClick={() => setIsDialogOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Your First Panel
+                  </Button>
+                )}
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ) : (
+            filteredPanels.map((panel) => (
+              <Card key={panel.id} className="relative">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        {getHealthStatusIcon(panel.health_status)}
+                        {panel.name}
+                        {getHealthStatusBadge(panel.health_status)}
+                        <Badge variant={panel.is_active ? 'default' : 'secondary'}>
+                          {panel.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        {panel.type.charAt(0).toUpperCase() + panel.type.slice(1)} Panel • {panel.country_en} ({panel.country_fa})
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(panel)}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(panel.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium">URL:</span>
+                      <p className="text-gray-600 break-all">{panel.panel_url}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Username:</span>
+                      <p className="text-gray-600">{panel.username}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Last Health Check:</span>
+                      <p className="text-gray-600">
+                        {panel.last_health_check 
+                          ? new Date(panel.last_health_check).toLocaleString()
+                          : 'Never'
+                        }
+                      </p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Default Inbounds:</span>
+                      <p className="text-gray-600">
+                        {panel.default_inbounds?.length || 0} configured
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="font-medium text-sm">Enabled Protocols:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {panel.enabled_protocols.map((protocol) => (
+                        <Badge key={protocol} variant="outline" className="text-xs">
+                          {protocol.toUpperCase()}
+                        </Badge>
+                      ))}
+                    </div>
+                    {panel.enabled_protocols.length === 0 && (
+                      <p className="text-red-600 text-sm mt-1">⚠️ No protocols enabled - panel cannot create users</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <PanelRefreshButton panel={panel} onRefreshComplete={fetchPanels} />
+                    <PanelTestConnection 
+                      panel={panel} 
+                      onTestComplete={fetchPanels}
+                      disabled={panel.enabled_protocols.length === 0}
+                    />
+                    <PanelTestHistory 
+                      panelId={panel.id} 
+                      panelName={panel.name}
+                      onRefresh={fetchPanels}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </Card>
     </div>
   );
 };
