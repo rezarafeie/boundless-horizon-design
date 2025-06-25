@@ -144,6 +144,23 @@ serve(async (req) => {
       }
       
       panel = panelData;
+
+      // Auto-fix panel URL if it's using the old auth.rain.rest domain
+      if (panel.panel_url === 'https://auth.rain.rest' && panel.type === 'marzneshin') {
+        addLog(detailedLogs, 'Panel URL Fix', 'info', 'Updating panel URL from auth.rain.rest to p.rain.rest');
+        
+        const { error: updateError } = await supabase
+          .from('panel_servers')
+          .update({ panel_url: 'https://p.rain.rest' })
+          .eq('id', panelId);
+
+        if (updateError) {
+          addLog(detailedLogs, 'Panel URL Fix', 'error', 'Failed to update panel URL', updateError);
+        } else {
+          panel.panel_url = 'https://p.rain.rest';
+          addLog(detailedLogs, 'Panel URL Fix', 'success', 'Panel URL updated successfully');
+        }
+      }
     } else {
       // Auto-select panel based on user data panel type or default
       const targetPanelType = userData?.panelType || 'marzban';
@@ -208,13 +225,47 @@ serve(async (req) => {
       timestamp: new Date().toISOString()
     };
 
+    // Test basic connectivity first
+    addLog(detailedLogs, 'Connectivity Test', 'info', 'Testing basic connectivity to panel');
+    
+    try {
+      const connectivityController = new AbortController();
+      const connectivityTimeoutId = setTimeout(() => connectivityController.abort(), 8000);
+      
+      const connectivityResponse = await fetch(panel.panel_url, {
+        method: 'GET',
+        headers: { 
+          'Accept': 'text/html,application/json',
+          'User-Agent': 'Supabase-Edge-Function/1.0'
+        },
+        signal: connectivityController.signal
+      });
+      
+      clearTimeout(connectivityTimeoutId);
+      
+      addLog(detailedLogs, 'Connectivity Test', 'success', 'Panel is reachable', {
+        status: connectivityResponse.status,
+        statusText: connectivityResponse.statusText
+      });
+    } catch (connectivityError) {
+      addLog(detailedLogs, 'Connectivity Test', 'error', 'Panel connectivity failed', {
+        error: connectivityError.message,
+        isTimeout: connectivityError.name === 'AbortError'
+      });
+      
+      const errorResult = createErrorResponse(detailedLogs, `Panel unreachable: ${connectivityError.message}`, startTime);
+      return new Response(JSON.stringify(errorResult), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
     // Test Authentication
     let token: string;
     
     if (panel.type === 'marzban') {
       addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzban authentication with JSON payload');
 
-      // Try JSON authentication first (most common)
       try {
         const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
           method: 'POST',
@@ -229,307 +280,29 @@ serve(async (req) => {
           }),
         });
 
-        addLog(detailedLogs, 'Authentication', 'info', `JSON Auth response`, {
-          status: authResponse.status,
-          statusText: authResponse.statusText,
-          ok: authResponse.ok,
-          headers: Object.fromEntries(authResponse.headers.entries())
-        });
-
         if (authResponse.ok) {
           const authData = await authResponse.json();
           token = authData.access_token;
           
           if (token) {
-            addLog(detailedLogs, 'Authentication', 'success', 'JSON Authentication successful', {
-              hasAccessToken: !!token,
-              tokenType: authData.token_type || 'bearer'
-            });
-
             testResult.authentication = {
               success: true,
               tokenReceived: true,
               tokenType: authData.token_type || 'bearer'
             };
-          } else {
-            throw new Error('No access token in response');
-          }
-        } else {
-          const errorText = await authResponse.text();
-          throw new Error(`JSON auth failed: ${authResponse.status} - ${errorText}`);
-        }
-      } catch (jsonError) {
-        addLog(detailedLogs, 'Authentication', 'info', 'JSON auth failed, trying form-data', { error: jsonError.message });
-        
-        // Fallback to form-data authentication
-        try {
-          const formData = new FormData();
-          formData.append('username', panel.username);
-          formData.append('password', panel.password);
-
-          const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'Supabase-Edge-Function/1.0'
-            },
-            body: formData,
-          });
-
-          addLog(detailedLogs, 'Authentication', 'info', `Form-data Auth response`, {
-            status: authResponse.status,
-            statusText: authResponse.statusText,
-            ok: authResponse.ok
-          });
-
-          if (authResponse.ok) {
-            const authData = await authResponse.json();
-            token = authData.access_token;
-            
-            if (token) {
-              addLog(detailedLogs, 'Authentication', 'success', 'Form-data Authentication successful', {
-                hasAccessToken: !!token,
-                tokenType: authData.token_type || 'bearer'
-              });
-
-              testResult.authentication = {
-                success: true,
-                tokenReceived: true,
-                tokenType: authData.token_type || 'bearer'
-              };
-            } else {
-              throw new Error('No access token in form-data response');
-            }
-          } else {
-            const errorText = await authResponse.text();
-            throw new Error(`Form-data auth failed: ${authResponse.status} - ${errorText}`);
-          }
-        } catch (formError) {
-          addLog(detailedLogs, 'Authentication', 'error', 'Both authentication methods failed', {
-            jsonError: jsonError.message,
-            formError: formError.message
-          });
-          throw new Error(`Authentication failed: ${formError.message}`);
-        }
-      }
-
-      // Fetch template user configuration from 'reza'
-      let templateConfig = null;
-      
-      addLog(detailedLogs, 'Template Fetch', 'info', 'Fetching template user configuration from "reza"');
-      
-      try {
-        const templateResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-        });
-
-        addLog(detailedLogs, 'Template Fetch', 'info', 'Template user fetch response', {
-          status: templateResponse.status,
-          statusText: templateResponse.statusText,
-          ok: templateResponse.ok
-        });
-
-        if (templateResponse.ok) {
-          templateConfig = await templateResponse.json();
-          addLog(detailedLogs, 'Template Fetch', 'success', 'Template user configuration fetched successfully', {
-            username: templateConfig.username,
-            hasProxies: !!templateConfig.proxies,
-            proxiesCount: templateConfig.proxies ? Object.keys(templateConfig.proxies).length : 0,
-            hasExcludedInbounds: !!templateConfig.excluded_inbounds,
-            originalNote: templateConfig.note
-          });
-        } else {
-          const errorText = await templateResponse.text();
-          addLog(detailedLogs, 'Template Fetch', 'error', 'Failed to fetch template user, will use fallback config', {
-            status: templateResponse.status,
-            errorText: errorText
-          });
-        }
-      } catch (templateError) {
-        addLog(detailedLogs, 'Template Fetch', 'error', 'Template fetch error, using fallback', {
-          error: templateError.message
-        });
-      }
-
-      // Create User or Test User Creation
-      const isActualUserCreation = createUser && userData;
-      const targetUsername = isActualUserCreation ? userData.username : `test_${Date.now()}`;
-      const targetDataLimit = isActualUserCreation ? userData.dataLimitGB : 1;
-      const targetDuration = isActualUserCreation ? userData.durationDays : 1;
-      const testExpire = Math.floor(Date.now() / 1000) + (targetDuration * 24 * 60 * 60);
-      const targetNotes = isActualUserCreation ? 
-        'Created via bnets.co - Subscription' : 
-        'Test user - will be deleted';
-
-      addLog(detailedLogs, 'User Creation', 'info', `${isActualUserCreation ? 'Creating actual user' : 'Creating test user'}: ${targetUsername}`);
-
-      // Build user payload using template configuration or fallback
-      let userPayload;
-      
-      if (templateConfig && templateConfig.proxies) {
-        // Use template configuration
-        addLog(detailedLogs, 'User Creation', 'info', 'Using template configuration from "reza"');
-        
-        userPayload = {
-          username: targetUsername,
-          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
-          expire: testExpire,
-          proxies: templateConfig.proxies, // Use exact proxies from template
-          note: targetNotes
-        };
-
-        // Include excluded_inbounds if present in template
-        if (templateConfig.excluded_inbounds) {
-          userPayload.excluded_inbounds = templateConfig.excluded_inbounds;
-        }
-
-        // Include any other template fields that might be important
-        if (templateConfig.inbounds) {
-          userPayload.inbounds = templateConfig.inbounds;
-        }
-
-      } else {
-        // Fallback to original logic if template fetch failed
-        addLog(detailedLogs, 'User Creation', 'info', 'Using fallback configuration (template not available)');
-        
-        const protocolsToUse = enabledProtocols || panel.enabled_protocols || ['vless', 'vmess', 'trojan', 'shadowsocks'];
-        
-        userPayload = {
-          username: targetUsername,
-          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
-          expire: testExpire,
-          proxies: protocolsToUse.reduce((acc: any, protocol: string) => {
-            acc[protocol] = {};
-            return acc;
-          }, {}),
-          note: targetNotes
-        };
-      }
-
-      addLog(detailedLogs, 'User Creation', 'info', 'Creating user with payload', {
-        username: userPayload.username,
-        dataLimit: userPayload.data_limit,
-        expire: userPayload.expire,
-        proxiesCount: Object.keys(userPayload.proxies || {}).length,
-        proxiesTypes: Object.keys(userPayload.proxies || {}),
-        hasExcludedInbounds: !!userPayload.excluded_inbounds,
-        note: userPayload.note
-      });
-
-      try {
-        const createResponse = await fetch(`${panel.panel_url}/api/user`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(userPayload),
-        });
-
-        addLog(detailedLogs, 'User Creation', 'info', 'User creation response', {
-          status: createResponse.status,
-          statusText: createResponse.statusText,
-          ok: createResponse.ok
-        });
-
-        if (!createResponse.ok) {
-          const errorText = await createResponse.text();
-          addLog(detailedLogs, 'User Creation', 'error', `User creation failed: ${createResponse.status}`, {
-            errorText: errorText
-          });
-          throw new Error(`User creation failed: ${createResponse.status} - ${errorText}`);
-        }
-
-        const createdUserData = await createResponse.json();
-        
-        addLog(detailedLogs, 'User Creation', 'success', `User created successfully`, {
-          username: createdUserData.username,
-          hasSubscriptionUrl: !!createdUserData.subscription_url
-        });
-
-        testResult.userCreation = {
-          success: true,
-          username: createdUserData.username,
-          subscriptionUrl: createdUserData.subscription_url,
-          expire: createdUserData.expire,
-          dataLimit: createdUserData.data_limit
-        };
-
-        // If this is a test (not actual user creation), clean up by deleting the test user
-        if (!isActualUserCreation) {
-          addLog(detailedLogs, 'Cleanup', 'info', `Deleting test user: ${targetUsername}`);
-
-          try {
-            const deleteResponse = await fetch(`${panel.panel_url}/api/user/${targetUsername}`, {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-              },
-            });
-
-            if (deleteResponse.ok) {
-              addLog(detailedLogs, 'Cleanup', 'success', 'Test user deleted successfully');
-            } else {
-              addLog(detailedLogs, 'Cleanup', 'error', 'Failed to delete test user (non-critical)', {
-                status: deleteResponse.status,
-                statusText: deleteResponse.statusText
-              });
-            }
-          } catch (deleteError) {
-            addLog(detailedLogs, 'Cleanup', 'error', 'Delete test user exception (non-critical)', {
-              error: deleteError.message
-            });
-          }
-        } else if (userData.subscriptionId) {
-          // Update subscription record for actual user creation
-          addLog(detailedLogs, 'Subscription Update', 'info', 'Updating subscription record');
-          
-          try {
-            const subscriptionUrl = createdUserData.subscription_url || `${panel.panel_url}/sub/${createdUserData.username}`;
-            const expireAt = createdUserData.expire ? 
-              new Date(createdUserData.expire * 1000).toISOString() : 
-              new Date(Date.now() + targetDuration * 24 * 60 * 60 * 1000).toISOString();
-
-            const { error: updateError } = await supabase
-              .from('subscriptions')
-              .update({
-                status: 'active',
-                subscription_url: subscriptionUrl,
-                marzban_user_created: true,
-                expire_at: expireAt,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', userData.subscriptionId);
-
-            if (updateError) {
-              addLog(detailedLogs, 'Subscription Update', 'error', 'Failed to update subscription record', updateError);
-            } else {
-              addLog(detailedLogs, 'Subscription Update', 'success', 'Subscription record updated successfully');
-            }
-          } catch (updateError) {
-            addLog(detailedLogs, 'Subscription Update', 'error', 'Exception during subscription update', updateError);
           }
         }
-
-        testResult.success = true;
-      } catch (userCreateError) {
-        addLog(detailedLogs, 'User Creation', 'error', `User creation exception: ${userCreateError.message}`);
-        throw userCreateError;
+      } catch (authError) {
+        addLog(detailedLogs, 'Authentication', 'error', 'Marzban authentication failed', { error: authError.message });
+        throw new Error(`Marzban authentication failed: ${authError.message}`);
       }
+
     } else if (panel.type === 'marzneshin') {
-      // Marzneshin panel authentication and user creation
       addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzneshin authentication');
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout to 20 seconds
 
         const authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
           method: 'POST',
@@ -584,49 +357,7 @@ serve(async (req) => {
         throw new Error(`Marzneshin authentication failed: ${authError.message}`);
       }
 
-      // Fetch template user configuration from 'reza' for Marzneshin
-      let templateConfig = null;
-      
-      addLog(detailedLogs, 'Template Fetch', 'info', 'Fetching Marzneshin template user configuration from "reza"');
-      
-      try {
-        const templateResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-        });
-
-        addLog(detailedLogs, 'Template Fetch', 'info', 'Marzneshin template user fetch response', {
-          status: templateResponse.status,
-          statusText: templateResponse.statusText,
-          ok: templateResponse.ok
-        });
-
-        if (templateResponse.ok) {
-          templateConfig = await templateResponse.json();
-          addLog(detailedLogs, 'Template Fetch', 'success', 'Marzneshin template user configuration fetched successfully', {
-            username: templateConfig.username,
-            hasServiceIds: !!templateConfig.service_ids,
-            serviceIdsCount: templateConfig.service_ids ? templateConfig.service_ids.length : 0,
-            originalNote: templateConfig.note
-          });
-        } else {
-          const errorText = await templateResponse.text();
-          addLog(detailedLogs, 'Template Fetch', 'error', 'Failed to fetch Marzneshin template user, will use fallback config', {
-            status: templateResponse.status,
-            errorText: errorText
-          });
-        }
-      } catch (templateError) {
-        addLog(detailedLogs, 'Template Fetch', 'error', 'Marzneshin template fetch error, using fallback', {
-          error: templateError.message
-        });
-      }
-
-      // Create User for Marzneshin
+      // Create test user for Marzneshin
       const isActualUserCreation = createUser && userData;
       const targetUsername = isActualUserCreation ? userData.username : `test_${Date.now()}`;
       const targetDataLimit = isActualUserCreation ? userData.dataLimitGB : 1;
@@ -638,42 +369,14 @@ serve(async (req) => {
       addLog(detailedLogs, 'User Creation', 'info', `${isActualUserCreation ? 'Creating actual Marzneshin user' : 'Creating Marzneshin test user'}: ${targetUsername}`);
 
       // Build Marzneshin user payload
-      let userPayload;
-      
-      if (templateConfig && templateConfig.service_ids) {
-        // Use template configuration for Marzneshin
-        addLog(detailedLogs, 'User Creation', 'info', 'Using Marzneshin template configuration from "reza"');
-        
-        userPayload = {
-          username: targetUsername,
-          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
-          usage_duration: targetDuration * 24 * 60 * 60, // Convert days to seconds
-          expire_strategy: "fixed_date",
-          service_ids: templateConfig.service_ids, // Use exact service IDs from template
-          note: targetNotes
-        };
-      } else {
-        // Fallback configuration for Marzneshin
-        addLog(detailedLogs, 'User Creation', 'info', 'Using Marzneshin fallback configuration (template not available)');
-        
-        userPayload = {
-          username: targetUsername,
-          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
-          usage_duration: targetDuration * 24 * 60 * 60, // Convert days to seconds
-          expire_strategy: "fixed_date",
-          service_ids: [1], // Default service ID
-          note: targetNotes
-        };
-      }
-
-      addLog(detailedLogs, 'User Creation', 'info', 'Creating Marzneshin user with payload', {
-        username: userPayload.username,
-        dataLimit: userPayload.data_limit,
-        usageDuration: userPayload.usage_duration,
-        expireStrategy: userPayload.expire_strategy,
-        serviceIds: userPayload.service_ids,
-        note: userPayload.note
-      });
+      const userPayload = {
+        username: targetUsername,
+        data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
+        usage_duration: targetDuration * 24 * 60 * 60, // Convert days to seconds
+        expire_strategy: "fixed_date",
+        service_ids: [1], // Default service ID
+        note: targetNotes
+      };
 
       try {
         const createResponse = await fetch(`${panel.panel_url}/api/user`, {
@@ -740,35 +443,6 @@ serve(async (req) => {
             addLog(detailedLogs, 'Cleanup', 'error', 'Delete Marzneshin test user exception (non-critical)', {
               error: deleteError.message
             });
-          }
-        } else if (userData.subscriptionId) {
-          // Update subscription record for actual user creation
-          addLog(detailedLogs, 'Subscription Update', 'info', 'Updating subscription record for Marzneshin user');
-          
-          try {
-            const subscriptionUrl = createdUserData.subscription_url || `${panel.panel_url}/sub/${createdUserData.username}`;
-            const expireAt = createdUserData.expire ? 
-              new Date(createdUserData.expire * 1000).toISOString() : 
-              new Date(Date.now() + targetDuration * 24 * 60 * 60 * 1000).toISOString();
-
-            const { error: updateError } = await supabase
-              .from('subscriptions')
-              .update({
-                status: 'active',
-                subscription_url: subscriptionUrl,
-                marzban_user_created: true,
-                expire_at: expireAt,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', userData.subscriptionId);
-
-            if (updateError) {
-              addLog(detailedLogs, 'Subscription Update', 'error', 'Failed to update subscription record for Marzneshin', updateError);
-            } else {
-              addLog(detailedLogs, 'Subscription Update', 'success', 'Subscription record updated successfully for Marzneshin');
-            }
-          } catch (updateError) {
-            addLog(detailedLogs, 'Subscription Update', 'error', 'Exception during Marzneshin subscription update', updateError);
           }
         }
 
