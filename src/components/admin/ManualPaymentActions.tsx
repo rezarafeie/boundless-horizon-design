@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { CheckCircle, XCircle, Loader } from 'lucide-react';
+import { PanelUserCreationService } from '@/services/panelUserCreationService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -67,183 +68,6 @@ export const ManualPaymentActions = ({
     }
   };
 
-  const createVpnUser = async (subscription: any) => {
-    console.log('🔵 MANUAL_PAYMENT: Creating VPN user for subscription:', subscription.id);
-    
-    // CRITICAL FIX: Get the CORRECT panel based on subscription's plan
-    let panelInfo = null;
-    let apiType = 'marzban'; // Default
-    
-    try {
-      console.log('🔍 MANUAL_PAYMENT: Looking up plan and assigned panel for plan_id:', subscription.plan_id);
-      
-      // Get the subscription plan with its assigned panel
-      const { data: planData, error: planError } = await supabase
-        .from('subscription_plans')
-        .select(`
-          *,
-          panel_servers!assigned_panel_id(
-            id,
-            name,
-            type,
-            panel_url,
-            username,
-            password,
-            is_active,
-            health_status
-          )
-        `)
-        .eq('plan_id', subscription.plan_id || 'lite')
-        .eq('is_active', true)
-        .single();
-
-      if (!planError && planData?.panel_servers) {
-        panelInfo = planData.panel_servers;
-        apiType = planData.api_type || 'marzban';
-        
-        console.log('🟢 MANUAL_PAYMENT: Found CORRECT assigned panel:', {
-          planId: planData.plan_id,
-          planName: planData.name_en,
-          assignedPanelId: planData.assigned_panel_id,
-          panelName: panelInfo.name,
-          panelUrl: panelInfo.panel_url,
-          panelType: panelInfo.type
-        });
-      } else {
-        console.error('❌ MANUAL_PAYMENT: No assigned panel found for plan:', subscription.plan_id, planError);
-        
-        // STRICT FALLBACK: Only use panels that match the plan type
-        const targetPanelType = subscription.plan_id === 'plus' ? 'cp.rain.rest' : 'file.shopifysb.xyz';
-        console.log('🔍 MANUAL_PAYMENT: Using STRICT fallback for plan type:', subscription.plan_id, 'targeting:', targetPanelType);
-        
-        const { data: fallbackPanel } = await supabase
-          .from('panel_servers')
-          .select('*')
-          .eq('type', 'marzban')
-          .eq('is_active', true)
-          .eq('health_status', 'online')
-          .like('panel_url', `%${targetPanelType}%`)
-          .limit(1)
-          .single();
-        
-        if (fallbackPanel) {
-          panelInfo = fallbackPanel;
-          console.log('🟡 MANUAL_PAYMENT: Using STRICT fallback panel:', {
-            planType: subscription.plan_id,
-            panelName: panelInfo.name,
-            panelUrl: panelInfo.panel_url
-          });
-        }
-      }
-    } catch (error) {
-      console.error('❌ MANUAL_PAYMENT: Error getting panel info:', error);
-    }
-
-    if (!panelInfo) {
-      const errorMsg = `No active panel available for plan "${subscription.plan_id}" VPN creation`;
-      console.error('❌ MANUAL_PAYMENT:', errorMsg);
-      throw new Error(errorMsg);
-    }
-
-    // CRITICAL VERIFICATION: Ensure correct panel is being used
-    const isCorrectPanel = (
-      (subscription.plan_id === 'plus' && panelInfo.panel_url.includes('rain')) ||
-      (subscription.plan_id === 'lite' && panelInfo.panel_url.includes('shopifysb'))
-    );
-
-    console.log('🔍 MANUAL_PAYMENT: Panel verification:', {
-      subscriptionPlan: subscription.plan_id,
-      panelUrl: panelInfo.panel_url,
-      isCorrectPanel,
-      panelName: panelInfo.name
-    });
-
-    if (!isCorrectPanel) {
-      const errorMsg = `PANEL MISMATCH: Plan "${subscription.plan_id}" cannot use panel "${panelInfo.name}" (${panelInfo.panel_url})`;
-      console.error('❌ MANUAL_PAYMENT:', errorMsg);
-      throw new Error(errorMsg);
-    }
-
-    // Prepare request data
-    const requestData = {
-      username: subscription.username,
-      dataLimitGB: subscription.data_limit_gb,
-      durationDays: subscription.duration_days,
-      notes: `Manual payment approved - Amount: ${subscription.price_toman} Toman`,
-      panelId: panelInfo.id,
-      subscriptionId: subscription.id
-    };
-
-    console.log(`🔵 MANUAL_PAYMENT: Creating VPN user via ${apiType} API on CORRECT panel:`, {
-      panel: panelInfo.name,
-      url: panelInfo.panel_url,
-      planType: subscription.plan_id
-    });
-
-    try {
-      let result;
-      let functionName;
-
-      if (apiType === 'marzban') {
-        functionName = 'marzban-create-user';
-        const { data, error } = await supabase.functions.invoke('marzban-create-user', {
-          body: requestData
-        });
-        
-        if (error) throw error;
-        result = data;
-      } else {
-        functionName = 'marzneshin-create-user';
-        const { data, error } = await supabase.functions.invoke('marzneshin-create-user', {
-          body: requestData
-        });
-        
-        if (error) throw error;
-        result = data;
-      }
-
-      // Log the attempt
-      await logUserCreationAttempt(
-        subscription.id,
-        functionName,
-        requestData,
-        result?.success || false,
-        result,
-        result?.error,
-        {
-          panel_id: panelInfo.id,
-          panel_name: panelInfo.name,
-          panel_url: panelInfo.panel_url
-        }
-      );
-
-      if (!result?.success) {
-        throw new Error(result?.error || 'VPN creation failed');
-      }
-
-      console.log('🟢 MANUAL_PAYMENT: VPN user created successfully:', result);
-      return result;
-
-    } catch (error) {
-      // Log the failed attempt
-      await logUserCreationAttempt(
-        subscription.id,
-        apiType === 'marzban' ? 'marzban-create-user' : 'marzneshin-create-user',
-        requestData,
-        false,
-        null,
-        error instanceof Error ? error.message : 'Unknown error',
-        {
-          panel_id: panelInfo.id,
-          panel_name: panelInfo.name,
-          panel_url: panelInfo.panel_url
-        }
-      );
-      
-      throw error;
-    }
-  };
-
   const handleDecision = async (decision: 'approved' | 'rejected') => {
     setIsProcessing(true);
     
@@ -271,24 +95,72 @@ export const ManualPaymentActions = ({
         }
 
         try {
-          // Create VPN user with CORRECT panel
-          const vpnResult = await createVpnUser(subscription);
+          console.log('🔵 MANUAL_PAYMENT: Creating VPN user automatically after approval');
           
-          if (vpnResult?.data?.subscription_url) {
+          // ✅ NEW: Use the PanelUserCreationService for automatic VPN creation
+          const vpnResult = await PanelUserCreationService.createUserFromPanel({
+            planId: subscription.plan_id,
+            username: subscription.username,
+            dataLimitGB: subscription.data_limit_gb,
+            durationDays: subscription.duration_days,
+            notes: `Manual payment approved - Amount: ${subscription.price_toman} Toman`,
+            subscriptionId: subscription.id
+          });
+          
+          if (vpnResult.success && vpnResult.data?.subscription_url) {
             updateData.subscription_url = vpnResult.data.subscription_url;
             updateData.marzban_user_created = true;
             updateData.expire_at = new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString();
             
             // Update notes to include success
             const existingNotes = subscription.notes || '';
-            updateData.notes = `${existingNotes} - VPN created successfully on correct panel`;
-            console.log('🟢 MANUAL_PAYMENT: VPN user created successfully');
+            updateData.notes = `${existingNotes} - VPN created automatically after approval using ${vpnResult.data.panel_type} panel`;
+            
+            console.log('🟢 MANUAL_PAYMENT: VPN user created successfully automatically');
+            
+            // Log successful creation
+            await logUserCreationAttempt(
+              subscription.id,
+              vpnResult.data.panel_type === 'marzneshin' ? 'marzneshin-create-user' : 'marzban-create-user',
+              {
+                planId: subscription.plan_id,
+                username: subscription.username,
+                dataLimitGB: subscription.data_limit_gb,
+                durationDays: subscription.duration_days
+              },
+              true,
+              vpnResult.data,
+              null,
+              {
+                panel_id: vpnResult.data.panel_id,
+                panel_name: vpnResult.data.panel_name,
+                panel_url: vpnResult.data.panel_url
+              }
+            );
+          } else {
+            throw new Error(vpnResult.error || 'VPN creation failed');
           }
         } catch (vpnError) {
           console.error('❌ MANUAL_PAYMENT: VPN creation failed:', vpnError);
+          
+          // Log failed attempt
+          await logUserCreationAttempt(
+            subscription.id,
+            'automatic-creation-after-approval',
+            {
+              planId: subscription.plan_id,
+              username: subscription.username
+            },
+            false,
+            null,
+            vpnError instanceof Error ? vpnError.message : 'Unknown error'
+          );
+          
           // Continue with approval even if VPN creation fails
           const existingNotes = subscription.notes || '';
-          updateData.notes = `${existingNotes} - VPN creation failed: ${vpnError instanceof Error ? vpnError.message : 'Unknown error'}`;
+          updateData.notes = `${existingNotes} - VPN creation failed after approval: ${vpnError instanceof Error ? vpnError.message : 'Unknown error'}`;
+          
+          console.log('🟡 MANUAL_PAYMENT: Continuing with approval despite VPN creation failure');
         }
       }
 
@@ -304,7 +176,9 @@ export const ManualPaymentActions = ({
 
       toast({
         title: decision === 'approved' ? 'Payment Approved' : 'Payment Rejected',
-        description: `Manual payment for ${username} has been ${decision}.`,
+        description: decision === 'approved' 
+          ? `Manual payment for ${username} has been approved and VPN creation attempted.`
+          : `Manual payment for ${username} has been rejected.`,
       });
 
       onStatusUpdate();
@@ -344,7 +218,7 @@ export const ManualPaymentActions = ({
             <AlertDialogTitle>Approve Payment</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to approve the payment of {amount.toLocaleString()} Toman for {username}?
-              This will activate their VPN subscription and attempt to create their VPN user automatically.
+              This will activate their VPN subscription and automatically create their VPN user.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -353,7 +227,7 @@ export const ManualPaymentActions = ({
               onClick={() => handleDecision('approved')}
               className="bg-green-600 hover:bg-green-700"
             >
-              Approve Payment
+              Approve & Create VPN
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

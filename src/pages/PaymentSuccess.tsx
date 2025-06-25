@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Loader, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { PanelUserCreationService } from '@/services/panelUserCreationService';
 
 const PaymentSuccess = () => {
   const { language } = useLanguage();
@@ -45,6 +46,9 @@ const PaymentSuccess = () => {
             setSubscriptionData(data.subscription);
             console.log('Stripe payment verified successfully:', data.subscription);
             
+            // ✅ NEW: Automatically create VPN user after successful payment
+            await createVpnUserAutomatically(data.subscription);
+            
             // Store for delivery page
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(data.subscription));
             
@@ -68,6 +72,9 @@ const PaymentSuccess = () => {
             const decodedData = JSON.parse(decodeURIComponent(subscriptionDataParam));
             setSubscriptionData(decodedData);
             console.log('Decoded subscription data:', decodedData);
+            
+            // ✅ NEW: Automatically create VPN user after successful payment
+            await createVpnUserAutomatically(decodedData);
             
             // Store for delivery page
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(decodedData));
@@ -96,6 +103,56 @@ const PaymentSuccess = () => {
       }
     };
 
+    const createVpnUserAutomatically = async (subscription: any) => {
+      try {
+        console.log('🔵 PAYMENT_SUCCESS: Creating VPN user automatically for subscription:', subscription.id);
+        
+        if (!subscription.plan_id) {
+          console.error('❌ PAYMENT_SUCCESS: No plan_id found in subscription');
+          return;
+        }
+
+        const vpnResult = await PanelUserCreationService.createUserFromPanel({
+          planId: subscription.plan_id,
+          username: subscription.username,
+          dataLimitGB: subscription.data_limit_gb,
+          durationDays: subscription.duration_days,
+          notes: `Automatic VPN creation after successful payment`,
+          subscriptionId: subscription.id
+        });
+
+        if (vpnResult.success && vpnResult.data?.subscription_url) {
+          console.log('🟢 PAYMENT_SUCCESS: VPN user created successfully automatically');
+          
+          // Update subscription with VPN details
+          const { error: updateError } = await supabase
+            .from('subscriptions')
+            .update({
+              subscription_url: vpnResult.data.subscription_url,
+              marzban_user_created: true,
+              expire_at: new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString(),
+              notes: (subscription.notes || '') + ` - VPN created automatically using ${vpnResult.data.panel_type} panel`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', subscription.id);
+
+          if (updateError) {
+            console.error('❌ PAYMENT_SUCCESS: Failed to update subscription with VPN details:', updateError);
+          } else {
+            console.log('🟢 PAYMENT_SUCCESS: Subscription updated with VPN details');
+            
+            // Update local subscription data
+            subscription.subscription_url = vpnResult.data.subscription_url;
+            subscription.marzban_user_created = true;
+          }
+        } else {
+          console.error('❌ PAYMENT_SUCCESS: VPN creation failed:', vpnResult.error);
+        }
+      } catch (error) {
+        console.error('❌ PAYMENT_SUCCESS: Error creating VPN user automatically:', error);
+      }
+    };
+
     handlePaymentSuccess();
   }, [searchParams, navigate, language, toast]);
 
@@ -120,7 +177,7 @@ const PaymentSuccess = () => {
               <p className="text-muted-foreground">
                 {language === 'fa' ? 
                   'لطفا صبر کنید تا پرداخت شما بررسی شود' : 
-                  'Please wait while we verify your payment'
+                  'Please wait while we verify your payment and create your VPN'
                 }
               </p>
             </div>
@@ -168,8 +225,8 @@ const PaymentSuccess = () => {
         <CardContent className="space-y-4">
           <p className="text-center text-muted-foreground">
             {language === 'fa' ? 
-              'پرداخت شما با موفقیت انجام شد. در حال انتقال به صفحه جزئیات...' : 
-              'Your payment was successful. Redirecting to details page...'
+              'پرداخت شما با موفقیت انجام شد و VPN شما آماده شد. در حال انتقال به صفحه جزئیات...' : 
+              'Your payment was successful and your VPN is being created. Redirecting to details page...'
             }
           </p>
           
@@ -177,6 +234,9 @@ const PaymentSuccess = () => {
             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg text-sm">
               <p><strong>{language === 'fa' ? 'نام کاربری:' : 'Username:'}</strong> {subscriptionData.username}</p>
               <p><strong>{language === 'fa' ? 'وضعیت:' : 'Status:'}</strong> {subscriptionData.status || 'Active'}</p>
+              {subscriptionData.marzban_user_created && (
+                <p className="text-green-600"><strong>VPN:</strong> ✅ Created</p>
+              )}
             </div>
           )}
           

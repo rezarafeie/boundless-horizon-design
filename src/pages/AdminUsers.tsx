@@ -1,11 +1,11 @@
 
 import { AdminLayout } from '@/components/admin/AdminLayout';
-import { UsersManagement } from '@/components/admin/UsersManagement';
+import { AdminUsersTabs } from '@/components/admin/AdminUsersTabs';
 
 const AdminUsers = () => {
   return (
     <AdminLayout>
-      <UsersManagement />
+      <AdminUsersTabs />
     </AdminLayout>
   );
 };
