@@ -29,11 +29,6 @@ interface PanelRefreshButtonProps {
   onRefreshComplete: () => void;
 }
 
-interface MarzneshinService {
-  id: number;
-  name: string;
-}
-
 export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshButtonProps) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -62,12 +57,19 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
   const mapServiceNameToProtocol = (serviceName: string): string => {
     const name = serviceName.toLowerCase();
     
-    // Map service names to protocols based on common patterns
+    // Enhanced mapping based on your specific service names
     if (name.includes('direct')) return 'vless';
     if (name.includes('tunnel')) return 'vmess';
     if (name.includes('trojan')) return 'trojan';
     if (name.includes('shadow')) return 'shadowsocks';
-    if (name.includes('info') || name.includes('user')) return 'vless'; // UserInfo service
+    if (name === 'userinfo') return 'vless'; // UserInfo service
+    
+    // Country-specific mappings (default to vmess for tunnels, vless for direct)
+    if (name.includes('romania') || name.includes('finland') || name.includes('austria') || 
+        name.includes('germany') || name.includes('netherlands') || name.includes('turkey') || 
+        name.includes('uk') || name.includes('us') || name.includes('poland')) {
+      return name.includes('direct') ? 'vless' : 'vmess';
+    }
     
     // Default fallback
     return 'vless';
@@ -117,9 +119,9 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       let totalConfigs = 0;
 
       if (panel.type === 'marzneshin') {
-        console.log('PANEL REFRESH: Processing Marzneshin panel with service-based workaround');
+        console.log('PANEL REFRESH: Processing Marzneshin panel with enhanced service mapping');
         
-        // Step 1: Get reza user's service_ids (this works - we tested it)
+        // Step 1: Get reza user's service_ids
         const userResponse = await fetch(`${panel.panel_url}/api/users/reza`, {
           method: 'GET',
           headers: {
@@ -140,7 +142,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           throw new Error('Reza user has no service_ids configured. Please configure the reza user in the panel with proper services.');
         }
 
-        // Step 2: Get services list to map service IDs to names (this works - we tested it)
+        // Step 2: Get services list to map service IDs to names
         const servicesResponse = await fetch(`${panel.panel_url}/api/services`, {
           method: 'GET',
           headers: {
@@ -157,9 +159,12 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         const allServiceIds = servicesData.service_ids || [];
         const serviceNames = servicesData.service_names || [];
         
-        console.log('PANEL REFRESH: Available services:', allServiceIds.length);
+        console.log('PANEL REFRESH: Available services:', {
+          total: allServiceIds.length,
+          serviceNames: serviceNames
+        });
 
-        // Step 3: Create service mapping
+        // Step 3: Create enhanced service mapping with your specific services
         const serviceMap: Record<number, string> = {};
         allServiceIds.forEach((id: number, index: number) => {
           if (serviceNames[index]) {
@@ -167,19 +172,20 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           }
         });
 
-        // Step 4: Process matched services (use service_ids directly as inbound IDs)
+        // Step 4: Process matched services and create protocol-based grouping
         const matchedServices = serviceIds.filter((id: number) => serviceMap[id]);
         
         if (matchedServices.length === 0) {
           throw new Error(`No valid services found for service_ids: ${serviceIds.join(', ')}`);
         }
 
-        console.log('PANEL REFRESH: Matched services:', matchedServices.length);
+        console.log('PANEL REFRESH: Matched services with names:', 
+          matchedServices.map(id => `${id}:${serviceMap[id]}`));
 
-        // Step 5: Use service_ids as default inbounds and create protocol mapping
+        // Step 5: Use service_ids as default inbounds and create enhanced protocol mapping
         defaultInbounds = matchedServices;
         
-        // Group services by inferred protocol
+        // Group services by inferred protocol with enhanced mapping
         const protocolGroups: Record<string, number[]> = {};
         const protocolProxies: Record<string, any> = {};
 
@@ -197,7 +203,8 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             id: serviceId,
             name: serviceName,
             tag: `service_${serviceId}`,
-            protocol: protocol
+            protocol: protocol,
+            location: serviceName.replace(/tunnel|direct/gi, '').replace(/([A-Z])/g, ' $1').trim()
           };
         });
 
@@ -206,11 +213,15 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         enabledProtocols = Object.keys(protocolGroups);
         totalConfigs = matchedServices.length;
 
-        console.log('PANEL REFRESH: Marzneshin workaround completed:', {
+        console.log('PANEL REFRESH: Enhanced Marzneshin service mapping completed:', {
           defaultInbounds,
           enabledProtocols,
           totalConfigs,
-          serviceMapping: serviceMap
+          protocolBreakdown: Object.entries(protocolGroups).map(([protocol, ids]) => ({
+            protocol,
+            count: ids.length,
+            services: ids.map(id => serviceMap[id])
+          }))
         });
 
       } else {
@@ -260,7 +271,14 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             inbounds,
             proxies,
             last_refresh: new Date().toISOString(),
-            workaround_used: panel.type === 'marzneshin' ? 'service_ids_direct' : false
+            workaround_used: panel.type === 'marzneshin' ? 'enhanced_service_mapping' : false,
+            service_details: panel.type === 'marzneshin' ? {
+              total_services: totalConfigs,
+              protocol_breakdown: enabledProtocols.map(protocol => ({
+                protocol,
+                count: (inbounds as any)[protocol]?.length || 0
+              }))
+            } : undefined
           },
           enabled_protocols: enabledProtocols,
           default_inbounds: defaultInbounds
@@ -271,7 +289,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         throw new Error(`Database update failed: ${updateError.message}`);
       }
 
-      // Log the refresh
+      // Log the refresh with enhanced details
       const { error: logError } = await supabase
         .from('panel_refresh_logs')
         .insert({
@@ -283,7 +301,12 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             proxies, 
             enabledProtocols, 
             defaultInbounds,
-            workaround_used: panel.type === 'marzneshin' ? 'service_ids_direct' : false
+            workaround_used: panel.type === 'marzneshin' ? 'enhanced_service_mapping' : false,
+            service_mapping: panel.type === 'marzneshin' ? 
+              enabledProtocols.map(protocol => ({
+                protocol,
+                service_count: (inbounds as any)[protocol]?.length || 0
+              })) : undefined
           }
         });
 
@@ -296,8 +319,11 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       if (enabledProtocols.length === 0) {
         toast.error(`⚠️ No protocols enabled - panel cannot create users`);
       } else {
-        const workaroundMsg = panel.type === 'marzneshin' ? ' (using service IDs workaround)' : '';
-        toast.success(`Panel config refreshed successfully${workaroundMsg}! Found ${totalConfigs} configs across ${enabledProtocols.length} protocols.`);
+        const workaroundMsg = panel.type === 'marzneshin' ? ' (using enhanced service mapping)' : '';
+        const protocolSummary = enabledProtocols.length > 1 ? 
+          `${enabledProtocols.length} protocols (${enabledProtocols.join(', ')})` : 
+          enabledProtocols[0];
+        toast.success(`Panel config refreshed successfully${workaroundMsg}! Found ${totalConfigs} services across ${protocolSummary}.`);
       }
       
       onRefreshComplete();
@@ -373,7 +399,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
                       <Badge variant={log.refresh_result ? 'default' : 'destructive'}>
                         {log.refresh_result ? 'Success' : 'Failed'}
                       </Badge>
-                      <span>{log.configs_fetched || 0} configs</span>
+                      <span>{log.configs_fetched || 0} services</span>
                     </div>
                     <div className="text-gray-600 dark:text-gray-400">
                       {new Date(log.created_at).toLocaleString()}

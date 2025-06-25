@@ -48,7 +48,8 @@ async function getPanelCredentials(panelId: string) {
     panelUrl: panel.panel_url,
     enabledProtocols: panel.enabled_protocols,
     defaultInbounds: panel.default_inbounds,
-    hasWorkaround: panel.panel_config_data?.workaround_used
+    hasWorkaround: panel.panel_config_data?.workaround_used,
+    serviceDetails: panel.panel_config_data?.service_details
   });
 
   return {
@@ -122,7 +123,7 @@ async function createMarzneshinUser(
   serviceIds: number[]
 ): Promise<MarzneshinUserResponse> {
   
-  console.log('Starting user creation with data:', userData);
+  console.log('Starting user creation with enhanced service mapping:', userData);
   console.log('Using service IDs from panel configuration:', serviceIds);
   
   // Validate duration
@@ -149,11 +150,41 @@ async function createMarzneshinUser(
   const formattedExpireDateYYYY = formatDateToYYYYMMDD(expirationDate);
   
   console.log(`Calculated expiration date: ${formattedExpireDateMM} (${userData.durationDays} days from now)`);
-  console.log(`Alternative formats: ISO=${formattedExpireDateISO}, YYYY-MM-DD=${formattedExpireDateYYYY}`);
   console.log(`Using enabled protocols: ${userData.enabledProtocols.join(', ')}`);
-  console.log(`Using service IDs: ${serviceIds.join(', ')}`);
+  console.log(`Using ${serviceIds.length} services as inbounds: ${serviceIds.join(', ')}`);
   
-  // Create user request with service IDs (bypassing inbound resolution)
+  // Get service names for better logging
+  let serviceNames: string[] = [];
+  try {
+    const servicesResponse = await fetch(`${baseUrl}/api/services`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (servicesResponse.ok) {
+      const servicesData = await servicesResponse.json();
+      const allServiceIds = servicesData.service_ids || [];
+      const allServiceNames = servicesData.service_names || [];
+      
+      // Map service IDs to names
+      const serviceMap: Record<number, string> = {};
+      allServiceIds.forEach((id: number, index: number) => {
+        if (allServiceNames[index]) {
+          serviceMap[id] = allServiceNames[index];
+        }
+      });
+      
+      serviceNames = serviceIds.map(id => serviceMap[id] || `Service_${id}`);
+      console.log('Service names for user creation:', serviceNames);
+    }
+  } catch (error) {
+    console.log('Could not fetch service names for logging, continuing with IDs');
+  }
+  
+  // Create user request using service IDs as inbounds
   const strategies = [
     {
       name: 'fixed_date_expire_date_mmddyyyy',
@@ -162,8 +193,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire_date: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds, // Use service IDs directly
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
+        service_ids: serviceIds, // Use the enhanced service IDs directly
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Services: ${serviceNames.length > 0 ? serviceNames.join(', ') : serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -174,8 +205,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds, // Use service IDs directly
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Services: ${serviceNames.length > 0 ? serviceNames.join(', ') : serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -186,8 +217,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire_date: formattedExpireDateISO,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds, // Use service IDs directly
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Services: ${serviceNames.length > 0 ? serviceNames.join(', ') : serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -198,8 +229,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire: formattedExpireDateISO,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds, // Use service IDs directly
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Services: ${serviceNames.length > 0 ? serviceNames.join(', ') : serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -210,8 +241,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire_date: formattedExpireDateYYYY,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds, // Use service IDs directly
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Services: ${serviceNames.length > 0 ? serviceNames.join(', ') : serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -222,8 +253,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire: formattedExpireDateYYYY,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds, // Use service IDs directly
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
+        service_ids: serviceIds,
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Services: ${serviceNames.length > 0 ? serviceNames.join(', ') : serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     }
@@ -252,7 +283,8 @@ async function createMarzneshinUser(
       if (response.ok) {
         const result = await response.json();
         console.log(`Strategy ${strategy.name} succeeded:`, result);
-        console.log(`✅ User created successfully with ${strategy.name} strategy using service IDs`);
+        console.log(`✅ User created successfully with ${strategy.name} strategy using enhanced service mapping`);
+        console.log(`📋 Services used: ${serviceNames.length > 0 ? serviceNames.join(', ') : serviceIds.join(', ')}`);
         console.log(`📋 Full API response:`, JSON.stringify(result, null, 2));
         return result;
       } else {
@@ -281,7 +313,7 @@ async function createMarzneshinUser(
   }
 
   // If all strategies failed, throw the last error with comprehensive details
-  console.error('❌ All fixed_date strategies failed. Last error details:', lastError);
+  console.error('❌ All fixed_date strategies failed with enhanced service mapping. Last error details:', lastError);
   
   if (lastError) {
     if (lastError.detail) {
@@ -299,7 +331,7 @@ async function createMarzneshinUser(
     throw new Error(`Failed to create user: ${lastError.message || 'Unknown error'}`);
   }
 
-  throw new Error('Failed to create user with fixed_date strategy - all format attempts failed');
+  throw new Error('Failed to create user with enhanced service mapping - all format attempts failed');
 }
 
 Deno.serve(async (req) => {
@@ -405,24 +437,26 @@ Deno.serve(async (req) => {
       ? enabledProtocols 
       : panelProtocols;
 
-    // Use panel's default inbounds for service IDs (these are now service IDs thanks to our workaround)
+    // Use panel's default inbounds for service IDs (these are service IDs from our enhanced workaround)
     console.log('Using panel default inbounds as service IDs:', defaultInbounds);
     console.log('Panel config workaround status:', panelConfigData?.workaround_used);
+    console.log('Panel service details:', panelConfigData?.service_details);
 
     if (!defaultInbounds || defaultInbounds.length === 0) {
       throw new Error('Panel has no default inbounds (service IDs) configured. Please refresh the panel configuration first.');
     }
 
-    console.log('Starting Marzneshin user creation with service IDs:', {
+    console.log('Starting Marzneshin user creation with enhanced service mapping:', {
       protocols: finalProtocols,
       serviceIds: defaultInbounds,
-      workaroundActive: panelConfigData?.workaround_used === 'service_ids_direct'
+      workaroundActive: panelConfigData?.workaround_used === 'enhanced_service_mapping',
+      serviceCount: defaultInbounds.length
     });
 
     // Get authentication token
     const token = await getAuthToken(baseUrl, panelUsername, panelPassword);
     
-    // Create the user with service IDs directly (our workaround approach)
+    // Create the user with enhanced service mapping
     const result = await createMarzneshinUser(
       baseUrl,
       token,
@@ -433,10 +467,10 @@ Deno.serve(async (req) => {
         notes: notes || '',
         enabledProtocols: finalProtocols
       },
-      defaultInbounds // These are service IDs from our workaround
+      defaultInbounds // These are service IDs from our enhanced workaround
     );
 
-    console.log('Marzneshin user creation completed successfully with service IDs workaround');
+    console.log('Marzneshin user creation completed successfully with enhanced service mapping');
 
     return new Response(
       JSON.stringify({
