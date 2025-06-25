@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Bell, LogOut } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { OfflineStatus } from './OfflineStatus';
 
 export const AdminHeader = () => {
   const { theme } = useTheme();
@@ -24,6 +25,8 @@ export const AdminHeader = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <OfflineStatus />
+          
           <Button variant="ghost" size="sm" className="relative">
             <Bell className="w-4 h-4" />
             <Badge 

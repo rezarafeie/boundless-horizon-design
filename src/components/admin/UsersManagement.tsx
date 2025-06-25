@@ -1,16 +1,14 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Search, User, Calendar, DollarSign, RefreshCw, Image, Receipt, Server, Package } from 'lucide-react';
-import { ManualPaymentActions } from './ManualPaymentActions';
-import { UserCreationLogs } from './UserCreationLogs';
-import { UserActionButtons } from './UserActionButtons';
-import { SubscriptionDiagnostics } from './SubscriptionDiagnostics';
+import { Search, User, Calendar, DollarSign, RefreshCw } from 'lucide-react';
+import { UserCard } from './UserCard';
+import { OfflineWarning, OfflineStatus } from './OfflineStatus';
 
 interface Subscription {
   id: string;
@@ -28,7 +26,6 @@ interface Subscription {
   receipt_image_url?: string;
   plan_id?: string;
   marzban_user_created?: boolean;
-  // Plan and panel info from the relationship
   subscription_plans?: {
     id: string;
     plan_id: string;
@@ -75,12 +72,10 @@ export const UsersManagement = () => {
         `)
         .order('created_at', { ascending: false });
 
-      // Add status filter if not 'all'
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
       }
 
-      // Add search filter
       if (searchTerm.trim()) {
         query = query.or(`username.ilike.%${searchTerm}%,mobile.ilike.%${searchTerm}%`);
       }
@@ -94,7 +89,6 @@ export const UsersManagement = () => {
         throw error;
       }
       
-      // Transform data to include plan and panel information
       const transformedData: Subscription[] = (data || []).map((sub: any) => ({
         ...sub,
         plan_name: sub.subscription_plans?.name_en || 'Unknown Plan',
@@ -107,52 +101,8 @@ export const UsersManagement = () => {
       return transformedData;
     },
     retry: 1,
-    refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
+    refetchInterval: 30000,
   });
-
-  // Helper function to parse manual payment details from notes
-  const parseManualPaymentDetails = (notes: string) => {
-    if (!notes || !notes.includes('Manual payment')) return null;
-    
-    const trackingMatch = notes.match(/Tracking:\s*([^,]+)/);
-    const payerMatch = notes.match(/Payer:\s*([^,]+)/);
-    const timeMatch = notes.match(/Time:\s*([^-]+)/);
-    
-    return {
-      trackingNumber: trackingMatch ? trackingMatch[1].trim() : null,
-      payerName: payerMatch ? payerMatch[1].trim() : null,
-      paymentTime: timeMatch ? timeMatch[1].trim() : null
-    };
-  };
-
-  // Helper function to determine if subscription needs diagnostics
-  const needsDiagnostics = (subscription: Subscription) => {
-    return (
-      subscription.status === 'active' && 
-      subscription.admin_decision === 'approved' && 
-      !subscription.marzban_user_created
-    ) || (
-      subscription.notes && 
-      subscription.notes.includes('VPN creation failed')
-    );
-  };
-
-  const getStatusBadge = (status: string, adminDecision?: string) => {
-    if (status === 'pending' && adminDecision === 'pending') {
-      return <Badge className="bg-orange-100 text-orange-800">Awaiting Review</Badge>;
-    }
-    
-    const statusConfig = {
-      'pending': { label: 'Pending', className: 'bg-yellow-100 text-yellow-800' },
-      'paid': { label: 'Paid', className: 'bg-blue-100 text-blue-800' },
-      'active': { label: 'Active', className: 'bg-green-100 text-green-800' },
-      'expired': { label: 'Expired', className: 'bg-red-100 text-red-800' },
-      'cancelled': { label: 'Cancelled', className: 'bg-gray-100 text-gray-800' },
-    };
-
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
-    return <Badge className={config.className}>{config.label}</Badge>;
-  };
 
   const stats = subscriptions ? {
     total: subscriptions.length,
@@ -168,31 +118,10 @@ export const UsersManagement = () => {
 
   console.log('USERS: Component render - isLoading:', isLoading, 'subscriptions count:', subscriptions?.length, 'error:', error);
 
-  // Show error state
+  // Show offline status for connection errors
   if (error) {
     console.error('USERS: Component error:', error);
-    return (
-      <div className="container mx-auto p-4 space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Users & Orders</h1>
-            <p className="text-gray-600">Error loading users and orders</p>
-          </div>
-          <Button onClick={handleRefresh} variant="outline">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
-          </Button>
-        </div>
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-red-600">
-              <p>Error loading subscriptions: {error?.message || 'Unknown error'}</p>
-              <p className="text-sm mt-2">Check the browser console for more details.</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <OfflineStatus showFullScreen={true} />;
   }
 
   if (isLoading) {
@@ -200,7 +129,7 @@ export const UsersManagement = () => {
     return (
       <div className="container mx-auto p-4 space-y-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Users & Orders</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Users & Orders</h1>
           <p className="text-gray-600">Loading subscriptions...</p>
         </div>
       </div>
@@ -208,89 +137,96 @@ export const UsersManagement = () => {
   }
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Users & Orders</h1>
-          <p className="text-gray-600">
-            Manage user subscriptions and orders ({subscriptions?.length || 0} subscriptions found)
+    <div className="container mx-auto p-2 sm:p-4 space-y-4 sm:space-y-6 max-w-full overflow-hidden">
+      {/* Offline Warning */}
+      <OfflineWarning />
+
+      {/* Header - Mobile optimized */}
+      <div className="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 truncate">Users & Orders</h1>
+          <p className="text-sm sm:text-base text-gray-600">
+            {subscriptions?.length || 0} subscriptions found
           </p>
         </div>
-        <Button onClick={handleRefresh} variant="outline" size="sm">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <OfflineStatus />
+          <Button onClick={handleRefresh} variant="outline" size="sm" className="whitespace-nowrap">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4">
+      {/* Stats Cards - Mobile responsive grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
-              <User className="w-6 h-6 text-blue-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-600">Total Users</p>
-                <p className="text-xl font-bold">{stats.total}</p>
+              <User className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
+              <div className="ml-2 sm:ml-3 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total</p>
+                <p className="text-lg sm:text-xl font-bold">{stats.total}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
-              <Calendar className="w-6 h-6 text-green-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-600">Active</p>
-                <p className="text-xl font-bold">{stats.active}</p>
+              <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" />
+              <div className="ml-2 sm:ml-3 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Active</p>
+                <p className="text-lg sm:text-xl font-bold">{stats.active}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
-              <Calendar className="w-6 h-6 text-yellow-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-xl font-bold">{stats.pending}</p>
+              <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-yellow-600 flex-shrink-0" />
+              <div className="ml-2 sm:ml-3 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Pending</p>
+                <p className="text-lg sm:text-xl font-bold">{stats.pending}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
-              <Calendar className="w-6 h-6 text-orange-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-600">Awaiting Review</p>
-                <p className="text-xl font-bold text-orange-600">{stats.awaitingReview}</p>
+              <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-orange-600 flex-shrink-0" />
+              <div className="ml-2 sm:ml-3 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Review</p>
+                <p className="text-lg sm:text-xl font-bold text-orange-600">{stats.awaitingReview}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="overflow-hidden col-span-2 sm:col-span-1">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
-              <DollarSign className="w-6 h-6 text-purple-600" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                <p className="text-xl font-bold">{(stats.totalRevenue / 1000).toFixed(0)}K</p>
+              <DollarSign className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0" />
+              <div className="ml-2 sm:ml-3 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Revenue</p>
+                <p className="text-lg sm:text-xl font-bold">{(stats.totalRevenue / 1000).toFixed(0)}K</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+      {/* Filters - Mobile responsive */}
+      <div className="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder="Search by username or mobile..."
+            placeholder="Search username or mobile..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -312,165 +248,19 @@ export const UsersManagement = () => {
       </div>
 
       {/* Subscriptions List */}
-      <div className="grid gap-6">
-        {subscriptions?.map((subscription) => {
-          const manualPaymentDetails = parseManualPaymentDetails(subscription.notes || '');
-          const showDiagnostics = needsDiagnostics(subscription);
-          
-          return (
-            <Card key={subscription.id} className={subscription.status === 'pending' && subscription.admin_decision === 'pending' ? 'border-orange-200 bg-orange-50' : ''}>
-              <CardHeader>
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex-1">
-                    <CardTitle className="flex flex-wrap items-center gap-2">
-                      <span>{subscription.username}</span>
-                      {getStatusBadge(subscription.status, subscription.admin_decision)}
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      <div className="flex flex-wrap gap-2 text-sm">
-                        <span>Mobile: {subscription.mobile}</span>
-                        <span>•</span>
-                        <span>Created: {new Date(subscription.created_at).toLocaleDateString()}</span>
-                      </div>
-                    </CardDescription>
-                    
-                    {/* Plan and Panel Info */}
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <Badge variant="outline" className="text-xs">
-                        <Package className="w-3 h-3 mr-1" />
-                        {(subscription as any).plan_name} ({(subscription as any).plan_id_text})
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        <Server className="w-3 h-3 mr-1" />
-                        {(subscription as any).panel_name} ({(subscription as any).panel_type})
-                      </Badge>
-                    </div>
-                  </div>
-                  
-                  <div className="text-left lg:text-right">
-                    <p className="text-lg font-bold">{subscription.price_toman.toLocaleString()} Toman</p>
-                    <p className="text-sm text-gray-500">{subscription.data_limit_gb}GB • {subscription.duration_days} days</p>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <span className="font-medium">Expiry:</span>
-                      <p>{subscription.expire_at ? new Date(subscription.expire_at).toLocaleDateString() : 'Not set'}</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">Subscription URL:</span>
-                      <p className="truncate text-blue-600">
-                        {subscription.subscription_url ? 
-                          <a href={subscription.subscription_url} target="_blank" rel="noopener noreferrer">
-                            View Config
-                          </a> 
-                          : 'Not generated'
-                        }
-                      </p>
-                    </div>
-                    <div>
-                      <span className="font-medium">Notes:</span>
-                      <p className="truncate">{subscription.notes || 'None'}</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">ID:</span>
-                      <p className="font-mono text-xs">{subscription.id.slice(0, 8)}...</p>
-                    </div>
-                  </div>
-
-                  {/* Manual Payment Details */}
-                  {manualPaymentDetails && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Receipt className="w-4 h-4 text-blue-600" />
-                        <span className="font-medium text-blue-800 dark:text-blue-200">Manual Payment Details</span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                        {manualPaymentDetails.trackingNumber && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">Tracking Number:</span>
-                            <p className="font-mono bg-white dark:bg-gray-800 px-2 py-1 rounded mt-1">
-                              {manualPaymentDetails.trackingNumber}
-                            </p>
-                          </div>
-                        )}
-                        {manualPaymentDetails.payerName && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">Payer Name:</span>
-                            <p className="bg-white dark:bg-gray-800 px-2 py-1 rounded mt-1">
-                              {manualPaymentDetails.payerName}
-                            </p>
-                          </div>
-                        )}
-                        {manualPaymentDetails.paymentTime && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">Payment Time:</span>
-                            <p className="bg-white dark:bg-gray-800 px-2 py-1 rounded mt-1">
-                              {manualPaymentDetails.paymentTime}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Receipt Image */}
-                  {subscription.receipt_image_url && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Image className="w-4 h-4" />
-                      <a 
-                        href={subscription.receipt_image_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        View Payment Receipt
-                      </a>
-                    </div>
-                  )}
-
-                  {/* Subscription Diagnostics */}
-                  {showDiagnostics && (
-                    <div className="border-t pt-4">
-                      <SubscriptionDiagnostics subscriptionId={subscription.id} />
-                    </div>
-                  )}
-
-                  {/* User Creation Logs */}
-                  <div className="border-t pt-4">
-                    <UserCreationLogs subscriptionId={subscription.id} />
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="border-t pt-4">
-                    <div className="flex justify-between items-center">
-                      <UserActionButtons 
-                        subscription={subscription} 
-                        onUpdate={handleRefresh}
-                      />
-                      <ManualPaymentActions
-                        subscriptionId={subscription.id}
-                        status={subscription.status}
-                        adminDecision={subscription.admin_decision}
-                        username={subscription.username}
-                        amount={subscription.price_toman}
-                        onStatusUpdate={handleRefresh}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="grid gap-4 sm:gap-6">
+        {subscriptions?.map((subscription) => (
+          <UserCard 
+            key={subscription.id}
+            subscription={subscription}
+            onRefresh={handleRefresh}
+          />
+        ))}
       </div>
 
       {(!subscriptions || subscriptions.length === 0) && !isLoading && (
         <Card>
-          <CardContent className="text-center py-12">
+          <CardContent className="text-center py-8 sm:py-12">
             <p className="text-gray-500">
               {searchTerm || statusFilter !== 'all'
                 ? 'No subscriptions found matching your criteria.'
