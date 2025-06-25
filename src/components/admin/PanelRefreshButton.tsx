@@ -91,11 +91,11 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
 
       console.log('PANEL REFRESH: Authentication successful for', panel.type);
 
-      // Get user config - use different endpoints based on panel type
+      // FIXED: Get user config with correct endpoint for Marzneshin
       let configResponse;
       if (panel.type === 'marzneshin') {
-        // For Marzneshin, try to get users list to understand panel structure
-        configResponse = await fetch(`${panel.panel_url}/api/users?limit=1`, {
+        // FIXED: Use specific user endpoint to get reza user's configuration
+        configResponse = await fetch(`${panel.panel_url}/api/users/reza`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -126,11 +126,10 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       let enabledProtocols: string[] = [];
 
       if (panel.type === 'marzneshin') {
-        // For Marzneshin, we need to extract from the API structure
-        // This might need adjustment based on actual Marzneshin API response
-        enabledProtocols = ['vless', 'vmess', 'trojan', 'shadowsocks']; // Default protocols
-        inbounds = { vless: [], vmess: [], trojan: [], shadowsocks: [] };
-        proxies = { vless: {}, vmess: {}, trojan: {}, shadowsocks: {} };
+        // For Marzneshin, extract from the user configuration response
+        inbounds = configData.inbounds || {};
+        proxies = configData.proxies || {};
+        enabledProtocols = Object.keys(proxies);
       } else {
         // For Marzban, use the original extraction logic
         inbounds = configData.inbounds || {};
