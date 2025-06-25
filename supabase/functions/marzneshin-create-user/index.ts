@@ -6,44 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Required service names for Pro plan (matching actual API services)
-const REQUIRED_SERVICE_NAMES = [
-  'UserInfo',
-  'FinlandTunnel',
-  'GermanyDirect', 
-  'GermanyTunnel',
-  'NetherlandsDirect',
-  'NetherlandsTunnel',
-  'TurkeyDirect',
-  'TurkeyTunnel',
-  'UkDirect',
-  'UkTunnel',
-  'UsDirect',
-  'UsTunnel',
-  'PolandTunnel'
-];
-
-// Supported protocols including WebSocket
-const SUPPORTED_PROTOCOLS = ['vmess', 'vless', 'trojan', 'shadowsocks', 'ws', 'websocket'];
-
-interface MarzneshinService {
-  id: number;
-  name: string;
-  inbound_ids: number[];
-  user_ids?: number[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface MarzneshinServicesResponse {
-  items: MarzneshinService[];
-  total: number;
-  page: number;
-  size: number;
-  pages: number;
-  links: any;
-}
-
 interface MarzneshinUserRequest {
   username: string;
   expire_strategy: string;
@@ -84,14 +46,16 @@ async function getPanelCredentials(panelId: string) {
   console.log('Panel credentials retrieved:', {
     panelName: panel.name,
     panelUrl: panel.panel_url,
-    enabledProtocols: panel.enabled_protocols
+    enabledProtocols: panel.enabled_protocols,
+    defaultInbounds: panel.default_inbounds
   });
 
   return {
     baseUrl: panel.panel_url.replace(/\/+$/, ''),
     username: panel.username,
     password: panel.password,
-    enabledProtocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks']
+    enabledProtocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks'],
+    defaultInbounds: Array.isArray(panel.default_inbounds) ? panel.default_inbounds : []
   };
 }
 
@@ -119,46 +83,6 @@ async function getAuthToken(baseUrl: string, username: string, password: string)
   const tokenData = await tokenResponse.json();
   console.log('Authentication successful');
   return tokenData.access_token;
-}
-
-async function getServices(baseUrl: string, token: string): Promise<MarzneshinService[]> {
-  console.log('Fetching services from Marzneshin API');
-  
-  const response = await fetch(`${baseUrl}/api/services`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Failed to fetch services:', errorText);
-    throw new Error(`Failed to fetch services from Marzneshin API: ${response.status} ${errorText}`);
-  }
-
-  const data: MarzneshinServicesResponse = await response.json();
-  console.log('Services response:', data);
-  
-  return data.items || [];
-}
-
-function getRequiredServiceIds(services: MarzneshinService[]): number[] {
-  const serviceIds: number[] = [];
-  
-  for (const serviceName of REQUIRED_SERVICE_NAMES) {
-    const service = services.find(s => s.name === serviceName);
-    if (service) {
-      serviceIds.push(service.id);
-      console.log(`Found service: ${serviceName} with ID: ${service.id}`);
-    } else {
-      console.warn(`Service not found: ${serviceName}`);
-    }
-  }
-  
-  console.log(`Found ${serviceIds.length} out of ${REQUIRED_SERVICE_NAMES.length} required services`);
-  return serviceIds;
 }
 
 function formatDateToMMDDYYYY(date: Date): string {
@@ -197,10 +121,16 @@ async function createMarzneshinUser(
 ): Promise<MarzneshinUserResponse> {
   
   console.log('Starting user creation with data:', userData);
+  console.log('Using service IDs from panel configuration:', serviceIds);
   
   // Validate duration
   if (!validateDuration(userData.durationDays)) {
     throw new Error(`Invalid duration: ${userData.durationDays} days. Must be between 1 and 365 days.`);
+  }
+
+  // Validate service IDs
+  if (!serviceIds || serviceIds.length === 0) {
+    throw new Error('No service IDs available for user creation. Panel may not be properly configured.');
   }
   
   // Calculate expiration date
@@ -380,7 +310,7 @@ Deno.serve(async (req) => {
     const requestBody = await req.json();
     console.log('Raw request body:', JSON.stringify(requestBody, null, 2));
 
-    // Extract parameters - now supporting CORRECTED parameter names
+    // Extract parameters
     const {
       username,
       dataLimitGB,
@@ -390,7 +320,7 @@ Deno.serve(async (req) => {
       enabledProtocols
     } = requestBody;
 
-    console.log('Extracted parameters (with corrected names):', {
+    console.log('Extracted parameters:', {
       username,
       dataLimitGB,
       durationDays,
@@ -399,7 +329,7 @@ Deno.serve(async (req) => {
       enabledProtocols
     });
 
-    // Validate required parameters with corrected parameter names
+    // Validate required parameters
     if (!username) {
       return new Response(
         JSON.stringify({ 
@@ -453,7 +383,13 @@ Deno.serve(async (req) => {
     }
 
     // Get panel-specific credentials and configuration
-    const { baseUrl, username: panelUsername, password: panelPassword, enabledProtocols: panelProtocols } = await getPanelCredentials(panelId);
+    const { 
+      baseUrl, 
+      username: panelUsername, 
+      password: panelPassword, 
+      enabledProtocols: panelProtocols, 
+      defaultInbounds 
+    } = await getPanelCredentials(panelId);
     
     // Use provided protocols or fall back to panel's enabled protocols
     console.log('Determining protocols to use:', {
@@ -465,23 +401,22 @@ Deno.serve(async (req) => {
       ? enabledProtocols 
       : panelProtocols;
 
-    console.log('Starting Marzneshin user creation process with panel-specific protocols:', finalProtocols);
+    // Use panel's default inbounds for service IDs
+    console.log('Using panel default inbounds as service IDs:', defaultInbounds);
+
+    if (!defaultInbounds || defaultInbounds.length === 0) {
+      throw new Error('Panel has no default inbounds configured. Please refresh the panel configuration first.');
+    }
+
+    console.log('Starting Marzneshin user creation process with panel-specific configuration:', {
+      protocols: finalProtocols,
+      serviceIds: defaultInbounds
+    });
 
     // Get authentication token
     const token = await getAuthToken(baseUrl, panelUsername, panelPassword);
     
-    // Get available services
-    const services = await getServices(baseUrl, token);
-    console.log(`Fetched ${services.length} services from API`);
-    
-    // Get required service IDs for Pro plan
-    const requiredServiceIds = getRequiredServiceIds(services);
-    
-    if (requiredServiceIds.length === 0) {
-      throw new Error('No required services found. Please ensure the Pro plan services are configured in Marzneshin.');
-    }
-
-    // Create the user with corrected parameter names and dynamic protocols
+    // Create the user with panel's default inbounds as service IDs
     const result = await createMarzneshinUser(
       baseUrl,
       token,
@@ -492,10 +427,10 @@ Deno.serve(async (req) => {
         notes: notes || '',
         enabledProtocols: finalProtocols
       },
-      requiredServiceIds
+      defaultInbounds // Use panel's default inbounds as service IDs
     );
 
-    console.log('Marzneshin user creation completed successfully with panel-specific protocols');
+    console.log('Marzneshin user creation completed successfully with panel-specific configuration');
 
     return new Response(
       JSON.stringify({
@@ -518,6 +453,8 @@ Deno.serve(async (req) => {
       statusCode = 404;
     } else if (error.message?.includes('already taken')) {
       statusCode = 409;
+    } else if (error.message?.includes('no default inbounds')) {
+      statusCode = 400;
     }
     
     return new Response(

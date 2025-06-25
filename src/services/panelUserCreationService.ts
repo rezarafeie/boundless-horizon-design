@@ -127,6 +127,26 @@ export class PanelUserCreationService {
         };
       }
 
+      // NEW: STRICT INBOUND VALIDATION - Panel must have configured inbounds for Marzneshin
+      if (panel.type === 'marzneshin') {
+        const defaultInbounds = panel.default_inbounds || [];
+        if (!Array.isArray(defaultInbounds) || defaultInbounds.length === 0) {
+          console.error('❌ PANEL_USER_CREATION: STRICT VALIDATION FAILED - Marzneshin panel has no default inbounds');
+          console.error('❌ PANEL_USER_CREATION: Inbounds validation details:', {
+            panelId: panel.id,
+            panelName: panel.name,
+            panelType: panel.type,
+            defaultInbounds,
+            subscriptionId: request.subscriptionId
+          });
+          return {
+            success: false,
+            error: `PANEL ERROR: Marzneshin panel "${panel.name}" has no inbound configurations. Please refresh the panel configuration first to detect available inbounds.`
+          };
+        }
+        console.log('🟢 PANEL_USER_CREATION: Marzneshin panel has configured inbounds:', defaultInbounds);
+      }
+
       // ✅ CRITICAL FIX: Log the exact panel being used to verify correct routing
       console.log('🟢 PANEL_USER_CREATION: Using STRICTLY ASSIGNED panel (NO FALLBACKS):', {
         planIdentifier: planConfig.plan_id,
@@ -138,6 +158,7 @@ export class PanelUserCreationService {
         healthStatus: panel.health_status,
         isActive: panel.is_active,
         expectedDomain: panel.panel_url.includes('cp.rain.rest') ? 'cp.rain.rest (Plus)' : 'file.shopifysb.xyz (Lite)',
+        hasDefaultInbounds: panel.type === 'marzneshin' ? (panel.default_inbounds || []).length : 'N/A',
         subscriptionId: request.subscriptionId
       });
 

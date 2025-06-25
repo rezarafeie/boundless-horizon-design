@@ -29,6 +29,16 @@ interface PanelRefreshButtonProps {
   onRefreshComplete: () => void;
 }
 
+interface MarzneshinInbound {
+  id: number;
+  tag: string;
+  protocol: string;
+  port: number;
+  settings: any;
+  stream_settings: any;
+  sniffing: any;
+}
+
 export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshButtonProps) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -91,62 +101,131 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
 
       console.log('PANEL REFRESH: Authentication successful for', panel.type);
 
-      // FIXED: Get user config with correct endpoint for Marzneshin
-      let configResponse;
-      if (panel.type === 'marzneshin') {
-        // FIXED: Use specific user endpoint to get reza user's configuration
-        configResponse = await fetch(`${panel.panel_url}/api/users/reza`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-      } else {
-        // For Marzban, use the original approach
-        configResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-      }
-
-      if (!configResponse.ok) {
-        throw new Error(`Config fetch failed: ${configResponse.status} - ${configResponse.statusText}`);
-      }
-
-      const configData = await configResponse.json();
-      console.log('PANEL REFRESH: Config data received for', panel.type, ':', configData);
-
-      // Extract inbounds and proxies based on panel type
+      // Process based on panel type
       let inbounds = {};
       let proxies = {};
       let enabledProtocols: string[] = [];
+      let defaultInbounds: number[] = [];
+      let totalConfigs = 0;
 
       if (panel.type === 'marzneshin') {
-        // For Marzneshin, extract from the user configuration response
-        inbounds = configData.inbounds || {};
-        proxies = configData.proxies || {};
-        enabledProtocols = Object.keys(proxies);
-      } else {
-        // For Marzban, use the original extraction logic
-        inbounds = configData.inbounds || {};
-        proxies = configData.proxies || {};
-        enabledProtocols = Object.keys(proxies);
-      }
-      
-      // Count total configs - ensure we get a number with proper type checking
-      const totalConfigs = Object.values(inbounds as Record<string, any>).reduce((sum: number, protocols: any) => {
-        const count = Array.isArray(protocols) ? protocols.length : 0;
-        return sum + count;
-      }, 0);
+        console.log('PANEL REFRESH: Processing Marzneshin panel with dynamic inbound resolution');
+        
+        // Step 1: Get reza user's service_ids
+        const userResponse = await fetch(`${panel.panel_url}/api/users/reza`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
 
-      console.log('PANEL REFRESH: Extracted data for', panel.type, ':', {
+        if (!userResponse.ok) {
+          throw new Error(`Failed to fetch reza user: ${userResponse.status} - ${userResponse.statusText}`);
+        }
+
+        const userData = await userResponse.json();
+        const serviceIds = userData.service_ids || [];
+        console.log('PANEL REFRESH: Reza user service_ids:', serviceIds);
+
+        if (serviceIds.length === 0) {
+          throw new Error('Reza user has no service_ids configured. Please configure the reza user in the panel with proper services.');
+        }
+
+        // Step 2: Fetch all inbounds
+        const inboundsResponse = await fetch(`${panel.panel_url}/api/inbounds`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!inboundsResponse.ok) {
+          throw new Error(`Failed to fetch inbounds: ${inboundsResponse.status} - ${inboundsResponse.statusText}`);
+        }
+
+        const inboundsData = await inboundsResponse.json();
+        const allInbounds: MarzneshinInbound[] = inboundsData.items || inboundsData || [];
+        console.log('PANEL REFRESH: Fetched inbounds:', allInbounds.length);
+
+        // Step 3: Filter inbounds that match service_ids
+        const matchedInbounds = allInbounds.filter(inbound => 
+          serviceIds.includes(inbound.id)
+        );
+
+        console.log('PANEL REFRESH: Matched inbounds:', matchedInbounds.length, 'out of', allInbounds.length);
+
+        if (matchedInbounds.length === 0) {
+          throw new Error(`No inbounds found matching service_ids: ${serviceIds.join(', ')}. Please check panel inbound configuration.`);
+        }
+
+        // Step 4: Process matched inbounds
+        defaultInbounds = matchedInbounds.map(inbound => inbound.id);
+        
+        // Group by protocol for legacy compatibility
+        const protocolGroups: Record<string, number[]> = {};
+        const protocolProxies: Record<string, any> = {};
+
+        matchedInbounds.forEach(inbound => {
+          const protocol = inbound.protocol || 'unknown';
+          if (!protocolGroups[protocol]) {
+            protocolGroups[protocol] = [];
+            protocolProxies[protocol] = {};
+          }
+          protocolGroups[protocol].push(inbound.id);
+          protocolProxies[protocol][inbound.tag] = inbound;
+        });
+
+        inbounds = protocolGroups;
+        proxies = protocolProxies;
+        enabledProtocols = Object.keys(protocolGroups);
+        totalConfigs = matchedInbounds.length;
+
+        console.log('PANEL REFRESH: Marzneshin processed data:', {
+          defaultInbounds,
+          enabledProtocols,
+          totalConfigs,
+          protocolGroups
+        });
+
+      } else {
+        // For Marzban, use the original approach
+        const configResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!configResponse.ok) {
+          throw new Error(`Config fetch failed: ${configResponse.status} - ${configResponse.statusText}`);
+        }
+
+        const configData = await configResponse.json();
+        console.log('PANEL REFRESH: Marzban config data received:', configData);
+
+        inbounds = configData.inbounds || {};
+        proxies = configData.proxies || {};
+        enabledProtocols = Object.keys(proxies);
+        
+        // For Marzban, extract inbound IDs from the inbounds structure
+        defaultInbounds = Object.entries(inbounds).flatMap(([protocol, tags]: [string, any]) => 
+          Array.isArray(tags) ? tags.map((tag: string, index: number) => index) : []
+        );
+        
+        totalConfigs = Object.values(inbounds as Record<string, any>).reduce((sum: number, protocols: any) => {
+          const count = Array.isArray(protocols) ? protocols.length : 0;
+          return sum + count;
+        }, 0);
+      }
+
+      console.log('PANEL REFRESH: Final processed data:', {
         inbounds,
         proxies,
         enabledProtocols,
+        defaultInbounds,
         totalConfigs
       });
 
@@ -160,9 +239,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             last_refresh: new Date().toISOString()
           },
           enabled_protocols: enabledProtocols,
-          default_inbounds: Object.entries(inbounds).flatMap(([protocol, tags]: [string, any]) => 
-            Array.isArray(tags) ? tags.map((tag: string) => ({ protocol, tag })) : []
-          )
+          default_inbounds: defaultInbounds
         })
         .eq('id', panel.id);
 
@@ -170,14 +247,14 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         throw new Error(`Database update failed: ${updateError.message}`);
       }
 
-      // Log the refresh - ensure all types match
+      // Log the refresh
       const { error: logError } = await supabase
         .from('panel_refresh_logs')
         .insert({
           panel_id: panel.id,
           refresh_result: true,
           configs_fetched: totalConfigs,
-          response_data: { inbounds, proxies, enabledProtocols }
+          response_data: { inbounds, proxies, enabledProtocols, defaultInbounds }
         });
 
       if (logError) {
@@ -185,7 +262,12 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       }
 
       console.log('PANEL REFRESH: Success for', panel.type);
-      toast.success(`Panel config refreshed successfully! Found ${totalConfigs} configs across ${enabledProtocols.length} protocols.`);
+      
+      if (enabledProtocols.length === 0) {
+        toast.error(`⚠️ No protocols enabled - panel cannot create users`);
+      } else {
+        toast.success(`Panel config refreshed successfully! Found ${totalConfigs} configs across ${enabledProtocols.length} protocols.`);
+      }
       
       onRefreshComplete();
       await fetchRefreshLogs();
