@@ -103,7 +103,6 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {plans.map((plan) => {
-          const totalPrice = plan.price_per_gb * dataLimit;
           const isSelected = selectedPlan === plan.id;
           
           return (
@@ -126,35 +125,9 @@ const PlanSelector = ({ selectedPlan, onPlanSelect, dataLimit }: PlanSelectorPro
                 <CardDescription>
                   {language === 'fa' ? plan.description_fa : plan.description_en}
                 </CardDescription>
-                {/* Panel Assignment Info */}
-                <div className="text-xs text-gray-500">
-                  Panel: {plan.assigned_panel_id ? '✅ Assigned' : '❌ No Panel'}
-                </div>
               </CardHeader>
               
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">
-                      {language === 'fa' ? 'قیمت هر گیگابایت:' : 'Price per GB:'}
-                    </span>
-                    <span className="font-semibold">
-                      {plan.price_per_gb.toLocaleString()} 
-                      {language === 'fa' ? ' تومان' : ' Toman'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">
-                      {language === 'fa' ? 'قیمت کل:' : 'Total Price:'}
-                    </span>
-                    <span className="text-lg font-bold text-blue-600">
-                      {totalPrice.toLocaleString()} 
-                      {language === 'fa' ? ' تومان' : ' Toman'}
-                    </span>
-                  </div>
-                </div>
-
                 {/* Available Countries */}
                 {plan.available_countries && plan.available_countries.length > 0 && (
                   <div className="space-y-2">
