@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -27,7 +26,20 @@ function addLog(logs: DetailedLog[], step: string, status: 'success' | 'error' |
   console.log(`[TEST-PANEL-CONNECTION] ${status.toUpperCase()}: ${step} - ${message}`, details ? JSON.stringify(details, null, 2) : '');
 }
 
+function createErrorResponse(logs: DetailedLog[], error: string, startTime: number) {
+  return {
+    success: false,
+    panel: { id: '', name: '', type: '', url: '' },
+    authentication: { success: false, error },
+    userCreation: { success: false, error },
+    responseTime: Date.now() - startTime,
+    detailedLogs: logs,
+    timestamp: new Date().toISOString()
+  };
+}
+
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -36,21 +48,79 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    addLog(detailedLogs, 'Request Parse', 'info', 'Starting panel connection test');
+    addLog(detailedLogs, 'Function Init', 'info', 'Edge function started successfully');
 
-    const { panelId, dynamicProxies, enabledProtocols, createUser, userData } = await req.json();
+    // Validate request method
+    if (req.method !== 'POST') {
+      addLog(detailedLogs, 'Request Validation', 'error', `Invalid request method: ${req.method}. Expected POST.`);
+      const errorResult = createErrorResponse(detailedLogs, `Invalid request method: ${req.method}`, startTime);
+      return new Response(JSON.stringify(errorResult), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+    // Validate and parse request body with timeout
+    let requestBody;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const bodyText = await req.text();
+      clearTimeout(timeoutId);
+      
+      addLog(detailedLogs, 'Request Parse', 'info', 'Request body received', { 
+        bodyLength: bodyText.length,
+        isEmpty: !bodyText.trim()
+      });
+
+      if (!bodyText.trim()) {
+        throw new Error('Request body is empty');
+      }
+
+      requestBody = JSON.parse(bodyText);
+      addLog(detailedLogs, 'Request Parse', 'success', 'Request body parsed successfully');
+      
+    } catch (parseError) {
+      addLog(detailedLogs, 'Request Parse', 'error', 'Failed to parse request body', { 
+        error: parseError.message,
+        parseError: parseError.name
+      });
+      const errorResult = createErrorResponse(detailedLogs, `Request parsing failed: ${parseError.message}`, startTime);
+      return new Response(JSON.stringify(errorResult), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+    const { panelId, dynamicProxies, enabledProtocols, createUser, userData } = requestBody;
     
     addLog(detailedLogs, 'Request Parse', 'info', 'Request parameters received', { 
-      panelId, 
-      dynamicProxies, 
-      enabledProtocols,
-      createUser,
+      panelId: panelId || 'auto-select', 
+      dynamicProxies: !!dynamicProxies, 
+      enabledProtocols: enabledProtocols || 'default',
+      createUser: !!createUser,
       hasUserData: !!userData
     });
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Validate environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      addLog(detailedLogs, 'Environment Check', 'error', 'Missing required environment variables', {
+        hasSupabaseUrl: !!supabaseUrl,
+        hasServiceKey: !!supabaseServiceKey
+      });
+      const errorResult = createErrorResponse(detailedLogs, 'Missing required environment variables', startTime);
+      return new Response(JSON.stringify(errorResult), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    addLog(detailedLogs, 'Supabase Init', 'success', 'Supabase client initialized');
 
     let panel;
     
@@ -65,8 +135,12 @@ serve(async (req) => {
         .single();
 
       if (panelError || !panelData) {
-        addLog(detailedLogs, 'Panel Selection', 'error', `Failed to fetch panel: ${panelError?.message}`);
-        throw new Error(`Panel not found: ${panelError?.message}`);
+        addLog(detailedLogs, 'Panel Selection', 'error', `Failed to fetch panel: ${panelError?.message || 'Panel not found'}`);
+        const errorResult = createErrorResponse(detailedLogs, `Panel not found: ${panelError?.message || 'Unknown error'}`, startTime);
+        return new Response(JSON.stringify(errorResult), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
       }
       
       panel = panelData;
@@ -85,12 +159,20 @@ serve(async (req) => {
 
       if (panelError) {
         addLog(detailedLogs, 'Panel Selection', 'error', 'Database query failed', panelError);
-        throw new Error(`Database query failed: ${panelError.message}`);
+        const errorResult = createErrorResponse(detailedLogs, `Database query failed: ${panelError.message}`, startTime);
+        return new Response(JSON.stringify(errorResult), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
       }
 
       if (!panels || panels.length === 0) {
         addLog(detailedLogs, 'Panel Selection', 'error', `No ${targetPanelType} panels found`, { targetPanelType, totalPanels: 0 });
-        throw new Error(`No active ${targetPanelType} panels available`);
+        const errorResult = createErrorResponse(detailedLogs, `No active ${targetPanelType} panels available`, startTime);
+        return new Response(JSON.stringify(errorResult), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
       }
 
       // Prefer healthy panels
@@ -446,6 +528,9 @@ serve(async (req) => {
       addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzneshin authentication');
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
         const authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
           method: 'POST',
           headers: {
@@ -457,7 +542,10 @@ serve(async (req) => {
             username: panel.username,
             password: panel.password,
           }),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         addLog(detailedLogs, 'Authentication', 'info', `Marzneshin Auth response`, {
           status: authResponse.status,
@@ -489,7 +577,9 @@ serve(async (req) => {
         };
       } catch (authError) {
         addLog(detailedLogs, 'Authentication', 'error', 'Marzneshin authentication failed', {
-          error: authError.message
+          error: authError.message,
+          name: authError.name,
+          isTimeoutError: authError.name === 'AbortError'
         });
         throw new Error(`Marzneshin authentication failed: ${authError.message}`);
       }
@@ -721,17 +811,12 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    addLog(detailedLogs, 'Test Error', 'error', `Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    addLog(detailedLogs, 'Test Error', 'error', `Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+      errorName: error instanceof Error ? error.name : 'UnknownError',
+      errorStack: error instanceof Error ? error.stack : 'No stack trace'
+    });
     
-    const errorResult = {
-      success: false,
-      panel: { id: '', name: '', type: '', url: '' },
-      authentication: { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      userCreation: { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      responseTime: Date.now() - startTime,
-      detailedLogs: detailedLogs,
-      timestamp: new Date().toISOString()
-    };
+    const errorResult = createErrorResponse(detailedLogs, error instanceof Error ? error.message : 'Unknown error', startTime);
 
     return new Response(JSON.stringify(errorResult), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
