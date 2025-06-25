@@ -119,7 +119,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       let totalConfigs = 0;
 
       if (panel.type === 'marzneshin') {
-        console.log('PANEL REFRESH: Processing Marzneshin panel with enhanced service mapping');
+        console.log('PANEL REFRESH: Processing Marzneshin panel with FIXED service mapping');
         
         // Step 1: Get reza user's service_ids
         const userResponse = await fetch(`${panel.panel_url}/api/users/reza`, {
@@ -156,15 +156,41 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         }
 
         const servicesData = await servicesResponse.json();
-        const allServiceIds = servicesData.service_ids || [];
-        const serviceNames = servicesData.service_names || [];
+        console.log('PANEL REFRESH: Raw services API response:', JSON.stringify(servicesData, null, 2));
+
+        // FIXED: Handle the actual API response structure
+        let allServiceIds: number[] = [];
+        let serviceNames: string[] = [];
+
+        if (servicesData.service_ids && servicesData.service_names) {
+          // Direct structure
+          allServiceIds = servicesData.service_ids;
+          serviceNames = servicesData.service_names;
+        } else if (Array.isArray(servicesData)) {
+          // Array of services
+          allServiceIds = servicesData.map((service: any) => service.id || service.service_id);
+          serviceNames = servicesData.map((service: any) => service.name || service.service_name);
+        } else {
+          console.error('PANEL REFRESH: Unexpected services API response structure:', servicesData);
+          throw new Error('Unable to parse services API response. Expected service_ids and service_names arrays.');
+        }
         
-        console.log('PANEL REFRESH: Available services:', {
+        console.log('PANEL REFRESH: Parsed services:', {
           total: allServiceIds.length,
+          serviceIds: allServiceIds,
           serviceNames: serviceNames
         });
 
-        // Step 3: Create enhanced service mapping with your specific services
+        // FIXED: Validate arrays have same length
+        if (allServiceIds.length !== serviceNames.length) {
+          console.error('PANEL REFRESH: Service IDs and names arrays length mismatch:', {
+            serviceIdsLength: allServiceIds.length,
+            serviceNamesLength: serviceNames.length
+          });
+          throw new Error(`Service IDs (${allServiceIds.length}) and names (${serviceNames.length}) arrays have different lengths.`);
+        }
+
+        // Step 3: Create service mapping
         const serviceMap: Record<number, string> = {};
         allServiceIds.forEach((id: number, index: number) => {
           if (serviceNames[index]) {
@@ -172,14 +198,18 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           }
         });
 
-        // Step 4: Process matched services and create protocol-based grouping
+        console.log('PANEL REFRESH: Created service mapping:', serviceMap);
+
+        // Step 4: Process matched services
         const matchedServices = serviceIds.filter((id: number) => serviceMap[id]);
         
         if (matchedServices.length === 0) {
-          throw new Error(`No valid services found for service_ids: ${serviceIds.join(', ')}`);
+          console.error('PANEL REFRESH: No matching services found for user service_ids:', serviceIds);
+          console.error('PANEL REFRESH: Available service mapping:', serviceMap);
+          throw new Error(`No valid services found for service_ids: ${serviceIds.join(', ')}. Available services: ${Object.keys(serviceMap).join(', ')}`);
         }
 
-        console.log('PANEL REFRESH: Matched services with names:', 
+        console.log('PANEL REFRESH: Successfully matched services:', 
           matchedServices.map(id => `${id}:${serviceMap[id]}`));
 
         // Step 5: Use service_ids as default inbounds and create enhanced protocol mapping
@@ -213,7 +243,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         enabledProtocols = Object.keys(protocolGroups);
         totalConfigs = matchedServices.length;
 
-        console.log('PANEL REFRESH: Enhanced Marzneshin service mapping completed:', {
+        console.log('PANEL REFRESH: FIXED Marzneshin service mapping completed:', {
           defaultInbounds,
           enabledProtocols,
           totalConfigs,
@@ -271,7 +301,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             inbounds,
             proxies,
             last_refresh: new Date().toISOString(),
-            workaround_used: panel.type === 'marzneshin' ? 'enhanced_service_mapping' : false,
+            workaround_used: panel.type === 'marzneshin' ? 'fixed_service_mapping_v2' : false,
             service_details: panel.type === 'marzneshin' ? {
               total_services: totalConfigs,
               protocol_breakdown: enabledProtocols.map(protocol => ({
@@ -301,7 +331,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
             proxies, 
             enabledProtocols, 
             defaultInbounds,
-            workaround_used: panel.type === 'marzneshin' ? 'enhanced_service_mapping' : false,
+            workaround_used: panel.type === 'marzneshin' ? 'fixed_service_mapping_v2' : false,
             service_mapping: panel.type === 'marzneshin' ? 
               enabledProtocols.map(protocol => ({
                 protocol,
@@ -319,7 +349,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       if (enabledProtocols.length === 0) {
         toast.error(`⚠️ No protocols enabled - panel cannot create users`);
       } else {
-        const workaroundMsg = panel.type === 'marzneshin' ? ' (using enhanced service mapping)' : '';
+        const workaroundMsg = panel.type === 'marzneshin' ? ' (using FIXED service mapping v2)' : '';
         const protocolSummary = enabledProtocols.length > 1 ? 
           `${enabledProtocols.length} protocols (${enabledProtocols.join(', ')})` : 
           enabledProtocols[0];
