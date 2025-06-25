@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -207,7 +208,11 @@ serve(async (req) => {
       name: panel.name,
       url: panel.panel_url,
       type: panel.type,
-      health_status: panel.health_status
+      health_status: panel.health_status,
+      hasUsername: !!panel.username,
+      hasPassword: !!panel.password,
+      usernameLength: panel.username?.length || 0,
+      passwordLength: panel.password?.length || 0
     });
 
     const testResult = {
@@ -300,9 +305,31 @@ serve(async (req) => {
     } else if (panel.type === 'marzneshin') {
       addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzneshin authentication');
 
+      // Log the credentials being used (safely)
+      addLog(detailedLogs, 'Authentication Debug', 'info', 'Preparing Marzneshin authentication request', {
+        panelUrl: panel.panel_url,
+        authEndpoint: `${panel.panel_url}/api/admins/token`,
+        hasUsername: !!panel.username,
+        hasPassword: !!panel.password,
+        username: panel.username, // Show actual username for debugging
+        passwordMasked: panel.password ? '*'.repeat(panel.password.length) : 'NO_PASSWORD'
+      });
+
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout to 20 seconds
+
+        const authPayload = {
+          username: panel.username,
+          password: panel.password,
+        };
+
+        addLog(detailedLogs, 'Authentication Debug', 'info', 'Sending authentication request', {
+          requestBody: {
+            username: authPayload.username,
+            password: authPayload.password ? '*'.repeat(authPayload.password.length) : 'NO_PASSWORD'
+          }
+        });
 
         const authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
           method: 'POST',
@@ -311,10 +338,7 @@ serve(async (req) => {
             'Accept': 'application/json',
             'User-Agent': 'Supabase-Edge-Function/1.0'
           },
-          body: JSON.stringify({
-            username: panel.username,
-            password: panel.password,
-          }),
+          body: JSON.stringify(authPayload),
           signal: controller.signal
         });
 
@@ -328,6 +352,11 @@ serve(async (req) => {
 
         if (!authResponse.ok) {
           const errorText = await authResponse.text();
+          addLog(detailedLogs, 'Authentication Debug', 'error', 'Authentication response error details', {
+            status: authResponse.status,
+            statusText: authResponse.statusText,
+            responseBody: errorText
+          });
           throw new Error(`Marzneshin auth failed: ${authResponse.status} - ${errorText}`);
         }
 
