@@ -131,25 +131,45 @@ const StepByStepRenewalForm = () => {
     try {
       let response;
       
-      if (selectedPlan.api_type === 'marzban') {
-        response = await supabase.functions.invoke('marzban-get-user', {
-          body: { username }
-        });
-      } else {
+      console.log('Selected plan API type:', selectedPlan.api_type);
+      console.log('Searching for username:', username);
+      
+      if (selectedPlan.api_type === 'marzneshin') {
+        console.log('Using marzneshin-get-user for plan:', selectedPlan.name_en);
         response = await supabase.functions.invoke('marzneshin-get-user', {
           body: { username }
         });
+        
+        console.log('Marzneshin API Response:', response);
+        
+        // Handle marzneshin response format: { users: [...] }
+        if (response.data?.success && response.data?.user) {
+          setUserData(response.data.user);
+          setCurrentStep(3);
+        } else {
+          console.log('No user found in marzneshin response');
+          setUserData(null);
+        }
+      } else {
+        // Default/fallback: use marzban-get-user for all other cases
+        console.log('Using marzban-get-user for plan:', selectedPlan.name_en);
+        response = await supabase.functions.invoke('marzban-get-user', {
+          body: { username }
+        });
+        
+        console.log('Marzban API Response:', response);
+        
+        if (response.data?.success && response.data?.user) {
+          setUserData(response.data.user);
+          setCurrentStep(3);
+        } else {
+          console.log('No user found in marzban response');
+          setUserData(null);
+        }
       }
 
-      console.log('API Response:', response);
       setApiResponse(response);
       
-      if (response.data?.success && response.data?.user) {
-        setUserData(response.data.user);
-        setCurrentStep(3);
-      } else {
-        setUserData(null);
-      }
     } catch (error) {
       console.error('Search error:', error);
       setApiResponse({ error: error.message });
@@ -304,6 +324,7 @@ const StepByStepRenewalForm = () => {
 
         let renewalResponse;
         if (selectedPlan?.api_type === 'marzneshin') {
+          console.log('Using marzneshin-update-user for renewal');
           renewalResponse = await supabase.functions.invoke('marzneshin-update-user', {
             body: {
               username,
@@ -312,6 +333,7 @@ const StepByStepRenewalForm = () => {
             }
           });
         } else {
+          console.log('Using marzban-update-user for renewal');
           renewalResponse = await supabase.functions.invoke('marzban-update-user', {
             body: {
               username,
