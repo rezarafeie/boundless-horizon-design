@@ -29,14 +29,9 @@ interface PanelRefreshButtonProps {
   onRefreshComplete: () => void;
 }
 
-interface MarzneshinInbound {
+interface MarzneshinService {
   id: number;
-  tag: string;
-  protocol: string;
-  port: number;
-  settings: any;
-  stream_settings: any;
-  sniffing: any;
+  name: string;
 }
 
 export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshButtonProps) => {
@@ -64,19 +59,33 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
     }
   };
 
+  const mapServiceNameToProtocol = (serviceName: string): string => {
+    const name = serviceName.toLowerCase();
+    
+    // Map service names to protocols based on common patterns
+    if (name.includes('direct')) return 'vless';
+    if (name.includes('tunnel')) return 'vmess';
+    if (name.includes('trojan')) return 'trojan';
+    if (name.includes('shadow')) return 'shadowsocks';
+    if (name.includes('info') || name.includes('user')) return 'vless'; // UserInfo service
+    
+    // Default fallback
+    return 'vless';
+  };
+
   const refreshPanelConfig = async () => {
     setIsRefreshing(true);
     console.log('=== PANEL REFRESH: Starting for panel:', panel.name, 'Type:', panel.type);
 
     try {
-      // FIXED: Use correct authentication endpoint based on panel type
+      // Use correct authentication endpoint based on panel type
       const authEndpoint = panel.type === 'marzneshin' 
-        ? `${panel.panel_url}/api/admins/token`  // Correct Marzneshin endpoint
+        ? `${panel.panel_url}/api/admins/token`  // Marzneshin endpoint
         : `${panel.panel_url}/api/admin/token`;   // Marzban endpoint
 
       console.log('PANEL REFRESH: Using auth endpoint:', authEndpoint);
 
-      // Authenticate with the correct endpoint
+      // Authenticate
       const authResponse = await fetch(authEndpoint, {
         method: 'POST',
         headers: {
@@ -101,7 +110,6 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
 
       console.log('PANEL REFRESH: Authentication successful for', panel.type);
 
-      // Process based on panel type
       let inbounds = {};
       let proxies = {};
       let enabledProtocols: string[] = [];
@@ -109,9 +117,9 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       let totalConfigs = 0;
 
       if (panel.type === 'marzneshin') {
-        console.log('PANEL REFRESH: Processing Marzneshin panel with dynamic inbound resolution');
+        console.log('PANEL REFRESH: Processing Marzneshin panel with service-based workaround');
         
-        // Step 1: Get reza user's service_ids
+        // Step 1: Get reza user's service_ids (this works - we tested it)
         const userResponse = await fetch(`${panel.panel_url}/api/users/reza`, {
           method: 'GET',
           headers: {
@@ -132,8 +140,8 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           throw new Error('Reza user has no service_ids configured. Please configure the reza user in the panel with proper services.');
         }
 
-        // Step 2: Fetch all inbounds
-        const inboundsResponse = await fetch(`${panel.panel_url}/api/inbounds`, {
+        // Step 2: Get services list to map service IDs to names (this works - we tested it)
+        const servicesResponse = await fetch(`${panel.panel_url}/api/services`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -141,52 +149,68 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           },
         });
 
-        if (!inboundsResponse.ok) {
-          throw new Error(`Failed to fetch inbounds: ${inboundsResponse.status} - ${inboundsResponse.statusText}`);
+        if (!servicesResponse.ok) {
+          throw new Error(`Failed to fetch services: ${servicesResponse.status} - ${servicesResponse.statusText}`);
         }
 
-        const inboundsData = await inboundsResponse.json();
-        const allInbounds: MarzneshinInbound[] = inboundsData.items || inboundsData || [];
-        console.log('PANEL REFRESH: Fetched inbounds:', allInbounds.length);
-
-        // Step 3: Filter inbounds that match service_ids
-        const matchedInbounds = allInbounds.filter(inbound => 
-          serviceIds.includes(inbound.id)
-        );
-
-        console.log('PANEL REFRESH: Matched inbounds:', matchedInbounds.length, 'out of', allInbounds.length);
-
-        if (matchedInbounds.length === 0) {
-          throw new Error(`No inbounds found matching service_ids: ${serviceIds.join(', ')}. Please check panel inbound configuration.`);
-        }
-
-        // Step 4: Process matched inbounds
-        defaultInbounds = matchedInbounds.map(inbound => inbound.id);
+        const servicesData = await servicesResponse.json();
+        const allServiceIds = servicesData.service_ids || [];
+        const serviceNames = servicesData.service_names || [];
         
-        // Group by protocol for legacy compatibility
+        console.log('PANEL REFRESH: Available services:', allServiceIds.length);
+
+        // Step 3: Create service mapping
+        const serviceMap: Record<number, string> = {};
+        allServiceIds.forEach((id: number, index: number) => {
+          if (serviceNames[index]) {
+            serviceMap[id] = serviceNames[index];
+          }
+        });
+
+        // Step 4: Process matched services (use service_ids directly as inbound IDs)
+        const matchedServices = serviceIds.filter((id: number) => serviceMap[id]);
+        
+        if (matchedServices.length === 0) {
+          throw new Error(`No valid services found for service_ids: ${serviceIds.join(', ')}`);
+        }
+
+        console.log('PANEL REFRESH: Matched services:', matchedServices.length);
+
+        // Step 5: Use service_ids as default inbounds and create protocol mapping
+        defaultInbounds = matchedServices;
+        
+        // Group services by inferred protocol
         const protocolGroups: Record<string, number[]> = {};
         const protocolProxies: Record<string, any> = {};
 
-        matchedInbounds.forEach(inbound => {
-          const protocol = inbound.protocol || 'unknown';
+        matchedServices.forEach((serviceId: number) => {
+          const serviceName = serviceMap[serviceId] || 'unknown';
+          const protocol = mapServiceNameToProtocol(serviceName);
+          
           if (!protocolGroups[protocol]) {
             protocolGroups[protocol] = [];
             protocolProxies[protocol] = {};
           }
-          protocolGroups[protocol].push(inbound.id);
-          protocolProxies[protocol][inbound.tag] = inbound;
+          
+          protocolGroups[protocol].push(serviceId);
+          protocolProxies[protocol][`service_${serviceId}`] = {
+            id: serviceId,
+            name: serviceName,
+            tag: `service_${serviceId}`,
+            protocol: protocol
+          };
         });
 
         inbounds = protocolGroups;
         proxies = protocolProxies;
         enabledProtocols = Object.keys(protocolGroups);
-        totalConfigs = matchedInbounds.length;
+        totalConfigs = matchedServices.length;
 
-        console.log('PANEL REFRESH: Marzneshin processed data:', {
+        console.log('PANEL REFRESH: Marzneshin workaround completed:', {
           defaultInbounds,
           enabledProtocols,
           totalConfigs,
-          protocolGroups
+          serviceMapping: serviceMap
         });
 
       } else {
@@ -204,13 +228,12 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         }
 
         const configData = await configResponse.json();
-        console.log('PANEL REFRESH: Marzban config data received:', configData);
+        console.log('PANEL REFRESH: Marzban config data received');
 
         inbounds = configData.inbounds || {};
         proxies = configData.proxies || {};
         enabledProtocols = Object.keys(proxies);
         
-        // For Marzban, extract inbound IDs from the inbounds structure
         defaultInbounds = Object.entries(inbounds).flatMap(([protocol, tags]: [string, any]) => 
           Array.isArray(tags) ? tags.map((tag: string, index: number) => index) : []
         );
@@ -236,7 +259,8 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           panel_config_data: {
             inbounds,
             proxies,
-            last_refresh: new Date().toISOString()
+            last_refresh: new Date().toISOString(),
+            workaround_used: panel.type === 'marzneshin' ? 'service_ids_direct' : false
           },
           enabled_protocols: enabledProtocols,
           default_inbounds: defaultInbounds
@@ -254,7 +278,13 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           panel_id: panel.id,
           refresh_result: true,
           configs_fetched: totalConfigs,
-          response_data: { inbounds, proxies, enabledProtocols, defaultInbounds }
+          response_data: { 
+            inbounds, 
+            proxies, 
+            enabledProtocols, 
+            defaultInbounds,
+            workaround_used: panel.type === 'marzneshin' ? 'service_ids_direct' : false
+          }
         });
 
       if (logError) {
@@ -266,7 +296,8 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       if (enabledProtocols.length === 0) {
         toast.error(`⚠️ No protocols enabled - panel cannot create users`);
       } else {
-        toast.success(`Panel config refreshed successfully! Found ${totalConfigs} configs across ${enabledProtocols.length} protocols.`);
+        const workaroundMsg = panel.type === 'marzneshin' ? ' (using service IDs workaround)' : '';
+        toast.success(`Panel config refreshed successfully${workaroundMsg}! Found ${totalConfigs} configs across ${enabledProtocols.length} protocols.`);
       }
       
       onRefreshComplete();

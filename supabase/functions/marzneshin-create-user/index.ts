@@ -47,7 +47,8 @@ async function getPanelCredentials(panelId: string) {
     panelName: panel.name,
     panelUrl: panel.panel_url,
     enabledProtocols: panel.enabled_protocols,
-    defaultInbounds: panel.default_inbounds
+    defaultInbounds: panel.default_inbounds,
+    hasWorkaround: panel.panel_config_data?.workaround_used
   });
 
   return {
@@ -55,7 +56,8 @@ async function getPanelCredentials(panelId: string) {
     username: panel.username,
     password: panel.password,
     enabledProtocols: Array.isArray(panel.enabled_protocols) ? panel.enabled_protocols : ['vless', 'vmess', 'trojan', 'shadowsocks'],
-    defaultInbounds: Array.isArray(panel.default_inbounds) ? panel.default_inbounds : []
+    defaultInbounds: Array.isArray(panel.default_inbounds) ? panel.default_inbounds : [],
+    panelConfigData: panel.panel_config_data || {}
   };
 }
 
@@ -130,7 +132,7 @@ async function createMarzneshinUser(
 
   // Validate service IDs
   if (!serviceIds || serviceIds.length === 0) {
-    throw new Error('No service IDs available for user creation. Panel may not be properly configured.');
+    throw new Error('No service IDs available for user creation. Panel may not be properly configured or refresh may be needed.');
   }
   
   // Calculate expiration date
@@ -149,8 +151,9 @@ async function createMarzneshinUser(
   console.log(`Calculated expiration date: ${formattedExpireDateMM} (${userData.durationDays} days from now)`);
   console.log(`Alternative formats: ISO=${formattedExpireDateISO}, YYYY-MM-DD=${formattedExpireDateYYYY}`);
   console.log(`Using enabled protocols: ${userData.enabledProtocols.join(', ')}`);
+  console.log(`Using service IDs: ${serviceIds.join(', ')}`);
   
-  // Focus only on fixed_date strategy with different formats and field names
+  // Create user request with service IDs (bypassing inbound resolution)
   const strategies = [
     {
       name: 'fixed_date_expire_date_mmddyyyy',
@@ -159,8 +162,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire_date: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
+        service_ids: serviceIds, // Use service IDs directly
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -171,8 +174,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire: formattedExpireDateMM,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
+        service_ids: serviceIds, // Use service IDs directly
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -183,8 +186,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire_date: formattedExpireDateISO,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
+        service_ids: serviceIds, // Use service IDs directly
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -195,8 +198,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire: formattedExpireDateISO,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
+        service_ids: serviceIds, // Use service IDs directly
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -207,8 +210,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire_date: formattedExpireDateYYYY,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
+        service_ids: serviceIds, // Use service IDs directly
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     },
@@ -219,8 +222,8 @@ async function createMarzneshinUser(
         expire_strategy: 'fixed_date',
         expire: formattedExpireDateYYYY,
         data_limit: userData.dataLimitGB * 1073741824,
-        service_ids: serviceIds,
-        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')}`,
+        service_ids: serviceIds, // Use service IDs directly
+        note: `Purchased via bnets.co - ${userData.notes} - Protocols: ${userData.enabledProtocols.join(', ')} - Service IDs: ${serviceIds.join(', ')}`,
         data_limit_reset_strategy: 'no_reset'
       })
     }
@@ -249,7 +252,7 @@ async function createMarzneshinUser(
       if (response.ok) {
         const result = await response.json();
         console.log(`Strategy ${strategy.name} succeeded:`, result);
-        console.log(`✅ User created successfully with ${strategy.name} strategy`);
+        console.log(`✅ User created successfully with ${strategy.name} strategy using service IDs`);
         console.log(`📋 Full API response:`, JSON.stringify(result, null, 2));
         return result;
       } else {
@@ -388,7 +391,8 @@ Deno.serve(async (req) => {
       username: panelUsername, 
       password: panelPassword, 
       enabledProtocols: panelProtocols, 
-      defaultInbounds 
+      defaultInbounds,
+      panelConfigData
     } = await getPanelCredentials(panelId);
     
     // Use provided protocols or fall back to panel's enabled protocols
@@ -401,22 +405,24 @@ Deno.serve(async (req) => {
       ? enabledProtocols 
       : panelProtocols;
 
-    // Use panel's default inbounds for service IDs
+    // Use panel's default inbounds for service IDs (these are now service IDs thanks to our workaround)
     console.log('Using panel default inbounds as service IDs:', defaultInbounds);
+    console.log('Panel config workaround status:', panelConfigData?.workaround_used);
 
     if (!defaultInbounds || defaultInbounds.length === 0) {
-      throw new Error('Panel has no default inbounds configured. Please refresh the panel configuration first.');
+      throw new Error('Panel has no default inbounds (service IDs) configured. Please refresh the panel configuration first.');
     }
 
-    console.log('Starting Marzneshin user creation process with panel-specific configuration:', {
+    console.log('Starting Marzneshin user creation with service IDs:', {
       protocols: finalProtocols,
-      serviceIds: defaultInbounds
+      serviceIds: defaultInbounds,
+      workaroundActive: panelConfigData?.workaround_used === 'service_ids_direct'
     });
 
     // Get authentication token
     const token = await getAuthToken(baseUrl, panelUsername, panelPassword);
     
-    // Create the user with panel's default inbounds as service IDs
+    // Create the user with service IDs directly (our workaround approach)
     const result = await createMarzneshinUser(
       baseUrl,
       token,
@@ -427,10 +433,10 @@ Deno.serve(async (req) => {
         notes: notes || '',
         enabledProtocols: finalProtocols
       },
-      defaultInbounds // Use panel's default inbounds as service IDs
+      defaultInbounds // These are service IDs from our workaround
     );
 
-    console.log('Marzneshin user creation completed successfully with panel-specific configuration');
+    console.log('Marzneshin user creation completed successfully with service IDs workaround');
 
     return new Response(
       JSON.stringify({
@@ -453,7 +459,7 @@ Deno.serve(async (req) => {
       statusCode = 404;
     } else if (error.message?.includes('already taken')) {
       statusCode = 409;
-    } else if (error.message?.includes('no default inbounds')) {
+    } else if (error.message?.includes('no default inbounds') || error.message?.includes('no service IDs')) {
       statusCode = 400;
     }
     
