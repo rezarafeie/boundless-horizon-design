@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -154,7 +153,7 @@ export const SubscriptionDiagnostics = ({ subscriptionId }: SubscriptionDiagnost
         }
       }
       
-      // Step 2: Create VPN user with proper panel selection
+      // Step 2: Get the correct panel for VPN creation
       const { data: targetPlan } = await supabase
         .from('subscription_plans')
         .select(`
@@ -191,13 +190,13 @@ export const SubscriptionDiagnostics = ({ subscriptionId }: SubscriptionDiagnost
         throw new Error('No suitable panel available for VPN creation');
       }
       
-      // Step 3: Create VPN user
+      // Step 3: Create VPN user using the marzban-create-user function with proper panel ID
       const requestData = {
         username: diagnostics.subscription.username,
         dataLimitGB: diagnostics.subscription.data_limit_gb,
         durationDays: diagnostics.subscription.duration_days,
         notes: `Fixed subscription - Original plan: ${diagnostics.subscription.plan_id}`,
-        panelId: panelToUse.id,
+        panelId: panelToUse.id, // Use the actual panel ID, not plan ID
         subscriptionId: diagnostics.subscription.id
       };
       

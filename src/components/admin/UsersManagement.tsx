@@ -27,6 +27,7 @@ interface Subscription {
   admin_decision?: string;
   receipt_image_url?: string;
   plan_id?: string;
+  marzban_user_created?: boolean;
   // Plan and panel info from the relationship
   subscription_plans?: {
     id: string;
