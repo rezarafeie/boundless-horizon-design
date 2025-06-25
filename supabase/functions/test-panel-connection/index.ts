@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -318,15 +319,14 @@ serve(async (req) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout to 20 seconds
 
-        // Create form data payload as Marzneshin expects
-        const formData = new URLSearchParams();
-        formData.append('grant_type', 'password');
-        formData.append('username', panel.username);
-        formData.append('password', panel.password);
+        // Create JSON payload as Marzneshin expects
+        const authPayload = {
+          username: panel.username,
+          password: panel.password,
+        };
 
         addLog(detailedLogs, 'Authentication Debug', 'info', 'Sending authentication request', {
           requestBody: {
-            grant_type: 'password',
             username: panel.username,
             password: panel.password ? '*'.repeat(panel.password.length) : 'NO_PASSWORD'
           }
@@ -335,11 +335,11 @@ serve(async (req) => {
         const authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'Supabase-Edge-Function/1.0'
           },
-          body: formData.toString(),
+          body: JSON.stringify(authPayload),
           signal: controller.signal
         });
 
