@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -6,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw } from 'lucide-react';
+import { CheckCircle, Copy, Download, AlertCircle, ArrowLeft, Loader, RefreshCw, ExternalLink, ChevronDown, ChevronUp, Smartphone, Monitor, Apple } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import QRCodeCanvas from 'qrcode';
 import Navigation from '@/components/Navigation';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface SubscriptionData {
   username: string;
@@ -33,6 +33,7 @@ const SubscriptionDelivery = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [openInstructions, setOpenInstructions] = useState<string | null>(null);
 
   useEffect(() => {
     const loadSubscriptionData = async () => {
@@ -166,6 +167,70 @@ const SubscriptionDelivery = () => {
     }
   };
 
+  const calculateDaysRemaining = () => {
+    if (!subscriptionData?.expire_at) return null;
+    
+    const now = new Date();
+    const expireDate = new Date(subscriptionData.expire_at);
+    const diffTime = expireDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  };
+
+  const apps = [
+    {
+      name: 'V2rayN',
+      description: language === 'fa' ? 'ویندوز - رایگان و متن‌باز' : 'Windows - Free & Open Source',
+      icon: Monitor,
+      downloadUrl: 'https://github.com/2dust/v2rayN/releases',
+      platform: 'Windows',
+      instructions: language === 'fa' ? 
+        ['دانلود و نصب V2rayN', 'کپی کردن لینک اشتراک', 'Import از subscription link', 'اتصال به سرور'] :
+        ['Download and install V2rayN', 'Copy subscription link', 'Import from subscription link', 'Connect to server']
+    },
+    {
+      name: 'Streisand',
+      description: language === 'fa' ? 'لینوکس/مک - ابزار پیشرفته' : 'Linux/Mac - Advanced Tool',
+      icon: Monitor,
+      downloadUrl: 'https://github.com/StreisandEffect/streisand/releases',
+      platform: 'Linux/Mac',
+      instructions: language === 'fa' ? 
+        ['دانلود Streisand', 'مطالعه راهنمای GitHub', 'تنظیم و deploy', 'Import کردن config'] :
+        ['Download Streisand', 'Follow GitHub readme', 'Setup and deploy', 'Import config']
+    },
+    {
+      name: 'Karimg',
+      description: language === 'fa' ? 'اندروید - سریع و قابل اعتماد' : 'Android - Fast & Reliable',
+      icon: Smartphone,
+      downloadUrl: 'https://play.google.com/store/apps/details?id=com.karimg.v2ray',
+      platform: 'Android',
+      instructions: language === 'fa' ? 
+        ['نصب از Google Play', 'وارد کردن لینک اشتراک', 'فعال کردن پروتکل VLESS', 'اتصال'] :
+        ['Install from Google Play', 'Paste subscription link', 'Enable VLESS protocol', 'Connect']
+    },
+    {
+      name: 'Happynet',
+      description: language === 'fa' ? 'اندروید - رابط کاربری ساده' : 'Android - Simple Interface',
+      icon: Smartphone,
+      downloadUrl: 'https://play.google.com/store/apps/details?id=com.happynet.vpn',
+      platform: 'Android',
+      instructions: language === 'fa' ? 
+        ['نصب Happynet', 'اسکن QR Code یا paste لینک', 'Import کردن config', 'برقراری اتصال'] :
+        ['Install Happynet', 'Scan QR or paste link', 'Import config', 'Connect']
+    },
+    {
+      name: 'V2BOX',
+      description: language === 'fa' ? 'iOS - بهترین برای آیفون' : 'iOS - Best for iPhone',
+      icon: Apple,
+      downloadUrl: 'https://apps.apple.com/app/id6446814690',
+      platform: 'iOS',
+      instructions: language === 'fa' ? 
+        ['دانلود از App Store', 'اضافه کردن config با QR', 'یا paste کردن لینک', 'فعال‌سازی اتصال'] :
+        ['Download from App Store', 'Add config via QR', 'or paste link', 'Activate connection']
+    }
+  ];
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
@@ -229,15 +294,17 @@ const SubscriptionDelivery = () => {
     return <Badge className={`${config.color} text-white`}>{config.text}</Badge>;
   };
 
+  const daysRemaining = calculateDaysRemaining();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
       <Navigation />
       <div className="pt-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600" />
+          {/* Header - Fixed positioning */}
+          <div className="text-center mb-12">
+            <div className="flex flex-col items-center gap-4 mb-4">
+              <CheckCircle className="w-12 h-12 text-green-600" />
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
                 {language === 'fa' ? 'اشتراک آماده است!' : 'Subscription Ready!'}
               </h1>
@@ -251,7 +318,7 @@ const SubscriptionDelivery = () => {
           </div>
 
           {/* Subscription Details */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             {/* Left Column - Details */}
             <div className="space-y-6">
               <Card>
@@ -398,51 +465,156 @@ const SubscriptionDelivery = () => {
                   </CardContent>
                 </Card>
               )}
-
-              {/* Instructions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    {language === 'fa' ? 'راهنمای استفاده' : 'How to Use'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-start gap-3">
-                      <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
-                      <p>
-                        {language === 'fa' ? 
-                          'یک اپ V2Ray یا VLESS دانلود کنید' : 
-                          'Download a V2Ray or VLESS client app'
-                        }
-                      </p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
-                      <p>
-                        {language === 'fa' ? 
-                          'لینک اتصال را کپی کنید یا کد QR را اسکن کنید' : 
-                          'Copy the connection link or scan the QR code'
-                        }
-                      </p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <span className="bg-blue-100 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
-                      <p>
-                        {language === 'fa' ? 
-                          'اتصال را فعال کنید و از اینترنت آزاد لذت ببرید' : 
-                          'Activate the connection and enjoy free internet'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </div>
 
+          {/* Apps Section */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5" />
+                {language === 'fa' ? 'دانلود اپلیکیشن‌ها' : 'Download Apps'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {apps.map((app) => {
+                  const Icon = app.icon;
+                  return (
+                    <div key={app.name} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-8 h-8 text-blue-600" />
+                        <div>
+                          <h4 className="font-semibold">{app.name}</h4>
+                          <p className="text-sm text-muted-foreground">{app.description}</p>
+                        </div>
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => window.open(app.downloadUrl, '_blank')}
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        {language === 'fa' ? 'دانلود' : 'Download'}
+                      </Button>
+
+                      <Collapsible 
+                        open={openInstructions === app.name} 
+                        onOpenChange={(open) => setOpenInstructions(open ? app.name : null)}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full flex items-center justify-between">
+                            {language === 'fa' ? 'راهنمای نصب' : 'Setup Guide'}
+                            {openInstructions === app.name ? 
+                              <ChevronUp className="w-4 h-4" /> : 
+                              <ChevronDown className="w-4 h-4" />
+                            }
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="space-y-2 mt-2">
+                          {app.instructions.map((step, index) => (
+                            <div key={index} className="flex items-start gap-2 text-sm">
+                              <span className="bg-blue-100 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                                {index + 1}
+                              </span>
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Renewal Section */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="w-5 h-5" />
+                {language === 'fa' ? 'تمدید اشتراک' : 'Renewal'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {daysRemaining !== null && (
+                  <div className={`p-4 rounded-lg ${
+                    daysRemaining <= 0 
+                      ? 'bg-red-50 border border-red-200 dark:bg-red-900/20'
+                      : daysRemaining <= 7
+                      ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20'
+                      : 'bg-green-50 border border-green-200 dark:bg-green-900/20'
+                  }`}>
+                    <p className={`font-medium ${
+                      daysRemaining <= 0 
+                        ? 'text-red-800 dark:text-red-200'
+                        : daysRemaining <= 7
+                        ? 'text-yellow-800 dark:text-yellow-200'
+                        : 'text-green-800 dark:text-green-200'
+                    }`}>
+                      {daysRemaining <= 0 
+                        ? (language === 'fa' ? 'اشتراک شما منقضی شده است' : 'Your subscription has expired')
+                        : (language === 'fa' 
+                          ? `اشتراک شما در ${daysRemaining} روز منقضی می‌شود`
+                          : `Your subscription expires in ${daysRemaining} days`
+                        )
+                      }
+                    </p>
+                  </div>
+                )}
+                
+                <p className="text-muted-foreground">
+                  {language === 'fa' ? 
+                    'برای تمدید اشتراک خود به صفحه تمدید مراجعه کنید' : 
+                    'Visit the renewal page to extend your subscription'
+                  }
+                </p>
+                
+                <Button 
+                  onClick={() => navigate('/renewal')}
+                  className="w-full"
+                  variant={daysRemaining !== null && daysRemaining <= 7 ? 'default' : 'outline'}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  {language === 'fa' ? 'تمدید اکنون' : 'Renew Now'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Support Section */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>
+                {language === 'fa' ? 'پشتیبانی' : 'Support'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-muted-foreground">
+                  {language === 'fa' ? 
+                    'آیا به کمک نیاز دارید؟ با تیم پشتیبانی ما در تماس باشید.' : 
+                    'Need help? Get in touch with our support team.'
+                  }
+                </p>
+                
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => window.open('https://t.me/bnets_support', '_blank')}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  {language === 'fa' ? 'پشتیبانی تلگرام' : 'Telegram Support'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Back Button */}
-          <div className="mt-8 text-center">
+          <div className="text-center">
             <Button
               variant="outline"
               onClick={() => navigate('/')}

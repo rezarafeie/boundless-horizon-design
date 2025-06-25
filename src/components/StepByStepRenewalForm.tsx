@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,8 @@ const StepByStepRenewalForm = () => {
   
   // Step 1: Plan selection
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
   
   // Step 2: Username search
   const [username, setUsername] = useState('');
@@ -79,31 +81,76 @@ const StepByStepRenewalForm = () => {
   const urlParams = new URLSearchParams(window.location.search);
   const debugMode = urlParams.get('debug') === 'true';
 
-  // Merchant ID for Zarinpal
+  // Merchant ID for Zarinpal - using environment variable or fallback
   const MERCHANT_ID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
 
-  const plans: SubscriptionPlan[] = [
-    {
-      id: 'lite',
-      plan_id: 'lite', // Added missing plan_id
-      name: language === 'fa' ? 'شبکه بدون مرز لایت' : 'Boundless Network Lite',
-      description: language === 'fa' ? 
-        'اتصال پایه با آلمان، فنلاند، هلند - مناسب برای کاربری روزمره' : 
-        'Basic connection with Germany, Finland, Netherlands - suitable for daily use',
-      pricePerGB: 3200,
-      apiType: 'marzban'
-    },
-    {
-      id: 'pro',
-      plan_id: 'pro', // Added missing plan_id
-      name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
-      description: language === 'fa' ? 
-        'پریمیوم با تمام مکان‌های جهانی و اتصالات تونلی - بهترین عملکرد' : 
-        'Premium with all global locations and tunnel connections - best performance',
-      pricePerGB: 4200,
-      apiType: 'marzneshin'
-    }
-  ];
+  // Load plans from database
+  useEffect(() => {
+    const loadPlans = async () => {
+      setPlansLoading(true);
+      try {
+        const { data: plansData, error } = await supabase
+          .from('subscription_plans')
+          .select('*')
+          .eq('is_active', true)
+          .eq('is_visible', true)
+          .order('price_per_gb', { ascending: true });
+
+        if (error) {
+          console.error('Error loading plans:', error);
+          throw error;
+        }
+
+        if (plansData && plansData.length > 0) {
+          const formattedPlans: SubscriptionPlan[] = plansData.map(plan => ({
+            id: plan.plan_id,
+            plan_id: plan.plan_id,
+            name: language === 'fa' ? plan.name_fa : plan.name_en,
+            description: language === 'fa' ? plan.description_fa : plan.description_en,
+            pricePerGB: plan.price_per_gb,
+            apiType: plan.api_type as 'marzban' | 'marzneshin'
+          }));
+          setPlans(formattedPlans);
+        } else {
+          // Fallback to hardcoded plans if none found in database
+          const fallbackPlans: SubscriptionPlan[] = [
+            {
+              id: 'lite',
+              plan_id: 'lite',
+              name: language === 'fa' ? 'شبکه بدون مرز لایت' : 'Boundless Network Lite',
+              description: language === 'fa' ? 
+                'اتصال پایه با آلمان، فنلاند، هلند - مناسب برای کاربری روزمره' : 
+                'Basic connection with Germany, Finland, Netherlands - suitable for daily use',
+              pricePerGB: 3200,
+              apiType: 'marzban'
+            },
+            {
+              id: 'pro',
+              plan_id: 'pro',
+              name: language === 'fa' ? 'شبکه بدون مرز پرو' : 'Boundless Network Pro',
+              description: language === 'fa' ? 
+                'پریمیوم با تمام مکان‌های جهانی و اتصالات تونلی - بهترین عملکرد' : 
+                'Premium with all global locations and tunnel connections - best performance',
+              pricePerGB: 4200,
+              apiType: 'marzneshin'
+            }
+          ];
+          setPlans(fallbackPlans);
+        }
+      } catch (error) {
+        console.error('Error loading plans:', error);
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 'خطا در بارگذاری پلن‌ها' : 'Error loading plans',
+          variant: 'destructive'
+        });
+      } finally {
+        setPlansLoading(false);
+      }
+    };
+
+    loadPlans();
+  }, [language, toast]);
 
   const getLocationsList = (planId: string) => {
     if (planId === 'lite') {
@@ -130,12 +177,10 @@ const StepByStepRenewalForm = () => {
       let response;
       
       if (selectedPlan.apiType === 'marzban') {
-        // Marzban API call - you'll need to implement this edge function
         response = await supabase.functions.invoke('marzban-get-user', {
           body: { username }
         });
       } else {
-        // Marzneshin API call - you'll need to implement this edge function  
         response = await supabase.functions.invoke('marzneshin-get-user', {
           body: { username }
         });
@@ -160,7 +205,6 @@ const StepByStepRenewalForm = () => {
   };
 
   const formatExpireDate = (timestamp: number | null, expireDate?: string) => {
-    // Handle Marzneshin format (ISO string)
     if (expireDate) {
       try {
         const date = new Date(expireDate);
@@ -173,7 +217,6 @@ const StepByStepRenewalForm = () => {
       }
     }
     
-    // Handle Marzban format (UNIX timestamp)
     if (!timestamp || timestamp === 0) {
       return language === 'fa' ? 'نامحدود' : 'Unlimited';
     }
@@ -221,7 +264,6 @@ const StepByStepRenewalForm = () => {
   const handleDiscountApply = (discount: DiscountCode | null) => {
     setAppliedDiscount(discount);
     
-    // Update debug info when discount is applied/removed
     if (debugInfo) {
       setDebugInfo({
         ...debugInfo,
@@ -276,7 +318,6 @@ const StepByStepRenewalForm = () => {
 
     const totalPrice = calculateTotalPrice();
     
-    // Initialize debug info
     const initialDebugInfo: DebugInfo = {
       payment_status: totalPrice === 0 ? 'FREE' : 'PENDING',
       payment_gateway: 'Zarinpal',
@@ -285,14 +326,13 @@ const StepByStepRenewalForm = () => {
       renewal_request: {
         username,
         plan: selectedPlan?.name,
-        data_limit: dataToAdd * 1024 * 1024 * 1024, // Convert GB to bytes
+        data_limit: dataToAdd * 1024 * 1024 * 1024,
         expire_after: daysToAdd
       }
     };
     
     setDebugInfo(initialDebugInfo);
     
-    // Handle free renewal (100% discount)
     if (totalPrice === 0) {
       setIsSubmitting(true);
       setLoadingMessage(language === 'fa' ? 'در حال پردازش تمدید رایگان...' : 'Processing free renewal...');
@@ -307,7 +347,6 @@ const StepByStepRenewalForm = () => {
           discount: appliedDiscount
         });
 
-        // Make actual renewal API call based on plan type
         let renewalResponse;
         if (selectedPlan?.apiType === 'marzneshin') {
           renewalResponse = await supabase.functions.invoke('marzneshin-update-user', {
@@ -318,7 +357,6 @@ const StepByStepRenewalForm = () => {
             }
           });
         } else {
-          // For Marzban, we'll implement this later or use existing create-user function
           renewalResponse = await supabase.functions.invoke('marzban-update-user', {
             body: {
               username,
@@ -338,7 +376,6 @@ const StepByStepRenewalForm = () => {
           throw new Error(renewalResponse.data?.error || 'Renewal failed on server');
         }
 
-        // Update debug info with successful renewal
         setDebugInfo({
           ...initialDebugInfo,
           payment_status: 'FREE',
@@ -367,7 +404,6 @@ const StepByStepRenewalForm = () => {
       } catch (error) {
         console.error('Free renewal error:', error);
         
-        // Update debug info with error
         setDebugInfo({
           ...initialDebugInfo,
           payment_status: 'FAILED',
@@ -399,21 +435,21 @@ const StepByStepRenewalForm = () => {
       return;
     }
 
-    // Handle paid renewal
+    // Handle paid renewal with Zarinpal
     setIsSubmitting(true);
     setLoadingMessage(language === 'fa' ? 'در حال ایجاد پیوند پرداخت...' : 'Creating payment link...');
 
     try {
-      const expireAt = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60); // 1 year from now
+      const expireAt = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60);
 
       const contractResponse = await supabase.functions.invoke('zarinpal-contract', {
         body: {
           merchant_id: MERCHANT_ID,
-          mobile: '09123456789', // You might want to collect this from the user
+          mobile: '09123456789',
           expire_at: expireAt,
           max_daily_count: 10,
           max_monthly_count: 50,
-          max_amount: totalPrice * 10, // Convert to Rials
+          max_amount: totalPrice * 10,
           callback_url: `${window.location.origin}/renewal?status=success`
         }
       });
@@ -423,7 +459,6 @@ const StepByStepRenewalForm = () => {
       if (contractResponse.data?.success && contractResponse.data?.data?.code === 100) {
         const authority = contractResponse.data.data.data.authority;
         
-        // Update debug info with payment authority
         setDebugInfo({
           ...initialDebugInfo,
           payment_authority: authority,
@@ -437,7 +472,6 @@ const StepByStepRenewalForm = () => {
           }
         });
         
-        // Store renewal data
         const { data: subscriptionData, error: subscriptionError } = await supabase
           .from('subscriptions')
           .insert({
@@ -458,7 +492,6 @@ const StepByStepRenewalForm = () => {
           throw new Error('Failed to create subscription record');
         }
 
-        // Redirect to Zarinpal
         const paymentUrl = `https://www.zarinpal.com/pg/StartPay/${authority}`;
         window.location.href = paymentUrl;
 
@@ -469,7 +502,6 @@ const StepByStepRenewalForm = () => {
     } catch (error) {
       console.error('Payment error:', error);
       
-      // Update debug info with error
       setDebugInfo({
         ...initialDebugInfo,
         payment_status: 'FAILED',
@@ -562,45 +594,61 @@ const StepByStepRenewalForm = () => {
             {/* Step 1: Plan Selection */}
             {currentStep === 1 && (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {plans.map((plan) => (
-                    <Card 
-                      key={plan.id}
-                      className="cursor-pointer transition-all duration-200 hover:shadow-md border-2 hover:border-primary"
-                      onClick={() => handlePlanSelect(plan)}
-                    >
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          {plan.id === 'pro' ? (
-                            <Zap className="w-5 h-5 text-orange-500" />
-                          ) : (
-                            <CheckCircle className="w-5 h-5 text-green-500" />
-                          )}
-                          {plan.name}
-                        </CardTitle>
-                        <CardDescription>{plan.description}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Globe className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-sm font-medium text-muted-foreground">
-                            {language === 'fa' ? 'مکان‌های سرور' : 'Server Locations'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {getLocationsList(plan.id).map((location, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {location}
-                            </Badge>
-                          ))}
-                        </div>
-                        <Button className="w-full">
-                          {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                {plansLoading ? (
+                  <div className="text-center">
+                    <Loader className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    <p>{language === 'fa' ? 'در حال بارگذاری پلن‌ها...' : 'Loading plans...'}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {plans.map((plan) => (
+                      <Card 
+                        key={plan.id}
+                        className="cursor-pointer transition-all duration-200 hover:shadow-md border-2 hover:border-primary"
+                        onClick={() => handlePlanSelect(plan)}
+                      >
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            {plan.id === 'pro' ? (
+                              <Zap className="w-5 h-5 text-orange-500" />
+                            ) : (
+                              <CheckCircle className="w-5 h-5 text-green-500" />
+                            )}
+                            {plan.name}
+                          </CardTitle>
+                          <CardDescription>{plan.description}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Globe className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {language === 'fa' ? 'مکان‌های سرور' : 'Server Locations'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {getLocationsList(plan.id).map((location, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {location}
+                              </Badge>
+                            ))}
+                          </div>
+                          <div className="mb-3">
+                            <span className="text-sm text-muted-foreground">
+                              {language === 'fa' ? 'قیمت هر گیگابایت:' : 'Price per GB:'}
+                            </span>
+                            <span className="font-bold ml-2">
+                              {plan.pricePerGB.toLocaleString()} 
+                              {language === 'fa' ? ' تومان' : ' Toman'}
+                            </span>
+                          </div>
+                          <Button className="w-full">
+                            {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
