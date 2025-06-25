@@ -129,14 +129,19 @@ export class PanelUserCreationService {
 
       // NEW: STRICT INBOUND VALIDATION - Panel must have configured inbounds for Marzneshin
       if (panel.type === 'marzneshin') {
-        const defaultInbounds = panel.default_inbounds || [];
-        if (!Array.isArray(defaultInbounds) || defaultInbounds.length === 0) {
+        // Type-safe check for default_inbounds
+        const defaultInbounds = panel.default_inbounds;
+        const isValidInboundsArray = Array.isArray(defaultInbounds) && defaultInbounds.length > 0;
+        
+        if (!isValidInboundsArray) {
           console.error('❌ PANEL_USER_CREATION: STRICT VALIDATION FAILED - Marzneshin panel has no default inbounds');
           console.error('❌ PANEL_USER_CREATION: Inbounds validation details:', {
             panelId: panel.id,
             panelName: panel.name,
             panelType: panel.type,
             defaultInbounds,
+            defaultInboundsType: typeof defaultInbounds,
+            isArray: Array.isArray(defaultInbounds),
             subscriptionId: request.subscriptionId
           });
           return {
@@ -158,7 +163,7 @@ export class PanelUserCreationService {
         healthStatus: panel.health_status,
         isActive: panel.is_active,
         expectedDomain: panel.panel_url.includes('cp.rain.rest') ? 'cp.rain.rest (Plus)' : 'file.shopifysb.xyz (Lite)',
-        hasDefaultInbounds: panel.type === 'marzneshin' ? (panel.default_inbounds || []).length : 'N/A',
+        hasDefaultInbounds: panel.type === 'marzneshin' ? (Array.isArray(panel.default_inbounds) ? panel.default_inbounds.length : 0) : 'N/A',
         subscriptionId: request.subscriptionId
       });
 
