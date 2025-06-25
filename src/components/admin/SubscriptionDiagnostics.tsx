@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -190,19 +191,30 @@ export const SubscriptionDiagnostics = ({ subscriptionId }: SubscriptionDiagnost
         throw new Error('No suitable panel available for VPN creation');
       }
       
-      // Step 3: Create VPN user using the marzban-create-user function with proper panel ID
+      // ✅ NEW: Detect panel type and call appropriate edge function
+      const panelType = panelToUse.type;
+      const edgeFunctionName = panelType === 'marzneshin' ? 'marzneshin-create-user' : 'marzban-create-user';
+      
+      console.log('🔧 DIAGNOSTICS: Panel type detection:', {
+        panelName: panelToUse.name,
+        panelType: panelType,
+        edgeFunctionToCall: edgeFunctionName,
+        panelId: panelToUse.id
+      });
+      
+      // Step 3: Create VPN user using the correct edge function based on panel type
       const requestData = {
         username: diagnostics.subscription.username,
         dataLimitGB: diagnostics.subscription.data_limit_gb,
         durationDays: diagnostics.subscription.duration_days,
         notes: `Fixed subscription - Original plan: ${diagnostics.subscription.plan_id}`,
-        panelId: panelToUse.id, // Use the actual panel ID, not plan ID
+        panelId: panelToUse.id,
         subscriptionId: diagnostics.subscription.id
       };
       
-      console.log('🔧 DIAGNOSTICS: Creating VPN user with data:', requestData);
+      console.log(`🔧 DIAGNOSTICS: Creating VPN user with ${edgeFunctionName}:`, requestData);
       
-      const { data: result, error } = await supabase.functions.invoke('marzban-create-user', {
+      const { data: result, error } = await supabase.functions.invoke(edgeFunctionName, {
         body: requestData
       });
       
@@ -225,7 +237,7 @@ export const SubscriptionDiagnostics = ({ subscriptionId }: SubscriptionDiagnost
         
         // Update notes
         const existingNotes = diagnostics.subscription.notes || '';
-        updateData.notes = `${existingNotes} - Fixed and VPN created ${new Date().toLocaleDateString()}`;
+        updateData.notes = `${existingNotes} - Fixed and VPN created ${new Date().toLocaleDateString()} using ${edgeFunctionName}`;
         
         await supabase
           .from('subscriptions')
@@ -234,7 +246,7 @@ export const SubscriptionDiagnostics = ({ subscriptionId }: SubscriptionDiagnost
         
         toast({
           title: 'Subscription Fixed',
-          description: 'VPN user has been created successfully!',
+          description: `VPN user has been created successfully using ${panelType} panel!`,
         });
         
         await refetch();
@@ -312,10 +324,16 @@ export const SubscriptionDiagnostics = ({ subscriptionId }: SubscriptionDiagnost
                   <div>
                     <span className="font-medium">Assigned Panel:</span> {diagnostics.planInfo.panel_servers.name}
                   </div>
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="font-medium">Panel Status:</span>
-                    <Badge variant={diagnostics.planInfo.panel_servers.health_status === 'online' ? 'default' : 'destructive'} className="ml-1">
+                    <Badge variant={diagnostics.planInfo.panel_servers.health_status === 'online' ? 'default' : 'destructive'}>
                       {diagnostics.planInfo.panel_servers.health_status}
+                    </Badge>
+                  </div>
+                  <div>
+                    <span className="font-medium">Panel Type:</span> 
+                    <Badge variant="outline" className="ml-1">
+                      {diagnostics.planInfo.panel_servers.type}
                     </Badge>
                   </div>
                 </>
@@ -369,6 +387,9 @@ export const SubscriptionDiagnostics = ({ subscriptionId }: SubscriptionDiagnost
                     {panel.health_status}
                   </Badge>
                   <span>{panel.name}</span>
+                  <Badge variant="outline" className="text-xs">
+                    {panel.type}
+                  </Badge>
                 </div>
               ))}
             </div>
