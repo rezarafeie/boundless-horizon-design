@@ -10,6 +10,7 @@ import { Search, User, Calendar, DollarSign, RefreshCw, Image, Receipt, Server, 
 import { ManualPaymentActions } from './ManualPaymentActions';
 import { UserCreationLogs } from './UserCreationLogs';
 import { UserActionButtons } from './UserActionButtons';
+import { SubscriptionDiagnostics } from './SubscriptionDiagnostics';
 
 interface Subscription {
   id: string;
@@ -121,6 +122,18 @@ export const UsersManagement = () => {
       payerName: payerMatch ? payerMatch[1].trim() : null,
       paymentTime: timeMatch ? timeMatch[1].trim() : null
     };
+  };
+
+  // Helper function to determine if subscription needs diagnostics
+  const needsDiagnostics = (subscription: Subscription) => {
+    return (
+      subscription.status === 'active' && 
+      subscription.admin_decision === 'approved' && 
+      !subscription.marzban_user_created
+    ) || (
+      subscription.notes && 
+      subscription.notes.includes('VPN creation failed')
+    );
   };
 
   const getStatusBadge = (status: string, adminDecision?: string) => {
@@ -301,6 +314,7 @@ export const UsersManagement = () => {
       <div className="grid gap-6">
         {subscriptions?.map((subscription) => {
           const manualPaymentDetails = parseManualPaymentDetails(subscription.notes || '');
+          const showDiagnostics = needsDiagnostics(subscription);
           
           return (
             <Card key={subscription.id} className={subscription.status === 'pending' && subscription.admin_decision === 'pending' ? 'border-orange-200 bg-orange-50' : ''}>
@@ -414,6 +428,13 @@ export const UsersManagement = () => {
                       >
                         View Payment Receipt
                       </a>
+                    </div>
+                  )}
+
+                  {/* Subscription Diagnostics */}
+                  {showDiagnostics && (
+                    <div className="border-t pt-4">
+                      <SubscriptionDiagnostics subscriptionId={subscription.id} />
                     </div>
                   )}
 
