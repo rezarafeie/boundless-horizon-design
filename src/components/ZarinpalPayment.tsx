@@ -38,11 +38,21 @@ const ZarinpalPayment = ({ amount, mobile, onPaymentStart, isSubmitting }: Zarin
       const response = await createZarinpalPayment({
         amount: amount * 10, // Convert Toman to Rial
         mobile: mobile,
-        callback_url: callback_url
+        callback_url: callback_url,
+        description: 'VPN Subscription Payment'
       });
 
       if (!response.success) {
-        throw new Error(response.error || 'Payment request failed');
+        let errorMessage = response.error || 'Payment request failed';
+        
+        // Provide user-friendly error messages
+        if (errorMessage.includes('Merchant does not have access')) {
+          errorMessage = language === 'fa' ? 
+            'سرویس پرداخت موقتاً در دسترس نیست. لطفاً از روش پرداخت دیگری استفاده کنید.' :
+            'Payment service temporarily unavailable. Please use another payment method.';
+        }
+        
+        throw new Error(errorMessage);
       }
 
       if (!response.gateway_url) {

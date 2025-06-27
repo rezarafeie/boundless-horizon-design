@@ -5,11 +5,12 @@ interface ZarinpalPaymentRequest {
   amount: number;
   mobile: string;
   callback_url: string;
+  description?: string;
 }
 
 interface ZarinpalPaymentResponse {
   success: boolean;
-  payman_authority?: string;
+  authority?: string;
   gateway_url?: string;
   error?: string;
   details?: any;
@@ -19,17 +20,19 @@ export const createZarinpalPayment = async (
   params: ZarinpalPaymentRequest
 ): Promise<ZarinpalPaymentResponse> => {
   try {
-    console.log('Creating Zarinpal Payman payment:', {
+    console.log('Creating Zarinpal payment:', {
       amount: params.amount,
       mobile: params.mobile,
-      callback_url: params.callback_url
+      callback_url: params.callback_url,
+      description: params.description
     });
 
-    const { data, error } = await supabase.functions.invoke('zarinpal-payman', {
+    const { data, error } = await supabase.functions.invoke('zarinpal-payment', {
       body: {
         amount: params.amount,
         mobile: params.mobile,
-        callback_url: params.callback_url
+        callback_url: params.callback_url,
+        description: params.description || 'VPN Subscription Payment'
       }
     });
 

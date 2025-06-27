@@ -33,8 +33,8 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: Payme
     },
     {
       id: 'stripe' as PaymentMethod,
-      name: language === 'fa' ? 'کارت اعتباری' : 'Credit Card',
-      description: language === 'fa' ? 'پرداخت با کارت اعتباری' : 'Pay with credit card',
+      name: language === 'fa' ? 'پرداخت با ویزا و مستر کارت و اپل پی و گوگل پی' : 'Visa, Mastercard, Apple Pay & Google Pay',
+      description: language === 'fa' ? 'پرداخت با کارت‌های بین‌المللی و کیف پول دیجیتال' : 'Pay with international cards and digital wallets',
       icon: CreditCard,
       available: true,
     },
