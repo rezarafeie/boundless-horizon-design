@@ -1,7 +1,10 @@
+
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PaymentStep from '@/components/PaymentStep';
 import SubscriptionSuccess from '@/components/SubscriptionSuccess';
+import PlanSelection from './PlanSelection';
+import UserDetailsForm from './UserDetailsForm';
 import { FormData, StepNumber, SubscriptionResponse } from './types';
 
 interface StepContentRendererProps {
@@ -31,27 +34,20 @@ const StepContentRenderer = ({
 
   if (currentStep === 1) {
     return (
-      <div className="text-center">
-        <h2 className="text-2xl font-bold mb-2">
-          {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
-        </h2>
-        <p className="text-muted-foreground">
-          {language === 'fa' ? 'لطفاً پلن مورد نظر خود را انتخاب کنید' : 'Please select your desired plan'}
-        </p>
-      </div>
+      <PlanSelection
+        selectedPlan={formData.selectedPlan}
+        onPlanSelect={(plan) => onUpdateFormData('selectedPlan', plan)}
+        dataLimit={formData.dataLimit}
+      />
     );
   }
 
   if (currentStep === 2) {
     return (
-      <div className="text-center">
-        <h2 className="text-2xl font-bold mb-2">
-          {language === 'fa' ? 'اطلاعات کاربر' : 'User Details'}
-        </h2>
-        <p className="text-muted-foreground">
-          {language === 'fa' ? 'اطلاعات خود را وارد کنید' : 'Enter your details'}
-        </p>
-      </div>
+      <UserDetailsForm
+        formData={formData}
+        onUpdateFormData={onUpdateFormData}
+      />
     );
   }
 
@@ -61,6 +57,7 @@ const StepContentRenderer = ({
         <div className="text-center py-8">
           <SubscriptionSuccess 
             result={result}
+            subscriptionId={subscriptionId}
             onStartOver={() => window.location.reload()}
           />
         </div>
