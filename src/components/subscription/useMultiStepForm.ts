@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -20,7 +19,8 @@ export const useMultiStepForm = () => {
     duration: 30,
     notes: '',
     mobile: '',
-    selectedPlan: null
+    selectedPlan: null,
+    paymentMethod: 'zarinpal'
   });
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [result, setResult] = useState<SubscriptionResponse | null>(null);

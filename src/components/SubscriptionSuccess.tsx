@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -21,9 +20,10 @@ interface SubscriptionResponse {
 interface SubscriptionSuccessProps {
   result: SubscriptionResponse;
   subscriptionId?: string;
+  onStartOver?: () => void;
 }
 
-const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProps) => {
+const SubscriptionSuccess = ({ result, subscriptionId, onStartOver }: SubscriptionSuccessProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -136,6 +136,14 @@ const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProp
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.active;
     return <Badge className={`${config.color} text-white`}>{config.text}</Badge>;
+  };
+
+  const handleStartOver = () => {
+    if (onStartOver) {
+      onStartOver();
+    } else {
+      window.location.reload();
+    }
   };
 
   // If we have detailed subscription data, show it
@@ -353,6 +361,11 @@ const SubscriptionSuccess = ({ result, subscriptionId }: SubscriptionSuccessProp
             <ArrowRight className="w-4 h-4 mr-2" />
             {language === 'fa' ? 'مشاهده جزئیات کامل' : 'View Full Details'}
           </Button>
+          {onStartOver && (
+            <Button onClick={handleStartOver} variant="secondary">
+              {language === 'fa' ? 'شروع مجدد' : 'Start Over'}
+            </Button>
+          )}
         </div>
       </div>
     );
