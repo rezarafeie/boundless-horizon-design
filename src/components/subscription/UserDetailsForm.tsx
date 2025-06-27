@@ -52,7 +52,8 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
 
       <UserInfoStep
         formData={adaptedFormData as any}
-        onFormDataChange={onUpdateFormData}
+        onUpdate={onUpdateFormData}
+        appliedDiscount={null}
       />
     </div>
   );
