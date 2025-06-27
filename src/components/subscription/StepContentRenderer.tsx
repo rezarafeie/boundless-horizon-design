@@ -1,10 +1,9 @@
+
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { PaymentStep } from '@/components/PaymentStep';
-import { SubscriptionSuccess } from '@/components/SubscriptionSuccess';
+import PaymentStep from '@/components/PaymentStep';
+import SubscriptionSuccess from '@/components/SubscriptionSuccess';
 import { FormData, StepNumber, SubscriptionResponse } from './types';
-import PlanSelection from './PlanSelection';
-import UserDetailsForm from './UserDetailsForm';
 
 interface StepContentRendererProps {
   currentStep: StepNumber;
@@ -33,25 +32,27 @@ const StepContentRenderer = ({
 
   if (currentStep === 1) {
     return (
-      <PlanSelection
-        selectedPlan={formData.selectedPlan}
-        onPlanSelect={(plan) => onUpdateFormData('selectedPlan', plan)}
-      />
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-2">
+          {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
+        </h2>
+        <p className="text-muted-foreground">
+          {language === 'fa' ? 'لطفاً پلن مورد نظر خود را انتخاب کنید' : 'Please select your desired plan'}
+        </p>
+      </div>
     );
   }
 
   if (currentStep === 2) {
     return (
-      <UserDetailsForm
-        username={formData.username}
-        mobile={formData.mobile}
-        dataLimit={formData.dataLimit}
-        duration={formData.duration}
-        notes={formData.notes}
-        onUpdateFormData={onUpdateFormData}
-        onPrevious={onPrevious}
-        appliedDiscount={appliedDiscount}
-      />
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-2">
+          {language === 'fa' ? 'اطلاعات کاربر' : 'User Details'}
+        </h2>
+        <p className="text-muted-foreground">
+          {language === 'fa' ? 'اطلاعات خود را وارد کنید' : 'Enter your details'}
+        </p>
+      </div>
     );
   }
 

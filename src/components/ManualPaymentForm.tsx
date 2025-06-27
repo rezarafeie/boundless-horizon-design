@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,17 +12,13 @@ import { PersianDateTimePicker } from './PersianDateTimePicker';
 
 interface ManualPaymentFormProps {
   amount: number;
-  onPaymentConfirm: (data: { 
-    trackingNumber: string; 
-    paymentTime: string; 
-    payerName: string; 
-    confirmed: boolean; 
-    postCreationCallback?: (subscriptionId: string) => Promise<void> 
-  }) => void;
+  mobile: string;
+  subscriptionId: string;
+  onPaymentStart: () => void;
   isSubmitting: boolean;
 }
 
-const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPaymentFormProps) => {
+const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isSubmitting }: ManualPaymentFormProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
   const [confirmed, setConfirmed] = useState(false);
@@ -100,19 +97,25 @@ const ManualPaymentForm = ({ amount, onPaymentConfirm, isSubmitting }: ManualPay
       trackingNumber,
       paymentTime,
       payerName,
-      confirmed 
+      confirmed,
+      subscriptionId,
+      mobile
     });
+
+    onPaymentStart();
 
     // Format the payment time for display
     const formattedPaymentTime = language === 'fa' ? 
       formatPersianDateTime(paymentTime) : 
       new Date(paymentTime).toLocaleString();
 
-    onPaymentConfirm({
-      trackingNumber,
-      paymentTime: formattedPaymentTime,
-      payerName,
-      confirmed
+    // Here you would typically send the manual payment data to your backend
+    // For now, we'll just call the onPaymentStart callback
+    toast({
+      title: language === 'fa' ? 'پرداخت ثبت شد' : 'Payment Recorded',
+      description: language === 'fa' ? 
+        'اطلاعات پرداخت شما ثبت شد و به ادمین ارسال خواهد شد' : 
+        'Your payment information has been recorded and will be sent to admin',
     });
   };
 

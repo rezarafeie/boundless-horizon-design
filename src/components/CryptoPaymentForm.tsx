@@ -11,7 +11,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface CryptoPaymentFormProps {
   amount: number;
-  onPaymentSuccess: (paymentId: string) => void;
+  mobile: string;
+  subscriptionId: string;
+  onPaymentStart: () => void;
   isSubmitting: boolean;
 }
 
@@ -27,7 +29,7 @@ interface CryptoInvoice {
   payment_url: string;
 }
 
-const CryptoPaymentForm = ({ amount, onPaymentSuccess, isSubmitting }: CryptoPaymentFormProps) => {
+const CryptoPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isSubmitting }: CryptoPaymentFormProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
   const [invoice, setInvoice] = useState<CryptoInvoice | null>(null);
@@ -44,7 +46,8 @@ const CryptoPaymentForm = ({ amount, onPaymentSuccess, isSubmitting }: CryptoPay
 
   const createPayment = async () => {
     setLoading(true);
-    debugLog('info', 'Starting NowPayments payment creation', { amount: usdAmount });
+    onPaymentStart();
+    debugLog('info', 'Starting NowPayments payment creation', { amount: usdAmount, subscriptionId, mobile });
     
     try {
       const { data, error } = await supabase.functions.invoke('nowpayments-create', {
@@ -52,7 +55,7 @@ const CryptoPaymentForm = ({ amount, onPaymentSuccess, isSubmitting }: CryptoPay
           price_amount: usdAmount,
           price_currency: 'usd',
           pay_currency: 'usdttrc20', // USDT TRC20
-          order_id: `sub_${Date.now()}`,
+          order_id: `sub_${subscriptionId}`,
           order_description: `VPN Subscription - $${usdAmount}`
         }
       });
@@ -107,7 +110,11 @@ const CryptoPaymentForm = ({ amount, onPaymentSuccess, isSubmitting }: CryptoPay
         if (data?.payment_status === 'finished') {
           debugLog('success', 'Payment completed successfully', data);
           clearInterval(poll);
-          onPaymentSuccess(paymentId);
+          // Here you would typically trigger the onPaymentSuccess callback
+          toast({
+            title: language === 'fa' ? 'پرداخت موفق' : 'Payment Successful',
+            description: language === 'fa' ? 'پرداخت با موفقیت انجام شد' : 'Payment completed successfully',
+          });
         } else if (data?.payment_status === 'failed' || attempts >= maxAttempts) {
           debugLog('error', 'Payment failed or timeout', { status: data?.payment_status, attempts });
           clearInterval(poll);

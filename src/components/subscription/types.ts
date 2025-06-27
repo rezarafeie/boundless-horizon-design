@@ -1,6 +1,7 @@
 
 import { DiscountCode } from '@/types/subscription';
 import { PlanWithPanels } from '@/services/planService';
+import { PaymentMethod } from '@/components/PaymentMethodSelector';
 
 export interface FormData {
   username: string;
@@ -9,6 +10,7 @@ export interface FormData {
   notes: string;
   mobile: string;
   selectedPlan: PlanWithPanels | null;
+  paymentMethod: PaymentMethod;
 }
 
 export interface SubscriptionResponse {
