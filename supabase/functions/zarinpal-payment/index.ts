@@ -1,5 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,9 +39,14 @@ serve(async (req) => {
       });
     }
 
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     // Parse request body
-    const { amount, mobile, callback_url, description } = await req.json();
-    console.log('Request received:', { amount, mobile, callback_url, description });
+    const { amount, mobile, callback_url, description, subscription_id } = await req.json();
+    console.log('Request received:', { amount, mobile, callback_url, description, subscription_id });
 
     // Validate required parameters
     if (!amount || !callback_url) {
@@ -129,6 +135,26 @@ serve(async (req) => {
     if (responseData.data && responseData.data.code === 100 && responseData.data.authority) {
       console.log('Payment request created successfully!');
       console.log('Authority:', responseData.data.authority);
+
+      // If subscription_id is provided, save the authority to the subscription record
+      if (subscription_id) {
+        console.log('Saving zarinpal_authority to subscription:', subscription_id);
+        
+        const { error: updateError } = await supabase
+          .from('subscriptions')
+          .update({
+            zarinpal_authority: responseData.data.authority,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', subscription_id);
+
+        if (updateError) {
+          console.error('Failed to update subscription with zarinpal_authority:', updateError);
+          // Don't fail the payment creation, just log the error
+        } else {
+          console.log('Successfully saved zarinpal_authority to subscription');
+        }
+      }
 
       // Generate the gateway URL
       const gateway_url = `https://www.zarinpal.com/pg/StartPay/${responseData.data.authority}`;

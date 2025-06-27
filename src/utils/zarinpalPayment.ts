@@ -6,6 +6,7 @@ interface ZarinpalPaymentRequest {
   mobile: string;
   callback_url: string;
   description?: string;
+  subscription_id?: string;
 }
 
 interface ZarinpalPaymentResponse {
@@ -24,7 +25,8 @@ export const createZarinpalPayment = async (
       amount: params.amount,
       mobile: params.mobile,
       callback_url: params.callback_url,
-      description: params.description
+      description: params.description,
+      subscription_id: params.subscription_id
     });
 
     const { data, error } = await supabase.functions.invoke('zarinpal-payment', {
@@ -32,7 +34,8 @@ export const createZarinpalPayment = async (
         amount: params.amount,
         mobile: params.mobile,
         callback_url: params.callback_url,
-        description: params.description || 'VPN Subscription Payment'
+        description: params.description || 'VPN Subscription Payment',
+        subscription_id: params.subscription_id
       }
     });
 

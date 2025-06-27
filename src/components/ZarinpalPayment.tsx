@@ -10,11 +10,12 @@ import { supabase } from '@/integrations/supabase/client';
 interface ZarinpalPaymentProps {
   amount: number;
   mobile: string;
+  subscriptionId: string;
   onPaymentStart: () => void;
   isSubmitting: boolean;
 }
 
-const ZarinpalPayment = ({ amount, mobile, onPaymentStart, isSubmitting }: ZarinpalPaymentProps) => {
+const ZarinpalPayment = ({ amount, mobile, subscriptionId, onPaymentStart, isSubmitting }: ZarinpalPaymentProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
 
@@ -28,10 +29,19 @@ const ZarinpalPayment = ({ amount, mobile, onPaymentStart, isSubmitting }: Zarin
       return;
     }
 
+    if (!subscriptionId) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'شناسه سفارش یافت نشد' : 'Subscription ID not found',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     onPaymentStart();
 
     try {
-      console.log('Starting Zarinpal payment for amount:', amount);
+      console.log('Starting Zarinpal payment for amount:', amount, 'subscription:', subscriptionId);
       
       const callback_url = `${window.location.origin}/payment-success`;
       
@@ -39,7 +49,8 @@ const ZarinpalPayment = ({ amount, mobile, onPaymentStart, isSubmitting }: Zarin
         amount: amount * 10, // Convert Toman to Rial
         mobile: mobile,
         callback_url: callback_url,
-        description: 'VPN Subscription Payment'
+        description: 'VPN Subscription Payment',
+        subscription_id: subscriptionId
       });
 
       if (!response.success) {
@@ -110,7 +121,7 @@ const ZarinpalPayment = ({ amount, mobile, onPaymentStart, isSubmitting }: Zarin
 
           <Button
             onClick={handlePayment}
-            disabled={isSubmitting || !mobile}
+            disabled={isSubmitting || !mobile || !subscriptionId}
             className="w-full"
             size="lg"
           >

@@ -1,16 +1,15 @@
-
-import PlanSelector from '@/components/PlanSelector';
-import UserInfoStep from '@/components/UserInfoStep';
-import PaymentStep from '@/components/PaymentStep';
-import SubscriptionSuccess from '@/components/SubscriptionSuccess';
-import { FormData, SubscriptionResponse, StepNumber } from './types';
-import { DiscountCode } from '@/types/subscription';
-import { PlanWithPanels } from '@/services/planService';
+import React from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { PaymentStep } from '@/components/PaymentStep';
+import { SubscriptionSuccess } from '@/components/SubscriptionSuccess';
+import { FormData, StepNumber, SubscriptionResponse } from './types';
+import PlanSelection from './PlanSelection';
+import UserDetailsForm from './UserDetailsForm';
 
 interface StepContentRendererProps {
   currentStep: StepNumber;
   formData: FormData;
-  appliedDiscount: DiscountCode | null;
+  appliedDiscount: any;
   result: SubscriptionResponse | null;
   subscriptionId: string;
   calculateTotalPrice: () => number;
@@ -30,99 +29,76 @@ const StepContentRenderer = ({
   onPaymentSuccess,
   onPrevious
 }: StepContentRendererProps) => {
-  console.log('StepContentRenderer - Current step:', currentStep);
-  console.log('StepContentRenderer - Form data selected plan:', formData.selectedPlan);
-  console.log('StepContentRenderer - Subscription ID:', subscriptionId);
-  
-  switch (currentStep) {
-    case 1:
+  const { language } = useLanguage();
+
+  if (currentStep === 1) {
+    return (
+      <PlanSelection
+        selectedPlan={formData.selectedPlan}
+        onPlanSelect={(plan) => onUpdateFormData('selectedPlan', plan)}
+      />
+    );
+  }
+
+  if (currentStep === 2) {
+    return (
+      <UserDetailsForm
+        username={formData.username}
+        mobile={formData.mobile}
+        dataLimit={formData.dataLimit}
+        duration={formData.duration}
+        notes={formData.notes}
+        onUpdateFormData={onUpdateFormData}
+        onPrevious={onPrevious}
+        appliedDiscount={appliedDiscount}
+      />
+    );
+  }
+
+  if (currentStep === 3) {
+    if (result) {
       return (
-        <PlanSelector
-          selectedPlan={formData.selectedPlan?.id || ''}
-          onPlanSelect={(plan: PlanWithPanels) => {
-            console.log('StepContentRenderer - Plan selected with STRICT enforcement:', {
-              planId: plan.id,
-              planName: plan.name_en,
-              assignedPanelId: plan.assigned_panel_id,
-              hasAssignedPanel: !!plan.assigned_panel_id
-            });
-            
-            // STRICT VALIDATION: Only allow plans with assigned panels
-            if (!plan.assigned_panel_id) {
-              console.error('StepContentRenderer - REJECTED: Plan has no assigned panel');
-              return;
+        <div className="text-center py-8">
+          <SubscriptionSuccess 
+            result={result}
+            onStartOver={() => window.location.reload()}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2">
+            {language === 'fa' ? 'پرداخت' : 'Payment'}
+          </h2>
+          <p className="text-muted-foreground">
+            {language === 'fa' ? 
+              'روش پرداخت خود را انتخاب کنید' : 
+              'Choose your payment method'
             }
-            
-            onUpdateFormData('selectedPlan', plan);
-          }}
-          dataLimit={formData.dataLimit}
-        />
-      );
+          </p>
+        </div>
 
-    case 2:
-      console.log('StepContentRenderer - Rendering UserInfoStep with formData:', formData);
-      return (
-        <UserInfoStep
-          formData={{
-            username: formData.username,
-            dataLimit: formData.dataLimit,
-            duration: formData.duration,
-            notes: formData.notes,
-            mobile: formData.mobile,
-            selectedPlan: formData.selectedPlan ? {
-              id: formData.selectedPlan.id,
-              plan_id: formData.selectedPlan.plan_id,
-              name: formData.selectedPlan.name_en,
-              description: formData.selectedPlan.description_en || '',
-              pricePerGB: formData.selectedPlan.price_per_gb,
-              apiType: formData.selectedPlan.api_type
-            } : null
-          }}
-          appliedDiscount={appliedDiscount}
-          onUpdate={(field: string, value: any) => {
-            onUpdateFormData(field as keyof FormData, value);
-          }}
-        />
-      );
-
-    case 3:
-      if (!subscriptionId) {
-        console.error('StepContentRenderer - No subscription ID for payment step');
-        return (
-          <div className="text-center py-8">
-            <p className="text-red-600">خطا در ایجاد سفارش. لطفاً دوباره تلاش کنید.</p>
-          </div>
-        );
-      }
-      return (
         <PaymentStep
           amount={calculateTotalPrice()}
+          mobile={formData.mobile}
+          selectedMethod={formData.paymentMethod || 'zarinpal'}
+          onMethodChange={(method) => onUpdateFormData('paymentMethod', method)}
           subscriptionId={subscriptionId}
-          onSuccess={onPaymentSuccess}
-          onBack={onPrevious}
+          onPaymentSuccess={onPaymentSuccess}
         />
-      );
-
-    case 4:
-      return result ? (
-        <SubscriptionSuccess 
-          result={result} 
-          subscriptionId={subscriptionId}
-        />
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-gray-600">در حال بارگذاری...</p>
-        </div>
-      );
-
-    default:
-      console.warn('StepContentRenderer - Unknown step:', currentStep);
-      return (
-        <div className="text-center py-8">
-          <p className="text-red-600">خطای نامشخص در سیستم</p>
-        </div>
-      );
+      </div>
+    );
   }
+
+  return (
+    <div className="text-center">
+      <h2>{language === 'fa' ? 'ممنون از خرید شما' : 'Thank you for your purchase!'}</h2>
+      <p>{language === 'fa' ? 'اشتراک شما فعال شد' : 'Your subscription is now active.'}</p>
+    </div>
+  );
 };
 
 export default StepContentRenderer;
