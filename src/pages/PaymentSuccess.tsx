@@ -21,14 +21,16 @@ const PaymentSuccess = () => {
   useEffect(() => {
     const handlePaymentSuccess = async () => {
       try {
-        // Get session_id from URL parameters
+        // Get parameters from URL
         const sessionId = searchParams.get('session_id');
+        const authority = searchParams.get('Authority');
+        const status = searchParams.get('Status');
         const subscriptionDataParam = searchParams.get('subscriptionData');
 
-        console.log('PaymentSuccess - URL params:', { sessionId, subscriptionDataParam });
+        console.log('PaymentSuccess - URL params:', { sessionId, authority, status, subscriptionDataParam });
 
         if (sessionId) {
-          // This is a Stripe payment - verify the session
+          // Stripe payment verification
           console.log('Processing Stripe payment with session ID:', sessionId);
           
           const { data, error } = await supabase.functions.invoke('stripe-verify-session', {
@@ -46,10 +48,7 @@ const PaymentSuccess = () => {
             setSubscriptionData(data.subscription);
             console.log('Stripe payment verified successfully:', data.subscription);
             
-            // ✅ NEW: Automatically create VPN user after successful payment
             await createVpnUserAutomatically(data.subscription);
-            
-            // Store for delivery page
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(data.subscription));
             
             toast({
@@ -59,12 +58,74 @@ const PaymentSuccess = () => {
                 'Payment completed successfully. Redirecting...',
             });
 
-            // Redirect to delivery page after short delay
             setTimeout(() => {
               navigate('/delivery', { state: { subscriptionData: data.subscription } });
             }, 2000);
           } else {
             throw new Error('Payment verification failed');
+          }
+        } else if (authority && status === 'OK') {
+          // Zarinpal payment verification
+          console.log('Processing Zarinpal payment with authority:', authority);
+          
+          const { data, error } = await supabase.functions.invoke('zarinpal-verify', {
+            body: { authority }
+          });
+
+          console.log('Zarinpal verification response:', { data, error });
+
+          if (error) {
+            console.error('Zarinpal verification error:', error);
+            throw new Error(error.message || 'Failed to verify Zarinpal payment');
+          }
+
+          if (data?.success && data?.reference_id) {
+            // Find subscription by authority
+            const { data: subscription, error: subError } = await supabase
+              .from('subscriptions')
+              .select('*')
+              .eq('zarinpal_authority', authority)
+              .single();
+
+            if (subError || !subscription) {
+              console.error('Failed to find subscription:', subError);
+              throw new Error('Subscription not found');
+            }
+
+            // Update subscription with Zarinpal details
+            const { error: updateError } = await supabase
+              .from('subscriptions')
+              .update({
+                status: 'active',
+                zarinpal_ref_id: data.reference_id.toString(),
+                notes: `Zarinpal payment verified - Ref ID: ${data.reference_id}`,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', subscription.id);
+
+            if (updateError) {
+              console.error('Failed to update subscription:', updateError);
+              throw new Error('Failed to update subscription status');
+            }
+
+            setSubscriptionData(subscription);
+            console.log('Zarinpal payment verified successfully:', subscription);
+            
+            await createVpnUserAutomatically(subscription);
+            localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscription));
+            
+            toast({
+              title: language === 'fa' ? 'پرداخت موفق' : 'Payment Successful',
+              description: language === 'fa' ? 
+                'پرداخت با موفقیت انجام شد. در حال انتقال...' : 
+                'Payment completed successfully. Redirecting...',
+            });
+
+            setTimeout(() => {
+              navigate('/delivery', { state: { subscriptionData: subscription } });
+            }, 2000);
+          } else {
+            throw new Error('Zarinpal payment verification failed');
           }
         } else if (subscriptionDataParam) {
           // This is from other payment methods with subscription data in URL
@@ -73,13 +134,9 @@ const PaymentSuccess = () => {
             setSubscriptionData(decodedData);
             console.log('Decoded subscription data:', decodedData);
             
-            // ✅ NEW: Automatically create VPN user after successful payment
             await createVpnUserAutomatically(decodedData);
-            
-            // Store for delivery page
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(decodedData));
             
-            // Redirect to delivery page
             setTimeout(() => {
               navigate('/delivery', { state: { subscriptionData: decodedData } });
             }, 2000);
@@ -124,7 +181,6 @@ const PaymentSuccess = () => {
         if (vpnResult.success && vpnResult.data?.subscription_url) {
           console.log('🟢 PAYMENT_SUCCESS: VPN user created successfully automatically');
           
-          // Update subscription with VPN details
           const { error: updateError } = await supabase
             .from('subscriptions')
             .update({
@@ -140,8 +196,6 @@ const PaymentSuccess = () => {
             console.error('❌ PAYMENT_SUCCESS: Failed to update subscription with VPN details:', updateError);
           } else {
             console.log('🟢 PAYMENT_SUCCESS: Subscription updated with VPN details');
-            
-            // Update local subscription data
             subscription.subscription_url = vpnResult.data.subscription_url;
             subscription.marzban_user_created = true;
           }

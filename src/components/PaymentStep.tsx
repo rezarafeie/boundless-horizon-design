@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
@@ -6,6 +5,7 @@ import PaymentMethodSelector, { PaymentMethod } from './PaymentMethodSelector';
 import ManualPaymentForm from './ManualPaymentForm';
 import CryptoPaymentForm from './CryptoPaymentForm';
 import StripePaymentForm from './StripePaymentForm';
+import ZarinpalPayment from './ZarinpalPayment';
 import { SubscriptionStatusMonitor } from './SubscriptionStatusMonitor';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -22,10 +22,38 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('manual');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showWaitingState, setShowWaitingState] = useState(false);
+  const [subscriptionData, setSubscriptionData] = useState<any>(null);
 
   const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
     console.log(`[PAYMENT-STEP] ${type.toUpperCase()}: ${message}`, data || '');
   };
+
+  // Fetch subscription data to get mobile number
+  useEffect(() => {
+    const fetchSubscriptionData = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('id', subscriptionId)
+          .single();
+
+        if (error) {
+          console.error('Failed to fetch subscription data:', error);
+          return;
+        }
+
+        setSubscriptionData(data);
+        console.log('Subscription data loaded:', data);
+      } catch (error) {
+        console.error('Error fetching subscription data:', error);
+      }
+    };
+
+    if (subscriptionId) {
+      fetchSubscriptionData();
+    }
+  }, [subscriptionId]);
 
   const handleManualPaymentConfirm = async (data: {
     trackingNumber: string;
@@ -37,12 +65,10 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
     debugLog('info', 'Processing manual payment confirmation', data);
 
     try {
-      // Validate subscription ID
       if (!subscriptionId) {
         throw new Error('Subscription ID is missing');
       }
 
-      // Update subscription with manual payment details
       const notes = `Manual payment - Tracking: ${data.trackingNumber}, Payer: ${data.payerName}, Time: ${data.paymentTime}`;
       
       debugLog('info', 'Updating subscription with manual payment data', {
@@ -74,7 +100,6 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
           'Your payment information has been recorded and is awaiting admin approval',
       });
 
-      // Show waiting state instead of calling onSuccess immediately
       setShowWaitingState(true);
       
     } catch (error) {
@@ -105,6 +130,32 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
     }
   };
 
+  const handleZarinpalPaymentStart = async () => {
+    setIsSubmitting(true);
+    debugLog('info', 'Zarinpal payment started');
+    
+    try {
+      // Store zarinpal authority in subscription for later verification
+      const authority = `zp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const { error } = await supabase
+        .from('subscriptions')
+        .update({
+          zarinpal_authority: authority,
+          notes: `Zarinpal payment initiated - Authority: ${authority}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', subscriptionId);
+
+      if (error) {
+        console.error('Failed to update subscription with authority:', error);
+      }
+      
+    } catch (error) {
+      console.error('Error preparing Zarinpal payment:', error);
+    }
+  };
+
   const handleStatusUpdate = async (status: string, subscriptionUrl?: string) => {
     debugLog('info', 'Subscription status updated', { status, subscriptionUrl });
     
@@ -112,7 +163,6 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
       debugLog('success', 'Subscription activated, triggering VPN user creation');
       
       try {
-        // Get subscription details to create VPN user
         const { data: subscription, error: fetchError } = await supabase
           .from('subscriptions')
           .select('*')
@@ -121,18 +171,16 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
 
         if (fetchError || !subscription) {
           debugLog('error', 'Failed to fetch subscription details', fetchError);
-          // Still redirect to delivery page even if we can't create the user
           onSuccess(subscriptionUrl);
           return;
         }
 
-        debugLog('info', 'Creating VPN user for approved manual payment', {
+        debugLog('info', 'Creating VPN user for approved payment', {
           username: subscription.username,
           dataLimit: subscription.data_limit_gb,
           duration: subscription.duration_days
         });
 
-        // Call the test-panel-connection function to create the user
         const { data: creationResult, error: creationError } = await supabase.functions.invoke('test-panel-connection', {
           body: {
             createUser: true,
@@ -140,7 +188,7 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
               username: subscription.username,
               dataLimitGB: subscription.data_limit_gb,
               durationDays: subscription.duration_days,
-              notes: `Manual payment approved - ${subscription.notes}`,
+              notes: `Payment approved - ${subscription.notes}`,
               subscriptionId: subscription.id,
               panelType: 'marzban'
             }
@@ -155,7 +203,6 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
             subscriptionUrl: creationResult.userCreation.subscriptionUrl
           });
           
-          // Update subscription with the new subscription URL
           if (creationResult.userCreation.subscriptionUrl) {
             await supabase
               .from('subscriptions')
@@ -172,7 +219,6 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
         debugLog('error', 'Exception during VPN user creation', vpnError);
       }
       
-      // Always redirect to delivery page regardless of VPN creation result
       debugLog('success', 'Redirecting to delivery page');
       onSuccess(subscriptionUrl);
       
@@ -242,6 +288,15 @@ const PaymentStep = ({ amount, subscriptionId, onSuccess, onBack }: PaymentStepP
         <ManualPaymentForm
           amount={amount}
           onPaymentConfirm={handleManualPaymentConfirm}
+          isSubmitting={isSubmitting}
+        />
+      )}
+
+      {selectedMethod === 'zarinpal' && subscriptionData && (
+        <ZarinpalPayment
+          amount={amount}
+          mobile={subscriptionData.mobile || ''}
+          onPaymentStart={handleZarinpalPaymentStart}
           isSubmitting={isSubmitting}
         />
       )}

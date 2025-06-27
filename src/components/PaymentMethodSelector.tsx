@@ -1,13 +1,11 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { CreditCard, Building2, Coins } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { CreditCard, Coins, Receipt, Banknote } from 'lucide-react';
 
-export type PaymentMethod = 'zarinpal' | 'manual' | 'nowpayments' | 'stripe';
+export type PaymentMethod = 'manual' | 'stripe' | 'nowpayments' | 'zarinpal';
 
 interface PaymentMethodSelectorProps {
   selectedMethod: PaymentMethod;
@@ -18,171 +16,95 @@ interface PaymentMethodSelectorProps {
 const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: PaymentMethodSelectorProps) => {
   const { language } = useLanguage();
 
-  // Calculate USD equivalent (approximate rate: 1 USD = 60,000 Toman)
-  const usdAmount = Math.ceil(amount / 60000);
-  const isUnderMinimum = usdAmount < 10;
-
   const paymentMethods = [
     {
-      id: 'zarinpal' as PaymentMethod,
-      nameEn: 'Zarinpal',
-      nameFa: 'زرین‌پال',
-      descriptionEn: 'Pay with Iranian cards',
-      descriptionFa: 'پرداخت با کارت‌های ایرانی',
-      icon: CreditCard,
-      currency: 'IRR',
-      logo: '💳',
-      disabled: true
-    },
-    {
       id: 'manual' as PaymentMethod,
-      nameEn: 'Manual Bank Transfer',
-      nameFa: 'کارت به کارت',
-      descriptionEn: 'Manual card-to-card transfer',
-      descriptionFa: 'انتقال دستی کارت به کارت',
-      icon: Building2,
-      currency: 'IRR',
-      logo: '🏦',
-      disabled: false
+      name: language === 'fa' ? 'پرداخت دستی' : 'Manual Payment',
+      description: language === 'fa' ? 'پرداخت از طریق کارت به کارت' : 'Payment via card to card transfer',
+      icon: Receipt,
+      available: true,
     },
     {
-      id: 'nowpayments' as PaymentMethod,
-      nameEn: 'Crypto Payment',
-      nameFa: 'پرداخت کریپتو',
-      descriptionEn: 'Pay with USDT/BTC/ETH',
-      descriptionFa: 'پرداخت با ارز دیجیتال',
-      icon: Coins,
-      currency: 'USD',
-      logo: '₿',
-      disabled: isUnderMinimum
+      id: 'zarinpal' as PaymentMethod,
+      name: language === 'fa' ? 'زرین‌پال' : 'Zarinpal',
+      description: language === 'fa' ? 'پرداخت امن با زرین‌پال' : 'Secure payment with Zarinpal',
+      icon: Banknote,
+      available: true,
     },
     {
       id: 'stripe' as PaymentMethod,
-      nameEn: 'Card Payment',
-      nameFa: 'پرداخت کارتی',
-      descriptionEn: 'Visa/Mastercard (USD)',
-      descriptionFa: 'ویزا/مسترکارت (دلار)',
+      name: language === 'fa' ? 'کارت اعتباری' : 'Credit Card',
+      description: language === 'fa' ? 'پرداخت با کارت اعتباری' : 'Pay with credit card',
       icon: CreditCard,
-      currency: 'USD',
-      logo: '💎',
-      disabled: false
-    }
+      available: true,
+    },
+    {
+      id: 'nowpayments' as PaymentMethod,
+      name: language === 'fa' ? 'ارز دیجیتال' : 'Cryptocurrency',
+      description: language === 'fa' ? 'پرداخت با ارز دیجیتال' : 'Pay with cryptocurrency',
+      icon: Coins,
+      available: true,
+    },
   ];
-
-  const formatAmount = (method: PaymentMethod) => {
-    if (method === 'nowpayments' || method === 'stripe') {
-      return `$${usdAmount}`;
-    }
-    return `${amount.toLocaleString()} ${language === 'fa' ? 'تومان' : 'Toman'}`;
-  };
-
-  // Auto-select manual payment if zarinpal was selected but is now disabled
-  React.useEffect(() => {
-    if (selectedMethod === 'zarinpal') {
-      onMethodChange('manual');
-    }
-    // Auto-select alternative if nowpayments was selected but amount is under minimum
-    if (selectedMethod === 'nowpayments' && isUnderMinimum) {
-      onMethodChange('manual');
-    }
-  }, [selectedMethod, onMethodChange, isUnderMinimum]);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">
-          {language === 'fa' ? 'روش پرداخت' : 'Payment Method'}
-        </h3>
+      <h3 className="text-lg font-semibold">
+        {language === 'fa' ? 'روش پرداخت را انتخاب کنید' : 'Choose Payment Method'}
+      </h3>
+      
+      <div className="grid gap-4 md:grid-cols-2">
+        {paymentMethods.map((method) => {
+          const Icon = method.icon;
+          const isSelected = selectedMethod === method.id;
+          
+          return (
+            <Card 
+              key={method.id}
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                isSelected ? 'ring-2 ring-blue-500 shadow-lg' : ''
+              } ${!method.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => method.available && onMethodChange(method.id)}
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Icon className="w-4 h-4" />
+                  {method.name}
+                  {isSelected && <span className="text-blue-500">✓</span>}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  {method.description}
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent className="pt-2">
+                <Button 
+                  variant={isSelected ? "default" : "outline"} 
+                  size="sm"
+                  className="w-full"
+                  disabled={!method.available}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (method.available) onMethodChange(method.id);
+                  }}
+                >
+                  {isSelected ? 
+                    (language === 'fa' ? 'انتخاب شده' : 'Selected') : 
+                    (language === 'fa' ? 'انتخاب' : 'Select')
+                  }
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
       
-      <RadioGroup value={selectedMethod} onValueChange={onMethodChange}>
-        <div className="grid gap-3">
-          {paymentMethods.map((method) => {
-            const Icon = method.icon;
-            const isDisabled = method.disabled;
-            const isNowPaymentsUnderLimit = method.id === 'nowpayments' && isUnderMinimum;
-            
-            return (
-              <div key={method.id}>
-                <Label
-                  htmlFor={method.id}
-                  className={`cursor-pointer ${isDisabled ? 'cursor-not-allowed' : ''}`}
-                >
-                  <Card className={`transition-all duration-200 ${
-                    isDisabled 
-                      ? 'opacity-50 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700' 
-                      : 'hover:shadow-md'
-                  } ${
-                    selectedMethod === method.id && !isDisabled
-                      ? 'ring-2 ring-primary border-primary' 
-                      : 'border-border'
-                  }`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center space-x-3 space-x-reverse">
-                        <RadioGroupItem 
-                          value={method.id} 
-                          id={method.id} 
-                          disabled={isDisabled}
-                          className={isDisabled ? 'opacity-50' : ''}
-                        />
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`text-2xl ${isDisabled ? 'grayscale' : ''}`}>
-                            {method.logo}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`font-medium ${isDisabled ? 'text-gray-400' : ''}`}>
-                                {language === 'fa' ? method.nameFa : method.nameEn}
-                              </span>
-                              <Badge variant="outline" className="text-xs">
-                                {method.currency}
-                              </Badge>
-                              {isDisabled && (
-                                <Badge variant="destructive" className="text-xs">
-                                  {language === 'fa' ? 'غیرفعال' : 'Disabled'}
-                                </Badge>
-                              )}
-                              {isNowPaymentsUnderLimit && (
-                                <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800">
-                                  {language === 'fa' ? 'حداقل ۱۰ دلار' : 'Min $10'}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className={`text-sm ${isDisabled ? 'text-gray-400' : 'text-muted-foreground'}`}>
-                              {language === 'fa' ? method.descriptionFa : method.descriptionEn}
-                              {method.id === 'zarinpal' && isDisabled && (
-                                <span className="block text-xs mt-1">
-                                  {language === 'fa' 
-                                    ? 'موقتاً غیرفعال - لطفاً روش دیگری انتخاب کنید' 
-                                    : 'Temporarily disabled - please choose another method'
-                                  }
-                                </span>
-                              )}
-                              {isNowPaymentsUnderLimit && (
-                                <span className="block text-xs mt-1">
-                                  {language === 'fa' 
-                                    ? 'حداقل مبلغ ۱۰ دلار - لطفاً روش دیگری انتخاب کنید' 
-                                    : 'Minimum $10 required - please choose another method'
-                                  }
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <span className={`font-bold ${isDisabled ? 'text-gray-400' : 'text-primary'}`}>
-                              {formatAmount(method.id)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Label>
-              </div>
-            );
-          })}
-        </div>
-      </RadioGroup>
+      <div className="text-sm text-muted-foreground text-center">
+        {language === 'fa' ? 
+          `مبلغ قابل پرداخت: ${amount.toLocaleString()} تومان` : 
+          `Amount to pay: ${amount.toLocaleString()} Toman`
+        }
+      </div>
     </div>
   );
 };
