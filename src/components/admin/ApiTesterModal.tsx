@@ -21,12 +21,16 @@ interface ApiTesterModalProps {
 }
 
 export const ApiTesterModal = ({ isOpen, onClose, selectedPanel }: ApiTesterModalProps) => {
-  const [activeTab, setActiveTab] = useState(selectedPanel?.type || 'marzban');
+  const [activeTab, setActiveTab] = useState<'marzban' | 'marzneshin'>(selectedPanel?.type || 'marzban');
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       onClose();
     }
+  };
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as 'marzban' | 'marzneshin');
   };
 
   return (
@@ -44,7 +48,7 @@ export const ApiTesterModal = ({ isOpen, onClose, selectedPanel }: ApiTesterModa
           </DialogDescription>
         </DialogHeader>
         
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="marzban">Marzban API</TabsTrigger>
             <TabsTrigger value="marzneshin">Marzneshin API</TabsTrigger>
