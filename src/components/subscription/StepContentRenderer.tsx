@@ -6,15 +6,17 @@ import SubscriptionSuccess from '@/components/SubscriptionSuccess';
 import PlanSelection from './PlanSelection';
 import UserDetailsForm from './UserDetailsForm';
 import { FormData, StepNumber, SubscriptionResponse } from './types';
+import { DiscountCode } from '@/types/subscription';
 
 interface StepContentRendererProps {
   currentStep: StepNumber;
   formData: FormData;
-  appliedDiscount: any;
+  appliedDiscount: DiscountCode | null;
   result: SubscriptionResponse | null;
   subscriptionId: string;
   calculateTotalPrice: () => number;
   onUpdateFormData: (field: keyof FormData, value: any) => void;
+  onDiscountApply: (discount: DiscountCode | null) => void;
   onPaymentSuccess: (subscriptionUrl?: string) => void;
   onPrevious: () => void;
 }
@@ -27,6 +29,7 @@ const StepContentRenderer = ({
   subscriptionId,
   calculateTotalPrice,
   onUpdateFormData,
+  onDiscountApply,
   onPaymentSuccess,
   onPrevious
 }: StepContentRendererProps) => {
@@ -85,6 +88,8 @@ const StepContentRenderer = ({
           onMethodChange={(method) => onUpdateFormData('paymentMethod', method)}
           subscriptionId={subscriptionId}
           onPaymentSuccess={onPaymentSuccess}
+          appliedDiscount={appliedDiscount}
+          onDiscountApply={onDiscountApply}
         />
       </div>
     );
