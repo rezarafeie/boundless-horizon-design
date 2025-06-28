@@ -53,6 +53,8 @@ const ZarinpalPayment = ({ amount, mobile, subscriptionId, onPaymentStart, isSub
         subscription_id: subscriptionId
       });
 
+      console.log('Zarinpal payment response:', response);
+
       if (!response.success) {
         let errorMessage = response.error || 'Payment request failed';
         
