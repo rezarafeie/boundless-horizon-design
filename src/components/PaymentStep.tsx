@@ -71,7 +71,7 @@ const PaymentStep = ({
             isSubmitting={isSubmitting}
           />
         );
-      case 'nowpayments':
+      case 'crypto':
         return (
           <CryptoPaymentForm
             amount={amount}
@@ -91,7 +91,6 @@ const PaymentStep = ({
       <PaymentMethodSelector
         selectedMethod={selectedMethod}
         onMethodChange={onMethodChange}
-        amount={amount}
       />
       
       {/* Discount Field */}
