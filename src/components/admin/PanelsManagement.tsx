@@ -8,13 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Edit, Trash2, Server, CheckCircle, XCircle, AlertCircle, Settings } from 'lucide-react';
+import { Plus, Edit, Trash2, Server, CheckCircle, XCircle, AlertCircle, Settings, TestTube } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { PanelTestConnection } from './PanelTestConnection';
 import { PanelTestHistory } from './PanelTestHistory';
 import { PanelProtocolSelector } from './PanelProtocolSelector';
 import { PanelRefreshButton } from './PanelRefreshButton';
 import { MarzneshinApiTester } from './MarzneshinApiTester';
+import { ApiTesterModal } from './ApiTesterModal';
 
 interface Panel {
   id: string;
@@ -39,6 +40,8 @@ export const PanelsManagement = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPanel, setEditingPanel] = useState<Panel | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'failed'>('all');
+  const [isApiTesterOpen, setIsApiTesterOpen] = useState(false);
+  const [selectedPanelForTesting, setSelectedPanelForTesting] = useState<Panel | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -171,6 +174,11 @@ export const PanelsManagement = () => {
     }
   };
 
+  const openApiTester = (panel?: Panel) => {
+    setSelectedPanelForTesting(panel || null);
+    setIsApiTesterOpen(true);
+  };
+
   const getHealthStatusIcon = (status: string) => {
     switch (status) {
       case 'online':
@@ -230,6 +238,14 @@ export const PanelsManagement = () => {
             <p className="text-gray-600">Manage your panel servers and test their connectivity</p>
           </div>
           <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => openApiTester()}
+              className="flex items-center gap-2"
+            >
+              <TestTube className="w-4 h-4" />
+              API Endpoint Tester
+            </Button>
             <Select value={filterStatus} onValueChange={(value: 'all' | 'failed') => setFilterStatus(value)}>
               <SelectTrigger className="w-48">
                 <SelectValue />
@@ -417,6 +433,14 @@ export const PanelsManagement = () => {
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => openApiTester(panel)}
+                        title="Test API Endpoints"
+                      >
+                        <TestTube className="w-4 h-4" />
+                      </Button>
                       <Button variant="outline" size="sm" onClick={() => handleEdit(panel)}>
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -487,6 +511,13 @@ export const PanelsManagement = () => {
           )}
         </div>
       </Card>
+
+      {/* API Tester Modal */}
+      <ApiTesterModal
+        isOpen={isApiTesterOpen}
+        onClose={() => setIsApiTesterOpen(false)}
+        selectedPanel={selectedPanelForTesting}
+      />
     </div>
   );
 };

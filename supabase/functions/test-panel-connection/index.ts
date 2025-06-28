@@ -1,5 +1,4 @@
 
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -66,7 +65,7 @@ serve(async (req) => {
     let requestBody;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const bodyText = await req.text();
       clearTimeout(timeoutId);
@@ -273,6 +272,9 @@ serve(async (req) => {
       addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzban authentication with JSON payload');
 
       try {
+        const authController = new AbortController();
+        const authTimeoutId = setTimeout(() => authController.abort(), 15000);
+
         const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
           method: 'POST',
           headers: {
@@ -284,22 +286,174 @@ serve(async (req) => {
             username: panel.username,
             password: panel.password,
           }),
+          signal: authController.signal
         });
 
-        if (authResponse.ok) {
-          const authData = await authResponse.json();
-          token = authData.access_token;
-          
-          if (token) {
-            testResult.authentication = {
-              success: true,
-              tokenReceived: true,
-              tokenType: authData.token_type || 'bearer'
-            };
-          }
+        clearTimeout(authTimeoutId);
+
+        addLog(detailedLogs, 'Authentication', 'info', `Marzban Auth response`, {
+          status: authResponse.status,
+          statusText: authResponse.statusText,
+          ok: authResponse.ok
+        });
+
+        if (!authResponse.ok) {
+          const errorText = await authResponse.text();
+          addLog(detailedLogs, 'Authentication', 'error', 'Marzban authentication failed', {
+            status: authResponse.status,
+            statusText: authResponse.statusText,
+            responseBody: errorText
+          });
+          throw new Error(`Marzban auth failed: ${authResponse.status} - ${errorText}`);
         }
+
+        const authData = await authResponse.json();
+        token = authData.access_token;
+        
+        if (!token) {
+          throw new Error('No access token in Marzban response');
+        }
+
+        addLog(detailedLogs, 'Authentication', 'success', 'Marzban Authentication successful', {
+          hasAccessToken: !!token,
+          tokenType: authData.token_type || 'bearer',
+          tokenLength: token.length
+        });
+
+        testResult.authentication = {
+          success: true,
+          tokenReceived: true,
+          tokenType: authData.token_type || 'bearer'
+        };
+
+        // Create test user for Marzban
+        const isActualUserCreation = createUser && userData;
+        const targetUsername = isActualUserCreation ? userData.username : `test_${Date.now()}`;
+        const targetDataLimit = isActualUserCreation ? userData.dataLimitGB : 1;
+        const targetDuration = isActualUserCreation ? userData.durationDays : 1;
+        const targetNotes = isActualUserCreation ? 
+          'Created via bnets.co - Subscription' : 
+          'Test user - will be deleted';
+
+        addLog(detailedLogs, 'User Creation', 'info', `${isActualUserCreation ? 'Creating actual Marzban user' : 'Creating Marzban test user'}: ${targetUsername}`);
+
+        // Calculate expire timestamp for Marzban (Unix timestamp)
+        const expireTimestamp = Math.floor((Date.now() + (targetDuration * 24 * 60 * 60 * 1000)) / 1000);
+
+        // Build Marzban user payload
+        const userPayload = {
+          username: targetUsername,
+          proxies: {},
+          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
+          expire: expireTimestamp, // Unix timestamp
+          data_limit_reset_strategy: "no_reset",
+          status: "active",
+          note: targetNotes,
+          on_hold_timeout: "2023-11-03T20:30:00",
+          on_hold_expire_duration: 0
+        };
+
+        addLog(detailedLogs, 'User Creation Debug', 'info', 'Marzban user payload prepared', {
+          username: userPayload.username,
+          dataLimitGB: targetDataLimit,
+          durationDays: targetDuration,
+          expireTimestamp: expireTimestamp,
+          expireDate: new Date(expireTimestamp * 1000).toISOString()
+        });
+
+        try {
+          const createController = new AbortController();
+          const createTimeoutId = setTimeout(() => createController.abort(), 15000);
+
+          const createResponse = await fetch(`${panel.panel_url}/api/user`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(userPayload),
+            signal: createController.signal
+          });
+
+          clearTimeout(createTimeoutId);
+
+          addLog(detailedLogs, 'User Creation', 'info', 'Marzban user creation response', {
+            status: createResponse.status,
+            statusText: createResponse.statusText,
+            ok: createResponse.ok
+          });
+
+          if (!createResponse.ok) {
+            const errorText = await createResponse.text();
+            addLog(detailedLogs, 'User Creation', 'error', `Marzban user creation failed: ${createResponse.status}`, {
+              errorText: errorText
+            });
+            throw new Error(`Marzban user creation failed: ${createResponse.status} - ${errorText}`);
+          }
+
+          const createdUserData = await createResponse.json();
+          
+          addLog(detailedLogs, 'User Creation', 'success', `Marzban user created successfully`, {
+            username: createdUserData.username,
+            hasSubscriptionUrl: !!createdUserData.subscription_url,
+            expire: createdUserData.expire
+          });
+
+          testResult.userCreation = {
+            success: true,
+            username: createdUserData.username,
+            subscriptionUrl: createdUserData.subscription_url,
+            expire: createdUserData.expire,
+            dataLimit: createdUserData.data_limit
+          };
+
+          // If this is a test (not actual user creation), clean up by deleting the test user
+          if (!isActualUserCreation) {
+            addLog(detailedLogs, 'Cleanup', 'info', `Deleting Marzban test user: ${targetUsername}`);
+
+            try {
+              const deleteController = new AbortController();
+              const deleteTimeoutId = setTimeout(() => deleteController.abort(), 10000);
+
+              const deleteResponse = await fetch(`${panel.panel_url}/api/user/${targetUsername}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/json'
+                },
+                signal: deleteController.signal
+              });
+
+              clearTimeout(deleteTimeoutId);
+
+              if (deleteResponse.ok) {
+                addLog(detailedLogs, 'Cleanup', 'success', 'Marzban test user deleted successfully');
+              } else {
+                addLog(detailedLogs, 'Cleanup', 'error', 'Failed to delete Marzban test user (non-critical)', {
+                  status: deleteResponse.status,
+                  statusText: deleteResponse.statusText
+                });
+              }
+            } catch (deleteError) {
+              addLog(detailedLogs, 'Cleanup', 'error', 'Delete Marzban test user exception (non-critical)', {
+                error: deleteError.message
+              });
+            }
+          }
+
+          testResult.success = true;
+        } catch (userCreateError) {
+          addLog(detailedLogs, 'User Creation', 'error', `Marzban user creation exception: ${userCreateError.message}`);
+          throw userCreateError;
+        }
+
       } catch (authError) {
-        addLog(detailedLogs, 'Authentication', 'error', 'Marzban authentication failed', { error: authError.message });
+        addLog(detailedLogs, 'Authentication', 'error', 'Marzban authentication failed', {
+          error: authError.message,
+          name: authError.name,
+          isTimeoutError: authError.name === 'AbortError'
+        });
         throw new Error(`Marzban authentication failed: ${authError.message}`);
       }
 
@@ -542,8 +696,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify(errorResult), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200, // Return 200 instead of 500 to avoid "non-2xx status code" error
+      status: 200,
     });
   }
 });
-
