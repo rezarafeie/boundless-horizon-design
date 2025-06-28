@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -224,68 +225,149 @@ serve(async (req) => {
       throw error;
     }
 
-    // Step 2: Get template user configuration (usually 'reza')
+    // Step 2: Get template user configuration (usually 'reza') with enhanced fallback logic
     console.log('🔵 [MARZBAN-CREATE-USER] Fetching template user configuration...');
     
-    const templateUserResponse = await fetch(`${panelConfig.panel_url}/api/user/reza`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
-
-    console.log('🔵 [MARZBAN-CREATE-USER] Template user response:', {
-      status: templateUserResponse.status,
-      statusText: templateUserResponse.statusText,
-      ok: templateUserResponse.ok
-    });
-
-    if (!templateUserResponse.ok) {
-      const errorText = await templateUserResponse.text();
-      console.error('❌ [MARZBAN-CREATE-USER] Template user fetch failed:', {
-        status: templateUserResponse.status,
-        errorText: errorText
+    let templateUser = null;
+    
+    try {
+      const templateUserResponse = await fetch(`${panelConfig.panel_url}/api/user/reza`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
       });
+
+      console.log('🔵 [MARZBAN-CREATE-USER] Template user response:', {
+        status: templateUserResponse.status,
+        statusText: templateUserResponse.statusText,
+        ok: templateUserResponse.ok
+      });
+
+      if (templateUserResponse.ok) {
+        templateUser = await templateUserResponse.json();
+        console.log('🟢 [MARZBAN-CREATE-USER] Template user fetched successfully:', {
+          username: templateUser.username,
+          hasProxies: !!templateUser.proxies,
+          proxiesCount: Object.keys(templateUser.proxies || {}).length,
+          hasInbounds: !!templateUser.inbounds,
+          inboundsCount: Object.keys(templateUser.inbounds || {}).length
+        });
+
+        // Validate template user has required proxy data
+        if (!templateUser.proxies && !templateUser.inbounds) {
+          console.error('⚠️ [MARZBAN-CREATE-USER] Template user has no proxy or inbound data, will use fallback');
+          templateUser = null;
+        }
+      } else {
+        const errorText = await templateUserResponse.text();
+        console.error('⚠️ [MARZBAN-CREATE-USER] Template user fetch failed, will use fallback:', {
+          status: templateUserResponse.status,
+          errorText: errorText
+        });
+      }
+    } catch (error) {
+      console.error('⚠️ [MARZBAN-CREATE-USER] Template user fetch exception, will use fallback:', error.message);
+    }
+
+    // Step 3: Create the new user with proper proxy configuration
+    const dataLimitBytes = dataLimitGB * 1073741824; // Convert GB to bytes
+    const expireTimestamp = Math.floor(Date.now() / 1000) + (durationDays * 24 * 60 * 60);
+
+    let newUserData;
+
+    if (templateUser && (templateUser.proxies || templateUser.inbounds)) {
+      // Use template user configuration
+      newUserData = {
+        username: username,
+        proxies: templateUser.proxies || {},
+        inbounds: templateUser.inbounds || {},
+        expire: expireTimestamp,
+        data_limit: dataLimitBytes,
+        data_limit_reset_strategy: templateUser.data_limit_reset_strategy || "no_reset",
+        excluded_inbounds: templateUser.excluded_inbounds || {},
+        note: notes || `Created via bnets.co - Subscription`,
+        status: "active"
+      };
+
+      console.log('🟢 [MARZBAN-CREATE-USER] Using template user proxy configuration:', {
+        proxiesCount: Object.keys(templateUser.proxies || {}).length,
+        inboundsCount: Object.keys(templateUser.inbounds || {}).length
+      });
+    } else if (enabledProtocols && Array.isArray(enabledProtocols) && enabledProtocols.length > 0) {
+      // Use dynamic proxies from enabled protocols
+      const proxies: Record<string, {}> = {};
+      enabledProtocols.forEach(protocol => {
+        proxies[protocol] = {};
+      });
+
+      newUserData = {
+        username: username,
+        proxies: proxies,
+        expire: expireTimestamp,
+        data_limit: dataLimitBytes,
+        data_limit_reset_strategy: "no_reset",
+        note: notes || `Created via bnets.co - Subscription`,
+        status: "active"
+      };
+
+      console.log('🟢 [MARZBAN-CREATE-USER] Using dynamic proxies from enabled protocols:', {
+        enabledProtocols: enabledProtocols,
+        proxiesCount: Object.keys(proxies).length
+      });
+    } else if (panelConfig.panel_config_data?.inbounds) {
+      // Use stored panel inbound data
+      const storedInbounds = panelConfig.panel_config_data.inbounds;
+      const inbounds: Record<string, {}> = {};
       
-      // Log the failure
+      storedInbounds.forEach((inbound: any) => {
+        if (inbound.tag) {
+          inbounds[inbound.tag] = {};
+        }
+      });
+
+      newUserData = {
+        username: username,
+        proxies: {},
+        inbounds: inbounds,
+        expire: expireTimestamp,
+        data_limit: dataLimitBytes,
+        data_limit_reset_strategy: "no_reset",
+        note: notes || `Created via bnets.co - Subscription`,
+        status: "active"
+      };
+
+      console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbound data:', {
+        inboundsCount: Object.keys(inbounds).length,
+        storedInboundsCount: storedInbounds.length
+      });
+    } else {
+      // Last resort fallback - use minimal proxy configuration
+      newUserData = {
+        username: username,
+        proxies: { "vless": {} }, // Minimal proxy config to satisfy Marzban requirements
+        expire: expireTimestamp,
+        data_limit: dataLimitBytes,
+        data_limit_reset_strategy: "no_reset",
+        note: notes || `Created via bnets.co - Subscription`,
+        status: "active"
+      };
+
+      console.log('⚠️ [MARZBAN-CREATE-USER] Using minimal fallback proxy configuration');
+      
+      // Log this as a warning for future debugging
       await supabase.from('user_creation_logs').insert({
         subscription_id: subscriptionId,
         panel_id: panelConfig.id,
         edge_function_name: 'marzban-create-user',
         request_data: requestData,
         success: false,
-        error_message: `Template user fetch failed: ${templateUserResponse.status} - ${errorText}`,
+        error_message: 'WARNING: Used minimal fallback proxy config - template user not available',
         panel_url: panelConfig.panel_url,
         panel_name: panelConfig.name
       });
-      
-      throw new Error(`Template user fetch failed: ${templateUserResponse.status} - ${errorText}`);
     }
-
-    const templateUser = await templateUserResponse.json();
-    console.log('🟢 [MARZBAN-CREATE-USER] Template user fetched successfully:', {
-      username: templateUser.username,
-      hasProxies: !!templateUser.proxies,
-      proxiesCount: templateUser.proxies?.length || 0,
-      hasInbounds: !!templateUser.inbounds
-    });
-
-    // Step 3: Create the new user with template configuration
-    const dataLimitBytes = dataLimitGB * 1073741824; // Convert GB to bytes
-    const expireTimestamp = Math.floor(Date.now() / 1000) + (durationDays * 24 * 60 * 60);
-
-    const newUserData = {
-      username: username,
-      proxies: templateUser.proxies || {},
-      expire: expireTimestamp,
-      data_limit: dataLimitBytes,
-      data_limit_reset_strategy: templateUser.data_limit_reset_strategy || "no_reset",
-      inbounds: templateUser.inbounds || {},
-      note: notes || `Created via bnets.co - Subscription`,
-      status: "active",
-      excluded_inbounds: templateUser.excluded_inbounds || {}
-    };
 
     console.log('🔵 [MARZBAN-CREATE-USER] Creating user with data:', {
       username: newUserData.username,
@@ -293,8 +375,10 @@ serve(async (req) => {
       dataLimitGB: dataLimitGB,
       dataLimitBytes: dataLimitBytes,
       panelUrl: panelConfig.panel_url,
-      hasProxies: !!newUserData.proxies,
-      hasInbounds: !!newUserData.inbounds
+      hasProxies: !!newUserData.proxies && Object.keys(newUserData.proxies).length > 0,
+      hasInbounds: !!newUserData.inbounds && Object.keys(newUserData.inbounds).length > 0,
+      proxiesCount: Object.keys(newUserData.proxies || {}).length,
+      inboundsCount: Object.keys(newUserData.inbounds || {}).length
     });
 
     const createUserResponse = await fetch(`${panelConfig.panel_url}/api/user`, {

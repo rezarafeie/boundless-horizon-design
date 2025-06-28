@@ -327,6 +327,39 @@ serve(async (req) => {
           tokenType: authData.token_type || 'bearer'
         };
 
+        // Fetch template user configuration for proxy data
+        addLog(detailedLogs, 'Template Fetch', 'info', 'Fetching template user configuration for proxy data');
+        
+        let templateUser = null;
+        try {
+          const templateUserResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          });
+
+          if (templateUserResponse.ok) {
+            templateUser = await templateUserResponse.json();
+            addLog(detailedLogs, 'Template Fetch', 'success', 'Template user fetched successfully', {
+              username: templateUser.username,
+              hasProxies: !!templateUser.proxies,
+              hasInbounds: !!templateUser.inbounds,
+              proxiesCount: Object.keys(templateUser.proxies || {}).length,
+              inboundsCount: Object.keys(templateUser.inbounds || {}).length
+            });
+          } else {
+            addLog(detailedLogs, 'Template Fetch', 'error', 'Template user fetch failed, will use fallback', {
+              status: templateUserResponse.status
+            });
+          }
+        } catch (templateError) {
+          addLog(detailedLogs, 'Template Fetch', 'error', 'Template user fetch exception, will use fallback', {
+            error: templateError.message
+          });
+        }
+
         // Create test user for Marzban
         const isActualUserCreation = createUser && userData;
         const targetUsername = isActualUserCreation ? userData.username : `test_${Date.now()}`;
@@ -341,25 +374,96 @@ serve(async (req) => {
         // Calculate expire timestamp for Marzban (Unix timestamp)
         const expireTimestamp = Math.floor((Date.now() + (targetDuration * 24 * 60 * 60 * 1000)) / 1000);
 
-        // Build Marzban user payload
-        const userPayload = {
-          username: targetUsername,
-          proxies: {},
-          data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
-          expire: expireTimestamp, // Unix timestamp
-          data_limit_reset_strategy: "no_reset",
-          status: "active",
-          note: targetNotes,
-          on_hold_timeout: "2023-11-03T20:30:00",
-          on_hold_expire_duration: 0
-        };
+        // Build Marzban user payload with proper proxy configuration
+        let userPayload;
+        
+        if (templateUser && (templateUser.proxies || templateUser.inbounds)) {
+          // Use template user proxy/inbound configuration
+          userPayload = {
+            username: targetUsername,
+            proxies: templateUser.proxies || {},
+            inbounds: templateUser.inbounds || {},
+            data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
+            expire: expireTimestamp, // Unix timestamp
+            data_limit_reset_strategy: templateUser.data_limit_reset_strategy || "no_reset",
+            status: "active",
+            note: targetNotes,
+            excluded_inbounds: templateUser.excluded_inbounds || {}
+          };
+
+          addLog(detailedLogs, 'User Creation Debug', 'info', 'Using template user proxy configuration', {
+            proxiesUsed: Object.keys(templateUser.proxies || {}).length > 0,
+            inboundsUsed: Object.keys(templateUser.inbounds || {}).length > 0
+          });
+        } else if (dynamicProxies && enabledProtocols) {
+          // Use dynamic proxies from enabled protocols
+          const proxies: Record<string, {}> = {};
+          enabledProtocols.forEach((protocol: string) => {
+            proxies[protocol] = {};
+          });
+
+          userPayload = {
+            username: targetUsername,
+            proxies: proxies,
+            data_limit: targetDataLimit * 1024 * 1024 * 1024,
+            expire: expireTimestamp,
+            data_limit_reset_strategy: "no_reset",
+            status: "active",
+            note: targetNotes
+          };
+
+          addLog(detailedLogs, 'User Creation Debug', 'info', 'Using dynamic proxies from enabled protocols', {
+            enabledProtocols: enabledProtocols,
+            proxiesCount: Object.keys(proxies).length
+          });
+        } else {
+          // Fallback - use stored panel inbound data or default
+          const storedInbounds = panel.panel_config_data?.inbounds || [];
+          
+          if (storedInbounds.length > 0) {
+            userPayload = {
+              username: targetUsername,
+              proxies: {},
+              inbounds: storedInbounds.reduce((acc: Record<string, {}>, inbound: any) => {
+                acc[inbound.tag] = {};
+                return acc;
+              }, {}),
+              data_limit: targetDataLimit * 1024 * 1024 * 1024,
+              expire: expireTimestamp,
+              data_limit_reset_strategy: "no_reset",
+              status: "active",
+              note: targetNotes
+            };
+
+            addLog(detailedLogs, 'User Creation Debug', 'info', 'Using stored panel inbound data as fallback', {
+              inboundsCount: storedInbounds.length
+            });
+          } else {
+            // Last resort fallback - create with minimal proxy config
+            userPayload = {
+              username: targetUsername,
+              proxies: { "vless": {} }, // Minimal proxy config
+              data_limit: targetDataLimit * 1024 * 1024 * 1024,
+              expire: expireTimestamp,
+              data_limit_reset_strategy: "no_reset",
+              status: "active",
+              note: targetNotes
+            };
+
+            addLog(detailedLogs, 'User Creation Debug', 'info', 'Using minimal fallback proxy configuration', {
+              fallbackProxy: 'vless'
+            });
+          }
+        }
 
         addLog(detailedLogs, 'User Creation Debug', 'info', 'Marzban user payload prepared', {
           username: userPayload.username,
           dataLimitGB: targetDataLimit,
           durationDays: targetDuration,
           expireTimestamp: expireTimestamp,
-          expireDate: new Date(expireTimestamp * 1000).toISOString()
+          expireDate: new Date(expireTimestamp * 1000).toISOString(),
+          hasProxies: Object.keys(userPayload.proxies || {}).length > 0,
+          hasInbounds: Object.keys(userPayload.inbounds || {}).length > 0
         });
 
         try {
@@ -554,21 +658,19 @@ serve(async (req) => {
         'Created via bnets.co - Subscription' : 
         'Test user - will be deleted';
 
-      // Calculate expire_date for fixed_date strategy
       const expireDate = new Date();
       expireDate.setDate(expireDate.getDate() + targetDuration);
       const expireDateISO = expireDate.toISOString().split('T')[0] + 'T00:00:00';
 
       addLog(detailedLogs, 'User Creation', 'info', `${isActualUserCreation ? 'Creating actual Marzneshin user' : 'Creating Marzneshin test user'}: ${targetUsername}`);
 
-      // Build Marzneshin user payload
       const userPayload = {
         username: targetUsername,
-        data_limit: targetDataLimit * 1024 * 1024 * 1024, // Convert GB to bytes
-        usage_duration: targetDuration * 24 * 60 * 60, // Convert days to seconds
+        data_limit: targetDataLimit * 1024 * 1024 * 1024,
+        usage_duration: targetDuration * 24 * 60 * 60,
         expire_strategy: "fixed_date",
-        expire_date: expireDateISO, // Add required expire_date field
-        service_ids: [1], // Default service ID
+        expire_date: expireDateISO,
+        service_ids: [1],
         note: targetNotes
       };
 
@@ -621,7 +723,6 @@ serve(async (req) => {
           dataLimit: createdUserData.data_limit
         };
 
-        // If this is a test (not actual user creation), clean up by deleting the test user
         if (!isActualUserCreation) {
           addLog(detailedLogs, 'Cleanup', 'info', `Deleting Marzneshin test user: ${targetUsername}`);
 
