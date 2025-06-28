@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -14,6 +13,7 @@ import { useSubscriptionSubmit } from '@/hooks/useSubscriptionSubmit';
 
 interface SubscriptionFormData {
   mobile: string;
+  email: string;
   username: string;
   dataVolume: string;
   duration: string;
@@ -37,6 +37,7 @@ const SubscriptionForm = () => {
   
   const [formData, setFormData] = useState<SubscriptionFormData>({
     mobile: '',
+    email: '',
     username: '',
     dataVolume: '',
     duration: '',
@@ -83,7 +84,7 @@ const SubscriptionForm = () => {
   };
 
   const validateForm = () => {
-    if (!formData.mobile || !formData.username || !formData.dataVolume || 
+    if (!formData.mobile || !formData.email || !formData.username || !formData.dataVolume || 
         !formData.duration || !formData.protocol || !formData.location) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
@@ -98,6 +99,16 @@ const SubscriptionForm = () => {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'لطفاً شماره موبایل معتبری وارد کنید (مثال: 09123456789)' : 'Please enter a valid mobile number (example: 09123456789)',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'لطفاً ایمیل معتبری وارد کنید' : 'Please enter a valid email address',
         variant: 'destructive'
       });
       return false;
@@ -125,6 +136,7 @@ const SubscriptionForm = () => {
       const subscriptionData = {
         username: formData.username,
         mobile: formData.mobile,
+        email: formData.email,
         dataLimit: selectedDataVolume.gb,
         duration: selectedDuration.days,
         protocol: formData.protocol,
@@ -340,18 +352,32 @@ const SubscriptionForm = () => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="username">
-                    {language === 'fa' ? 'نام کاربری' : 'Username'} *
+                  <Label htmlFor="email">
+                    {language === 'fa' ? 'ایمیل' : 'Email'} *
                   </Label>
                   <Input
-                    id="username"
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value)}
-                    placeholder={language === 'fa' ? 'نام کاربری دلخواه' : 'Choose username'}
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    placeholder={language === 'fa' ? 'your@email.com' : 'your@email.com'}
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="username">
+                  {language === 'fa' ? 'نام کاربری' : 'Username'} *
+                </Label>
+                <Input
+                  id="username"
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => handleInputChange('username', e.target.value)}
+                  placeholder={language === 'fa' ? 'نام کاربری دلخواه' : 'Choose username'}
+                  required
+                />
               </div>
             </div>
 

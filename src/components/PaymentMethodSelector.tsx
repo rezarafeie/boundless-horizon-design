@@ -1,110 +1,105 @@
 
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { CreditCard, Coins, Receipt, Banknote } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { CreditCard, Smartphone, Bitcoin, FileText } from 'lucide-react';
 
-export type PaymentMethod = 'manual' | 'stripe' | 'nowpayments' | 'zarinpal';
+export type PaymentMethod = 'zarinpal' | 'stripe' | 'crypto' | 'manual';
 
 interface PaymentMethodSelectorProps {
   selectedMethod: PaymentMethod;
   onMethodChange: (method: PaymentMethod) => void;
-  amount: number;
 }
 
-const PaymentMethodSelector = ({ selectedMethod, onMethodChange, amount }: PaymentMethodSelectorProps) => {
-  const { language } = useLanguage();
+const paymentMethods = [
+  {
+    id: 'zarinpal' as PaymentMethod,
+    titleEn: 'ZarinPal',
+    titleFa: 'زرین‌پال',
+    descriptionEn: 'Pay with Iranian bank cards',
+    descriptionFa: 'پرداخت با کارت‌های بانکی ایرانی',
+    icon: CreditCard,
+    available: true
+  },
+  {
+    id: 'stripe' as PaymentMethod,
+    titleEn: 'Credit Card',
+    titleFa: 'کارت اعتباری',
+    descriptionEn: 'Pay with international credit cards',
+    descriptionFa: 'پرداخت با کارت‌های اعتباری بین‌المللی',
+    icon: CreditCard,
+    available: true
+  },
+  {
+    id: 'crypto' as PaymentMethod,
+    titleEn: 'Cryptocurrency',
+    titleFa: 'ارز دیجیتال',
+    descriptionEn: 'Pay with Bitcoin, Ethereum, etc.',
+    descriptionFa: 'پرداخت با بیت کوین، اتریوم و غیره',
+    icon: Bitcoin,
+    available: true
+  },
+  {
+    id: 'manual' as PaymentMethod,
+    titleEn: 'Manual Payment',
+    titleFa: 'پرداخت دستی',
+    descriptionEn: 'Bank transfer or cash deposit',
+    descriptionFa: 'انتقال بانکی یا واریز نقدی',
+    icon: FileText,
+    available: true
+  }
+];
 
-  const paymentMethods = [
-    {
-      id: 'manual' as PaymentMethod,
-      name: language === 'fa' ? 'پرداخت دستی' : 'Manual Payment',
-      description: language === 'fa' ? 'پرداخت از طریق کارت به کارت' : 'Payment via card to card transfer',
-      icon: Receipt,
-      available: true,
-    },
-    {
-      id: 'zarinpal' as PaymentMethod,
-      name: language === 'fa' ? 'زرین‌پال' : 'Zarinpal',
-      description: language === 'fa' ? 'پرداخت امن با زرین‌پال' : 'Secure payment with Zarinpal',
-      icon: Banknote,
-      available: true,
-    },
-    {
-      id: 'stripe' as PaymentMethod,
-      name: language === 'fa' ? 'پرداخت با ویزا و مستر کارت و اپل پی و گوگل پی' : 'Visa, Mastercard, Apple Pay & Google Pay',
-      description: language === 'fa' ? 'پرداخت با کارت‌های بین‌المللی و کیف پول دیجیتال' : 'Pay with international cards and digital wallets',
-      icon: CreditCard,
-      available: true,
-    },
-    {
-      id: 'nowpayments' as PaymentMethod,
-      name: language === 'fa' ? 'ارز دیجیتال' : 'Cryptocurrency',
-      description: language === 'fa' ? 'پرداخت با ارز دیجیتال' : 'Pay with cryptocurrency',
-      icon: Coins,
-      available: true,
-    },
-  ];
+const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
+  selectedMethod,
+  onMethodChange
+}) => {
+  const { language } = useLanguage();
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">
-        {language === 'fa' ? 'روش پرداخت را انتخاب کنید' : 'Choose Payment Method'}
-      </h3>
+      <Label className="text-base font-semibold">
+        {language === 'fa' ? 'روش پرداخت' : 'Payment Method'}
+      </Label>
       
-      <div className="grid gap-4 md:grid-cols-2">
+      <RadioGroup
+        value={selectedMethod}
+        onValueChange={onMethodChange}
+        className="grid grid-cols-1 gap-4"
+      >
         {paymentMethods.map((method) => {
           const Icon = method.icon;
-          const isSelected = selectedMethod === method.id;
           
           return (
-            <Card 
-              key={method.id}
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                isSelected ? 'ring-2 ring-blue-500 shadow-lg' : ''
-              } ${!method.available ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={() => method.available && onMethodChange(method.id)}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Icon className="w-4 h-4" />
-                  {method.name}
-                  {isSelected && <span className="text-blue-500">✓</span>}
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  {method.description}
-                </CardDescription>
-              </CardHeader>
-              
-              <CardContent className="pt-2">
-                <Button 
-                  variant={isSelected ? "default" : "outline"} 
-                  size="sm"
-                  className="w-full"
-                  disabled={!method.available}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (method.available) onMethodChange(method.id);
-                  }}
-                >
-                  {isSelected ? 
-                    (language === 'fa' ? 'انتخاب شده' : 'Selected') : 
-                    (language === 'fa' ? 'انتخاب' : 'Select')
-                  }
-                </Button>
-              </CardContent>
-            </Card>
+            <div key={method.id} className="flex items-center space-x-3 space-x-reverse">
+              <RadioGroupItem 
+                value={method.id} 
+                id={method.id}
+                disabled={!method.available}
+              />
+              <Label
+                htmlFor={method.id}
+                className={`flex-1 flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${
+                  selectedMethod === method.id 
+                    ? 'border-primary bg-primary/5' 
+                    : 'border-border hover:bg-muted/50'
+                } ${!method.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <Icon className="w-5 h-5" />
+                <div className="flex-1">
+                  <div className="font-medium">
+                    {language === 'fa' ? method.titleFa : method.titleEn}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {language === 'fa' ? method.descriptionFa : method.descriptionEn}
+                  </div>
+                </div>
+              </Label>
+            </div>
           );
         })}
-      </div>
-      
-      <div className="text-sm text-muted-foreground text-center">
-        {language === 'fa' ? 
-          `مبلغ قابل پرداخت: ${amount.toLocaleString()} تومان` : 
-          `Amount to pay: ${amount.toLocaleString()} Toman`
-        }
-      </div>
+      </RadioGroup>
     </div>
   );
 };
