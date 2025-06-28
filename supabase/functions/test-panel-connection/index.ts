@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -269,23 +268,25 @@ serve(async (req) => {
     let token: string;
     
     if (panel.type === 'marzban') {
-      addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzban authentication with JSON payload');
+      addLog(detailedLogs, 'Authentication', 'info', 'Testing Marzban authentication without grant_type');
 
       try {
         const authController = new AbortController();
         const authTimeoutId = setTimeout(() => authController.abort(), 15000);
 
+        // Create URL-encoded form data without grant_type
+        const params = new URLSearchParams();
+        params.append('username', panel.username);
+        params.append('password', panel.password);
+
         const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json',
             'User-Agent': 'Supabase-Edge-Function/1.0'
           },
-          body: JSON.stringify({
-            username: panel.username,
-            password: panel.password,
-          }),
+          body: params.toString(),
           signal: authController.signal
         });
 

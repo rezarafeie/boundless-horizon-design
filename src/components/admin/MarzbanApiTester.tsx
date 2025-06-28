@@ -51,9 +51,8 @@ export const MarzbanApiTester = ({
 
     const startTime = Date.now();
     try {
-      // Use the correct Marzban authentication format with grant_type
+      // Use URL-encoded format without grant_type
       const params = new URLSearchParams();
-      params.append('grant_type', 'password');
       params.append('username', username);
       params.append('password', password);
 
@@ -230,7 +229,7 @@ export const MarzbanApiTester = ({
             Marzban API Configuration
           </CardTitle>
           <CardDescription>
-            Configure Marzban panel connection details for API testing. Uses correct authentication format with grant_type=password and URL-encoded content.
+            Configure Marzban panel connection details for API testing. Uses URL-encoded authentication without grant_type parameter.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -295,7 +294,7 @@ export const MarzbanApiTester = ({
           <CardHeader>
             <CardTitle>Test Results</CardTitle>
             <CardDescription>
-              Results from Marzban API endpoint testing with correct authentication format
+              Results from Marzban API endpoint testing without grant_type parameter
             </CardDescription>
           </CardHeader>
           <CardContent>

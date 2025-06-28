@@ -145,19 +145,17 @@ serve(async (req) => {
       expectedDomain: panelConfig.panel_url.includes('cp.rain.rest') ? 'Plus Panel' : 'Lite Panel'
     });
 
-    // ✅ MARZBAN AUTHENTICATION: Use correct format with grant_type and URL-encoded
-    console.log('🔵 [MARZBAN-CREATE-USER] Attempting Marzban authentication with correct format...');
+    // ✅ MARZBAN AUTHENTICATION: Use URL-encoded format without grant_type
+    console.log('🔵 [MARZBAN-CREATE-USER] Attempting Marzban authentication without grant_type...');
     
     let accessToken = null;
     
     try {
       const params = new URLSearchParams();
-      params.append('grant_type', 'password');
       params.append('username', panelConfig.username);
       params.append('password', panelConfig.password);
 
       console.log('🔵 [MARZBAN-CREATE-USER] Auth request params:', {
-        grant_type: 'password',
         username: panelConfig.username,
         passwordLength: panelConfig.password.length,
         url: `${panelConfig.panel_url}/api/admin/token`
@@ -350,7 +348,7 @@ serve(async (req) => {
       subscriptionDomain,
       panelUsed: panelConfig.name,
       panelUrl: panelConfig.panel_url,
-      authMethod: 'URL-encoded with grant_type',
+      authMethod: 'URL-encoded without grant_type',
       expire: createdUser.expire
     });
 
@@ -364,7 +362,7 @@ serve(async (req) => {
       panel_name: panelConfig.name,
       panel_id: panelConfig.id,
       panel_url: panelConfig.panel_url,
-      auth_method: 'URL-encoded with grant_type'
+      auth_method: 'URL-encoded without grant_type'
     };
 
     // Log the success
