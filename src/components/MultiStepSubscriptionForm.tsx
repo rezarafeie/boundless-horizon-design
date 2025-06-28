@@ -20,7 +20,8 @@ const MultiStepSubscriptionForm = () => {
     handlePrevious,
     handlePaymentSuccess,
     calculateTotalPrice,
-    updateFormData
+    updateFormData,
+    handleDiscountApply
   } = useMultiStepForm();
 
   return (
@@ -50,6 +51,7 @@ const MultiStepSubscriptionForm = () => {
               subscriptionId={subscriptionId}
               calculateTotalPrice={calculateTotalPrice}
               onUpdateFormData={updateFormData}
+              onDiscountApply={handleDiscountApply}
               onPaymentSuccess={handlePaymentSuccess}
               onPrevious={handlePrevious}
             />

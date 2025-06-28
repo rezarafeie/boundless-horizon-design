@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -25,8 +24,8 @@ const ManualPaymentModal = ({
   const navigate = useNavigate();
   const [currentStatus, setCurrentStatus] = useState(subscriptionData?.status || 'pending');
 
-  const handleStatusChange = (newStatus: string, data?: any) => {
-    console.log('Manual payment status changed:', { newStatus, data });
+  const handleStatusUpdate = (newStatus: string, subscriptionUrl?: string) => {
+    console.log('Manual payment status changed:', { newStatus, subscriptionUrl });
     setCurrentStatus(newStatus);
     
     if (newStatus === 'active' || newStatus === 'paid') {
@@ -148,8 +147,7 @@ const ManualPaymentModal = ({
           {/* Subscription Status Monitor */}
           <SubscriptionStatusMonitor
             subscriptionId={subscriptionId}
-            onStatusChange={handleStatusChange}
-            autoRefresh={true}
+            onStatusUpdate={handleStatusUpdate}
           />
           
           {/* Action Buttons */}
