@@ -51,16 +51,19 @@ export const MarzbanApiTester = ({
 
     const startTime = Date.now();
     try {
+      // Use the correct Marzban authentication format with grant_type
+      const params = new URLSearchParams();
+      params.append('grant_type', 'password');
+      params.append('username', username);
+      params.append('password', password);
+
       const response = await fetch(`${panelUrl}/api/admin/token`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({
-          username: username,
-          password: password
-        })
+        body: params.toString()
       });
 
       const responseTime = Date.now() - startTime;
@@ -227,7 +230,7 @@ export const MarzbanApiTester = ({
             Marzban API Configuration
           </CardTitle>
           <CardDescription>
-            Configure Marzban panel connection details for API testing
+            Configure Marzban panel connection details for API testing. Uses correct authentication format with grant_type=password and URL-encoded content.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -292,7 +295,7 @@ export const MarzbanApiTester = ({
           <CardHeader>
             <CardTitle>Test Results</CardTitle>
             <CardDescription>
-              Results from Marzban API endpoint testing
+              Results from Marzban API endpoint testing with correct authentication format
             </CardDescription>
           </CardHeader>
           <CardContent>

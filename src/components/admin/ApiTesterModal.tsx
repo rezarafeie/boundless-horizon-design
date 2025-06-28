@@ -63,11 +63,7 @@ export const ApiTesterModal = ({ isOpen, onClose, selectedPanel }: ApiTesterModa
           </TabsContent>
           
           <TabsContent value="marzneshin" className="space-y-4">
-            <MarzneshinApiTester
-              initialUrl={selectedPanel?.type === 'marzneshin' ? selectedPanel.panel_url : ''}
-              initialUsername={selectedPanel?.type === 'marzneshin' ? selectedPanel.username : ''}
-              initialPassword={selectedPanel?.type === 'marzneshin' ? selectedPanel.password : ''}
-            />
+            <MarzneshinApiTester />
           </TabsContent>
         </Tabs>
       </DialogContent>

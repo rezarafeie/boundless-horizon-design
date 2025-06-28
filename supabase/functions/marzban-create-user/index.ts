@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -146,152 +145,86 @@ serve(async (req) => {
       expectedDomain: panelConfig.panel_url.includes('cp.rain.rest') ? 'Plus Panel' : 'Lite Panel'
     });
 
-    // ✅ MULTI-FORMAT AUTHENTICATION: Try different authentication formats
+    // ✅ MARZBAN AUTHENTICATION: Use correct format with grant_type and URL-encoded
+    console.log('🔵 [MARZBAN-CREATE-USER] Attempting Marzban authentication with correct format...');
+    
     let accessToken = null;
-    let authMethod = '';
-
-    // Method 1: JSON format (most common)
-    console.log('🔵 [MARZBAN-CREATE-USER] Attempting JSON authentication...');
+    
     try {
+      const params = new URLSearchParams();
+      params.append('grant_type', 'password');
+      params.append('username', panelConfig.username);
+      params.append('password', panelConfig.password);
+
+      console.log('🔵 [MARZBAN-CREATE-USER] Auth request params:', {
+        grant_type: 'password',
+        username: panelConfig.username,
+        passwordLength: panelConfig.password.length,
+        url: `${panelConfig.panel_url}/api/admin/token`
+      });
+
       const authResponse = await fetch(`${panelConfig.panel_url}/api/admin/token`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({
-          username: panelConfig.username,
-          password: panelConfig.password
-        })
+        body: params.toString()
       });
 
-      console.log('🔵 [MARZBAN-CREATE-USER] JSON Auth response status:', {
+      console.log('🔵 [MARZBAN-CREATE-USER] Auth response:', {
         status: authResponse.status,
         statusText: authResponse.statusText,
-        ok: authResponse.ok
+        ok: authResponse.ok,
+        contentType: authResponse.headers.get('content-type')
       });
 
       if (authResponse.ok) {
         const authData = await authResponse.json();
         if (authData.access_token) {
           accessToken = authData.access_token;
-          authMethod = 'JSON';
-          console.log('🟢 [MARZBAN-CREATE-USER] JSON Authentication successful');
+          console.log('🟢 [MARZBAN-CREATE-USER] Authentication successful');
+        } else {
+          console.error('❌ [MARZBAN-CREATE-USER] No access token received:', authData);
+          throw new Error('No access token received from authentication');
         }
       } else {
         const errorText = await authResponse.text();
-        console.log('⚠️ [MARZBAN-CREATE-USER] JSON auth failed:', {
+        console.error('❌ [MARZBAN-CREATE-USER] Authentication failed:', {
           status: authResponse.status,
+          statusText: authResponse.statusText,
           error: errorText
         });
+        
+        await supabase.from('user_creation_logs').insert({
+          subscription_id: subscriptionId,
+          panel_id: panelConfig.id,
+          edge_function_name: 'marzban-create-user',
+          request_data: requestData,
+          success: false,
+          error_message: `Authentication failed: ${authResponse.status} ${authResponse.statusText} - ${errorText}`,
+          panel_url: panelConfig.panel_url,
+          panel_name: panelConfig.name
+        });
+        
+        throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText} - ${errorText}`);
       }
     } catch (error) {
-      console.log('⚠️ [MARZBAN-CREATE-USER] JSON auth error:', error.message);
-    }
-
-    // Method 2: Form data format (if JSON failed)
-    if (!accessToken) {
-      console.log('🔵 [MARZBAN-CREATE-USER] Attempting Form-data authentication...');
-      try {
-        const formData = new FormData();
-        formData.append('username', panelConfig.username);
-        formData.append('password', panelConfig.password);
-
-        const authResponse = await fetch(`${panelConfig.panel_url}/api/admin/token`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-          },
-          body: formData
-        });
-
-        console.log('🔵 [MARZBAN-CREATE-USER] Form-data Auth response status:', {
-          status: authResponse.status,
-          statusText: authResponse.statusText,
-          ok: authResponse.ok
-        });
-
-        if (authResponse.ok) {
-          const authData = await authResponse.json();
-          if (authData.access_token) {
-            accessToken = authData.access_token;
-            authMethod = 'Form-data';
-            console.log('🟢 [MARZBAN-CREATE-USER] Form-data Authentication successful');
-          }
-        } else {
-          const errorText = await authResponse.text();
-          console.log('⚠️ [MARZBAN-CREATE-USER] Form-data auth failed:', {
-            status: authResponse.status,
-            error: errorText
-          });
-        }
-      } catch (error) {
-        console.log('⚠️ [MARZBAN-CREATE-USER] Form-data auth error:', error.message);
-      }
-    }
-
-    // Method 3: URL-encoded format (if both JSON and Form-data failed)
-    if (!accessToken) {
-      console.log('🔵 [MARZBAN-CREATE-USER] Attempting URL-encoded authentication...');
-      try {
-        const params = new URLSearchParams();
-        params.append('username', panelConfig.username);
-        params.append('password', panelConfig.password);
-
-        const authResponse = await fetch(`${panelConfig.panel_url}/api/admin/token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-          body: params.toString()
-        });
-
-        console.log('🔵 [MARZBAN-CREATE-USER] URL-encoded Auth response status:', {
-          status: authResponse.status,
-          statusText: authResponse.statusText,
-          ok: authResponse.ok
-        });
-
-        if (authResponse.ok) {
-          const authData = await authResponse.json();
-          if (authData.access_token) {
-            accessToken = authData.access_token;
-            authMethod = 'URL-encoded';
-            console.log('🟢 [MARZBAN-CREATE-USER] URL-encoded Authentication successful');
-          }
-        } else {
-          const errorText = await authResponse.text();
-          console.log('⚠️ [MARZBAN-CREATE-USER] URL-encoded auth failed:', {
-            status: authResponse.status,
-            error: errorText
-          });
-        }
-      } catch (error) {
-        console.log('⚠️ [MARZBAN-CREATE-USER] URL-encoded auth error:', error.message);
-      }
-    }
-
-    // Final check: If all authentication methods failed
-    if (!accessToken) {
-      console.error('❌ [MARZBAN-CREATE-USER] All authentication methods failed');
+      console.error('❌ [MARZBAN-CREATE-USER] Authentication error:', error);
       
-      // Log the failure
       await supabase.from('user_creation_logs').insert({
         subscription_id: subscriptionId,
         panel_id: panelConfig.id,
         edge_function_name: 'marzban-create-user',
         request_data: requestData,
         success: false,
-        error_message: 'All authentication methods failed - JSON, Form-data, and URL-encoded',
+        error_message: `Authentication error: ${error.message}`,
         panel_url: panelConfig.panel_url,
         panel_name: panelConfig.name
       });
       
-      throw new Error('All authentication methods failed. Please verify panel credentials.');
+      throw error;
     }
-
-    console.log('🟢 [MARZBAN-CREATE-USER] Authentication successful with method:', authMethod);
 
     // Step 2: Get template user configuration (usually 'reza')
     console.log('🔵 [MARZBAN-CREATE-USER] Fetching template user configuration...');
@@ -417,7 +350,7 @@ serve(async (req) => {
       subscriptionDomain,
       panelUsed: panelConfig.name,
       panelUrl: panelConfig.panel_url,
-      authMethod: authMethod,
+      authMethod: 'URL-encoded with grant_type',
       expire: createdUser.expire
     });
 
@@ -431,7 +364,7 @@ serve(async (req) => {
       panel_name: panelConfig.name,
       panel_id: panelConfig.id,
       panel_url: panelConfig.panel_url,
-      auth_method: authMethod
+      auth_method: 'URL-encoded with grant_type'
     };
 
     // Log the success
