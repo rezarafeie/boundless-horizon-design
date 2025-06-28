@@ -91,20 +91,6 @@ export const useMultiStepForm = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleDiscountApply = (discount: DiscountCode | null) => {
-    console.log('MULTI STEP FORM: Applying discount:', discount);
-    setAppliedDiscount(discount);
-    
-    if (discount) {
-      toast({
-        title: language === 'fa' ? 'تخفیف اعمال شد' : 'Discount Applied',
-        description: language === 'fa' ? 
-          `کد تخفیف ${discount.code} با موفقیت اعمال شد` : 
-          `Discount code ${discount.code} applied successfully`
-      });
-    }
-  };
-
   // Auto-advance from plan selection step when plan is selected
   useEffect(() => {
     if (currentStep === 1 && formData.selectedPlan && formData.selectedPlan.id) {
@@ -462,7 +448,6 @@ export const useMultiStepForm = () => {
     handleNext,
     handlePrevious,
     handlePaymentSuccess,
-    calculateTotalPrice,
-    handleDiscountApply
+    calculateTotalPrice
   };
 };

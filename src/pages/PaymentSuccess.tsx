@@ -49,6 +49,7 @@ const PaymentSuccess = () => {
             console.log('Stripe payment verified successfully:', data.subscription);
             
             await createVpnUserAutomatically(data.subscription);
+            localStorage.setItem('deliverySubscriptionData', JSON.stringify(data.subscription));
             
             toast({
               title: language === 'fa' ? 'پرداخت موفق' : 'Payment Successful',
@@ -58,7 +59,7 @@ const PaymentSuccess = () => {
             });
 
             setTimeout(() => {
-              navigate(`/delivery?id=${data.subscription.id}`);
+              navigate('/delivery', { state: { subscriptionData: data.subscription } });
             }, 2000);
           } else {
             throw new Error('Payment verification failed');
@@ -111,6 +112,7 @@ const PaymentSuccess = () => {
             console.log('Zarinpal payment verified successfully:', subscription);
             
             await createVpnUserAutomatically(subscription);
+            localStorage.setItem('deliverySubscriptionData', JSON.stringify(subscription));
             
             toast({
               title: language === 'fa' ? 'پرداخت موفق' : 'Payment Successful',
@@ -120,7 +122,7 @@ const PaymentSuccess = () => {
             });
 
             setTimeout(() => {
-              navigate(`/delivery?id=${subscription.id}`);
+              navigate('/delivery', { state: { subscriptionData: subscription } });
             }, 2000);
           } else {
             throw new Error('Zarinpal payment verification failed');
@@ -133,9 +135,10 @@ const PaymentSuccess = () => {
             console.log('Decoded subscription data:', decodedData);
             
             await createVpnUserAutomatically(decodedData);
+            localStorage.setItem('deliverySubscriptionData', JSON.stringify(decodedData));
             
             setTimeout(() => {
-              navigate(`/delivery?id=${decodedData.id}`);
+              navigate('/delivery', { state: { subscriptionData: decodedData } });
             }, 2000);
           } catch (parseError) {
             console.error('Failed to parse subscription data:', parseError);
@@ -209,7 +212,7 @@ const PaymentSuccess = () => {
 
   const goToDelivery = () => {
     if (subscriptionData) {
-      navigate(`/delivery?id=${subscriptionData.id}`);
+      navigate('/delivery', { state: { subscriptionData } });
     } else {
       navigate('/subscription');
     }
