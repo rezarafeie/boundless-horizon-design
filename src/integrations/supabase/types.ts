@@ -173,6 +173,47 @@ export type Database = {
           },
         ]
       }
+      email_notifications: {
+        Row: {
+          email_data: Json | null
+          email_type: string
+          error_message: string | null
+          id: string
+          recipient_email: string
+          sent_at: string
+          subscription_id: string | null
+          success: boolean
+        }
+        Insert: {
+          email_data?: Json | null
+          email_type: string
+          error_message?: string | null
+          id?: string
+          recipient_email: string
+          sent_at?: string
+          subscription_id?: string | null
+          success?: boolean
+        }
+        Update: {
+          email_data?: Json | null
+          email_type?: string
+          error_message?: string | null
+          id?: string
+          recipient_email?: string
+          sent_at?: string
+          subscription_id?: string | null
+          success?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_notifications_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       panel_refresh_logs: {
         Row: {
           configs_fetched: number | null
@@ -465,6 +506,7 @@ export type Database = {
           created_at: string
           data_limit_gb: number
           duration_days: number
+          email: string | null
           expire_at: string | null
           id: string
           marzban_user_created: boolean | null
@@ -489,6 +531,7 @@ export type Database = {
           created_at?: string
           data_limit_gb: number
           duration_days: number
+          email?: string | null
           expire_at?: string | null
           id?: string
           marzban_user_created?: boolean | null
@@ -513,6 +556,7 @@ export type Database = {
           created_at?: string
           data_limit_gb?: number
           duration_days?: number
+          email?: string | null
           expire_at?: string | null
           id?: string
           marzban_user_created?: boolean | null

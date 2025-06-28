@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -50,6 +49,21 @@ const PaymentSuccess = () => {
             console.log('Stripe payment verified successfully:', data.subscription);
             
             await createVpnUserAutomatically(data.subscription);
+            
+            // Send user confirmation email
+            if (data.subscription.email) {
+              try {
+                await supabase.functions.invoke('send-subscription-emails', {
+                  body: {
+                    subscriptionId: data.subscription.id,
+                    type: 'user_confirmation'
+                  }
+                });
+              } catch (emailError) {
+                console.error('Failed to send user confirmation email:', emailError);
+              }
+            }
+            
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(data.subscription));
             
             toast({
@@ -126,6 +140,21 @@ const PaymentSuccess = () => {
             
             // Create VPN user automatically
             await createVpnUserAutomatically(finalSubscription);
+            
+            // Send user confirmation email
+            if (finalSubscription.email) {
+              try {
+                await supabase.functions.invoke('send-subscription-emails', {
+                  body: {
+                    subscriptionId: finalSubscription.id,
+                    type: 'user_confirmation'
+                  }
+                });
+              } catch (emailError) {
+                console.error('Failed to send user confirmation email:', emailError);
+              }
+            }
+            
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(finalSubscription));
             
             toast({
@@ -149,6 +178,21 @@ const PaymentSuccess = () => {
             console.log('Decoded subscription data:', decodedData);
             
             await createVpnUserAutomatically(decodedData);
+            
+            // Send user confirmation email
+            if (decodedData.email) {
+              try {
+                await supabase.functions.invoke('send-subscription-emails', {
+                  body: {
+                    subscriptionId: decodedData.id,
+                    type: 'user_confirmation'
+                  }
+                });
+              } catch (emailError) {
+                console.error('Failed to send user confirmation email:', emailError);
+              }
+            }
+            
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(decodedData));
             
             setTimeout(() => {

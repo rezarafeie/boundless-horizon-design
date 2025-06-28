@@ -19,6 +19,7 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
     duration: formData.duration,
     notes: formData.notes,
     mobile: formData.mobile,
+    email: formData.email, // Add email field
     selectedPlan: formData.selectedPlan ? {
       id: formData.selectedPlan.id,
       plan_id: formData.selectedPlan.plan_id,

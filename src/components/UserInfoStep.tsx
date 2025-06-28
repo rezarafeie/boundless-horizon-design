@@ -1,4 +1,3 @@
-
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +12,7 @@ interface FormData {
   duration: number;
   notes: string;
   mobile: string;
+  email: string;
   selectedPlan: SubscriptionPlan | null;
 }
 
@@ -122,18 +122,38 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="mobile">
-              {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'} *
-            </Label>
-            <Input
-              id="mobile"
-              type="tel"
-              value={formData.mobile}
-              onChange={(e) => onUpdate('mobile', e.target.value)}
-              placeholder={language === 'fa' ? '09123456789' : '09123456789'}
-              required
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="mobile" className="text-sm font-medium">
+                {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
+                <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <Input
+                id="mobile"
+                type="tel"
+                value={formData.mobile}
+                onChange={(e) => onUpdate('mobile', e.target.value)}
+                placeholder={language === 'fa' ? '09123456789' : '09123456789'}
+                className="mt-1"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="email" className="text-sm font-medium">
+                {language === 'fa' ? 'ایمیل' : 'Email'}
+                <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.email || ''}
+                onChange={(e) => onUpdate('email', e.target.value)}
+                placeholder={language === 'fa' ? 'example@email.com' : 'example@email.com'}
+                className="mt-1"
+                required
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -1,4 +1,3 @@
-
 import { DiscountCode } from '@/types/subscription';
 import { PlanWithPanels } from '@/services/planService';
 import { PaymentMethod } from '@/components/PaymentMethodSelector';
@@ -9,8 +8,9 @@ export interface FormData {
   duration: number;
   notes: string;
   mobile: string;
+  email: string; // Add email field
   selectedPlan: PlanWithPanels | null;
-  paymentMethod: PaymentMethod;
+  paymentMethod: 'zarinpal' | 'stripe' | 'crypto' | 'manual';
 }
 
 export interface SubscriptionResponse {

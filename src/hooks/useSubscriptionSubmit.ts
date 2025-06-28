@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { PlanService } from '@/services/planService';
@@ -8,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface SubscriptionData {
   username: string;
   mobile: string;
+  email: string;
   dataLimit: number;
   duration: number;
   selectedPlan: any;
@@ -70,6 +70,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       const subscriptionData = {
         username: uniqueUsername,
         mobile: data.mobile,
+        email: data.email,
         data_limit_gb: data.dataLimit,
         duration_days: data.duration,
         price_toman: finalPrice,
@@ -93,6 +94,20 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
       }
       
       console.log('SUBSCRIPTION_SUBMIT: Subscription inserted successfully:', subscription);
+      
+      // Send admin notification email after successful subscription creation
+      try {
+        console.log('SUBSCRIPTION_SUBMIT: Sending admin notification email');
+        await supabase.functions.invoke('send-subscription-emails', {
+          body: {
+            subscriptionId: subscription.id,
+            type: 'admin_notification'
+          }
+        });
+      } catch (emailError) {
+        console.error('SUBSCRIPTION_SUBMIT: Failed to send admin notification email:', emailError);
+        // Don't fail the subscription creation for email issues
+      }
       
       // If price is 0, create VPN user immediately using ULTRA STRICT PanelUserCreationService
       if (finalPrice === 0) {

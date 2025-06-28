@@ -19,6 +19,7 @@ export const useMultiStepForm = () => {
     duration: 30,
     notes: '',
     mobile: '',
+    email: '', // Add email field
     selectedPlan: null,
     paymentMethod: 'zarinpal'
   });
@@ -124,12 +125,14 @@ export const useMultiStepForm = () => {
         const hasRequiredFields = !!(
           formData.username?.trim() && 
           formData.mobile?.trim() && 
+          formData.email?.trim() && // Add email validation
           formData.dataLimit > 0 && 
           formData.duration > 0
         );
         console.log('MULTI STEP FORM: Can proceed from step 2:', hasRequiredFields, {
           username: formData.username,
           mobile: formData.mobile,
+          email: formData.email,
           dataLimit: formData.dataLimit,
           duration: formData.duration
         });
@@ -168,12 +171,12 @@ export const useMultiStepForm = () => {
     }
 
     // Validate required fields
-    if (!formData.username?.trim() || !formData.mobile?.trim()) {
+    if (!formData.username?.trim() || !formData.mobile?.trim() || !formData.email?.trim()) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
-          'لطفاً تمام فیلدهای ضروری را پر کنید' : 
-          'Please fill in all required fields',
+          'لطفاً تمام فیلدهای ضروری شامل ایمیل را پر کنید' : 
+          'Please fill in all required fields including email',
         variant: 'destructive'
       });
       return null;
@@ -198,6 +201,7 @@ export const useMultiStepForm = () => {
       const subscriptionData = {
         username: uniqueUsername,
         mobile: formData.mobile.trim(),
+        email: formData.email.trim(), // Add email to subscription data
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
         price_toman: totalPrice,
@@ -304,6 +308,20 @@ export const useMultiStepForm = () => {
             'سفارش شما با موفقیت ثبت شد' : 
             'Your order has been created successfully'
         });
+      }
+      
+      // Send admin notification email after successful subscription creation
+      try {
+        console.log('MULTI STEP FORM: Sending admin notification email');
+        await supabase.functions.invoke('send-subscription-emails', {
+          body: {
+            subscriptionId: data.id,
+            type: 'admin_notification'
+          }
+        });
+      } catch (emailError) {
+        console.error('MULTI STEP FORM: Failed to send admin notification email:', emailError);
+        // Don't fail the subscription creation for email issues
       }
       
       return data.id;
