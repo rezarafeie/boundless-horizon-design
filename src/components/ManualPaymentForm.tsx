@@ -1,5 +1,5 @@
-
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ interface ManualPaymentFormProps {
 const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isSubmitting }: ManualPaymentFormProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [confirmed, setConfirmed] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState('');
   const [paymentTime, setPaymentTime] = useState('');
@@ -117,6 +118,11 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
         'اطلاعات پرداخت شما ثبت شد و به ادمین ارسال خواهد شد' : 
         'Your payment information has been recorded and will be sent to admin',
     });
+
+    // Redirect to delivery page with subscription ID
+    setTimeout(() => {
+      navigate(`/delivery?id=${subscriptionId}`);
+    }, 2000);
   };
 
   return (

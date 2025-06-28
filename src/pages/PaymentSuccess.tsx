@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -59,8 +58,8 @@ const PaymentSuccess = () => {
             });
 
             setTimeout(() => {
-              navigate('/delivery', { state: { subscriptionData: data.subscription } });
-            }, 2000);
+              navigate(`/delivery?id=${data.subscription.id}`);
+            }, 3000);
           } else {
             throw new Error('Payment verification failed');
           }
@@ -122,8 +121,8 @@ const PaymentSuccess = () => {
             });
 
             setTimeout(() => {
-              navigate('/delivery', { state: { subscriptionData: subscription } });
-            }, 2000);
+              navigate(`/delivery?id=${subscription.id}`);
+            }, 3000);
           } else {
             throw new Error('Zarinpal payment verification failed');
           }
@@ -138,8 +137,8 @@ const PaymentSuccess = () => {
             localStorage.setItem('deliverySubscriptionData', JSON.stringify(decodedData));
             
             setTimeout(() => {
-              navigate('/delivery', { state: { subscriptionData: decodedData } });
-            }, 2000);
+              navigate(`/delivery?id=${decodedData.id}`);
+            }, 3000);
           } catch (parseError) {
             console.error('Failed to parse subscription data:', parseError);
             throw new Error('Invalid subscription data format');
@@ -212,7 +211,7 @@ const PaymentSuccess = () => {
 
   const goToDelivery = () => {
     if (subscriptionData) {
-      navigate('/delivery', { state: { subscriptionData } });
+      navigate(`/delivery?id=${subscriptionData.id}`);
     } else {
       navigate('/subscription');
     }

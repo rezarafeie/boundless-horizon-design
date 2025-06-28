@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,6 +65,26 @@ const DeliveryPage = () => {
     }
     fetchSubscription();
   }, [subscriptionId, navigate]);
+
+  // Auto-reload for pending subscriptions
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (subscription?.status === 'pending') {
+      console.log('Setting up auto-reload for pending subscription');
+      interval = setInterval(() => {
+        console.log('Auto-reloading pending subscription...');
+        fetchSubscription();
+      }, 10000); // Reload every 10 seconds
+    }
+
+    return () => {
+      if (interval) {
+        console.log('Clearing auto-reload interval');
+        clearInterval(interval);
+      }
+    };
+  }, [subscription?.status]);
 
   // Enhanced countdown timer with progress calculation
   useEffect(() => {
@@ -366,6 +385,7 @@ const DeliveryPage = () => {
   };
 
   const isExpired = subscription?.expire_at ? new Date(subscription.expire_at) < new Date() : false;
+  const isPending = subscription?.status === 'pending';
 
   if (loading) {
     return (
@@ -422,11 +442,15 @@ const DeliveryPage = () => {
           <div className="text-center mb-8 animate-fade-in">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-                {isExpired ? <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" /> : <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />}
+                {isExpired ? <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" /> : 
+                 isPending ? <Clock className="w-8 h-8 text-yellow-600 dark:text-yellow-400" /> :
+                 <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />}
               </div>
               <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 {isExpired ? 
                   (language === 'fa' ? '⏰ اشتراک منقضی شده' : '⏰ Subscription Expired') :
+                  isPending ?
+                  (language === 'fa' ? '⏳ اشتراک در انتظار تایید' : '⏳ Subscription Pending') :
                   (language === 'fa' ? '🎉 اشتراک فعال است!' : '🎉 Subscription Active!')
                 }
               </h1>
@@ -500,11 +524,23 @@ const DeliveryPage = () => {
                 {getStatusIcon(subscription.status)}
                 <span className="ml-2">
                   {isExpired ? (language === 'fa' ? '🔴 منقضی' : '🔴 Expired') : 
+                   isPending ? (language === 'fa' ? '🟡 در انتظار' : '🟡 Pending') :
                    subscription.status === 'active' && (language === 'fa' ? '🟢 فعال' : '🟢 Active')}
-                  {subscription.status === 'pending' && (language === 'fa' ? '🟡 در انتظار' : '🟡 Pending')}
                 </span>
               </Badge>
             </div>
+
+            {/* Auto-reload notice for pending subscriptions */}
+            {isPending && (
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  {language === 'fa' ? 
+                    '🔄 این صفحه هر 10 ثانیه بروزرسانی می‌شود تا وضعیت اشتراک شما بررسی شود' : 
+                    '🔄 This page auto-refreshes every 10 seconds to check your subscription status'
+                  }
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

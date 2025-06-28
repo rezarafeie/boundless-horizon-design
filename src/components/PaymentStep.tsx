@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
@@ -6,8 +7,10 @@ import ManualPaymentForm from './ManualPaymentForm';
 import CryptoPaymentForm from './CryptoPaymentForm';
 import StripePaymentForm from './StripePaymentForm';
 import ZarinpalPayment from './ZarinpalPayment';
+import DiscountField from './DiscountField';
 import { SubscriptionStatusMonitor } from './SubscriptionStatusMonitor';
 import { supabase } from '@/integrations/supabase/client';
+import { DiscountCode } from '@/types/subscription';
 
 interface PaymentStepProps {
   amount: number;
@@ -16,6 +19,8 @@ interface PaymentStepProps {
   onMethodChange: (method: PaymentMethod) => void;
   subscriptionId: string;
   onPaymentSuccess: (subscriptionUrl?: string) => void;
+  appliedDiscount?: DiscountCode | null;
+  onDiscountApply?: (discount: DiscountCode | null) => void;
 }
 
 const PaymentStep = ({ 
@@ -24,7 +29,9 @@ const PaymentStep = ({
   selectedMethod, 
   onMethodChange, 
   subscriptionId,
-  onPaymentSuccess 
+  onPaymentSuccess,
+  appliedDiscount,
+  onDiscountApply
 }: PaymentStepProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -86,6 +93,14 @@ const PaymentStep = ({
         onMethodChange={onMethodChange}
         amount={amount}
       />
+      
+      {/* Discount Field */}
+      {onDiscountApply && (
+        <DiscountField
+          onDiscountApply={onDiscountApply}
+          appliedDiscount={appliedDiscount || null}
+        />
+      )}
       
       {selectedMethod && (
         <div className="mt-6">
