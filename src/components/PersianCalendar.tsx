@@ -32,13 +32,17 @@ export const PersianCalendar = ({ value, onChange, placeholder, className }: Per
     if (!isoDate) return '';
     try {
       const date = new Date(isoDate);
-      // Format as M/D/YYYY H:MM
-      const month = date.getMonth() + 1;
-      const day = date.getDate();
-      const year = date.getFullYear();
-      const hours = date.getHours().toString().padStart(2, '0');
-      const minutes = date.getMinutes().toString().padStart(2, '0');
-      return `${month}/${day}/${year} ${hours}:${minutes}`;
+      if (language === 'fa') {
+        return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          numberingSystem: 'latn'
+        }).format(date);
+      }
+      return date.toLocaleString();
     } catch {
       return isoDate;
     }
