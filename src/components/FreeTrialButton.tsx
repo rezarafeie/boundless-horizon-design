@@ -90,10 +90,18 @@ const FreeTrialButton = () => {
         throw error;
       }
 
-      // Filter plans with active assigned panels
+      // Filter plans with active assigned panels and ensure proper typing
       const validPlans = (plans || []).filter(plan => 
         plan.panel_servers && plan.panel_servers.is_active
-      );
+      ).map(plan => ({
+        ...plan,
+        api_type: plan.api_type as 'marzban' | 'marzneshin',
+        panel_servers: plan.panel_servers ? {
+          ...plan.panel_servers,
+          type: plan.panel_servers.type as 'marzban' | 'marzneshin',
+          health_status: plan.panel_servers.health_status as 'online' | 'offline' | 'unknown'
+        } : undefined
+      }));
 
       console.log('FREE_TRIAL_BUTTON: Loaded plans:', {
         totalPlans: plans?.length || 0,
@@ -150,7 +158,10 @@ const FreeTrialButton = () => {
       
       console.log('FREE_TRIAL_BUTTON: Creating trial with plan:', { username, planId: plan.id });
       
-      const result = await UserCreationService.createFreeTrial(username, plan.id, 1, 1);
+      // Map plan_id to the expected format for UserCreationService
+      const planType = plan.plan_id.toLowerCase().includes('lite') ? 'lite' as const : 'plus' as const;
+      
+      const result = await UserCreationService.createFreeTrial(username, planType, 1, 1);
 
       if (!result.success || !result.data) {
         throw new Error(result.error || 'Failed to create free trial');
