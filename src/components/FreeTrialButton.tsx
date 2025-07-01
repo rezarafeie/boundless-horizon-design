@@ -9,17 +9,26 @@ import { Gift, Zap, Shield, AlertCircle, Loader } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { UserCreationService } from '@/services/userCreationService';
 import FreeTrialResult from './FreeTrialResult';
+import { supabase } from '@/integrations/supabase/client';
 
-interface TrialPlan {
-  id: 'lite' | 'plus';
-  name: string;
-  nameEn: string;
-  nameFa: string;
-  description: string;
-  descriptionEn: string;
-  descriptionFa: string;
-  panelType: 'marzban' | 'marzneshin';
-  icon: React.ComponentType<any>;
+interface DatabasePlan {
+  id: string;
+  plan_id: string;
+  name_en: string;
+  name_fa: string;
+  description_en?: string;
+  description_fa?: string;
+  api_type: 'marzban' | 'marzneshin';
+  is_active: boolean;
+  is_visible: boolean;
+  assigned_panel_id?: string;
+  panel_servers?: {
+    id: string;
+    name: string;
+    type: 'marzban' | 'marzneshin';
+    is_active: boolean;
+    health_status: 'online' | 'offline' | 'unknown';
+  };
 }
 
 interface TrialResult {
@@ -27,7 +36,7 @@ interface TrialResult {
   subscription_url: string;
   expire: number;
   data_limit: number;
-  plan: TrialPlan;
+  plan: DatabasePlan;
 }
 
 const FreeTrialButton = () => {
@@ -35,33 +44,10 @@ const FreeTrialButton = () => {
   const { toast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreatingTrial, setIsCreatingTrial] = useState(false);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
   const [trialResult, setTrialResult] = useState<TrialResult | null>(null);
   const [hasUsedTrial, setHasUsedTrial] = useState(false);
-
-  const trialPlans: TrialPlan[] = [
-    {
-      id: 'lite',
-      name: 'Boundless Network Lite',
-      nameEn: 'Boundless Network Lite',
-      nameFa: 'شبکه بدون مرز لایت',
-      description: 'Lower speed, limited servers',
-      descriptionEn: 'Lower speed, limited servers',
-      descriptionFa: 'سرعت کمتر، سرورهای محدود',
-      panelType: 'marzban',
-      icon: Shield
-    },
-    {
-      id: 'plus',
-      name: 'Boundless Network Plus',
-      nameEn: 'Boundless Network Plus',
-      nameFa: 'شبکه بدون مرز پلاس',
-      description: 'High performance, full server list',
-      descriptionEn: 'High performance, full server list',
-      descriptionFa: 'کارایی بالا، لیست کامل سرورها',
-      panelType: 'marzneshin',
-      icon: Zap
-    }
-  ];
+  const [availablePlans, setAvailablePlans] = useState<DatabasePlan[]>([]);
 
   // Check if user has already used trial today
   const checkTrialUsage = (): boolean => {
@@ -77,6 +63,65 @@ const FreeTrialButton = () => {
     return false;
   };
 
+  // Load available plans from database
+  const loadAvailablePlans = async () => {
+    setIsLoadingPlans(true);
+    try {
+      console.log('FREE_TRIAL_BUTTON: Loading plans from database...');
+      
+      const { data: plans, error } = await supabase
+        .from('subscription_plans')
+        .select(`
+          *,
+          panel_servers!assigned_panel_id(
+            id,
+            name,
+            type,
+            is_active,
+            health_status
+          )
+        `)
+        .eq('is_active', true)
+        .eq('is_visible', true)
+        .not('assigned_panel_id', 'is', null);
+
+      if (error) {
+        console.error('FREE_TRIAL_BUTTON: Error loading plans:', error);
+        throw error;
+      }
+
+      // Filter plans with active assigned panels
+      const validPlans = (plans || []).filter(plan => 
+        plan.panel_servers && plan.panel_servers.is_active
+      );
+
+      console.log('FREE_TRIAL_BUTTON: Loaded plans:', {
+        totalPlans: plans?.length || 0,
+        validPlans: validPlans.length,
+        planDetails: validPlans.map(p => ({
+          id: p.id,
+          plan_id: p.plan_id,
+          name: p.name_en,
+          panelName: p.panel_servers?.name,
+          panelHealth: p.panel_servers?.health_status
+        }))
+      });
+
+      setAvailablePlans(validPlans);
+    } catch (error) {
+      console.error('FREE_TRIAL_BUTTON: Failed to load plans:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'خطا در بارگذاری پلن‌ها' : 
+          'Failed to load plans',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoadingPlans(false);
+    }
+  };
+
   // Generate username for trial
   const generateTrialUsername = (): string => {
     const prefix = 'trial_';
@@ -86,7 +131,7 @@ const FreeTrialButton = () => {
   };
 
   // Handle plan selection and trial creation
-  const handlePlanSelect = async (plan: TrialPlan) => {
+  const handlePlanSelect = async (plan: DatabasePlan) => {
     if (checkTrialUsage()) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
@@ -103,7 +148,7 @@ const FreeTrialButton = () => {
     try {
       const username = generateTrialUsername();
       
-      console.log('FREE_TRIAL: Creating trial with new service:', { username, planId: plan.id });
+      console.log('FREE_TRIAL_BUTTON: Creating trial with plan:', { username, planId: plan.id });
       
       const result = await UserCreationService.createFreeTrial(username, plan.id, 1, 1);
 
@@ -131,7 +176,7 @@ const FreeTrialButton = () => {
       });
 
     } catch (error) {
-      console.error('FREE_TRIAL: Creation failed:', error);
+      console.error('FREE_TRIAL_BUTTON: Creation failed:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: error instanceof Error ? error.message : (
@@ -146,6 +191,14 @@ const FreeTrialButton = () => {
     }
   };
 
+  // Load plans when modal opens
+  const handleModalOpen = (open: boolean) => {
+    setIsModalOpen(open);
+    if (open) {
+      loadAvailablePlans();
+    }
+  };
+
   // Initialize trial usage check
   useState(() => {
     checkTrialUsage();
@@ -156,8 +209,8 @@ const FreeTrialButton = () => {
     const freeTrialResultData = {
       username: trialResult.username,
       subscription_url: trialResult.subscription_url,
-      planName: language === 'fa' ? trialResult.plan.nameFa : trialResult.plan.nameEn,
-      apiType: trialResult.plan.panelType,
+      planName: language === 'fa' ? trialResult.plan.name_fa : trialResult.plan.name_en,
+      apiType: trialResult.plan.api_type,
       dataLimit: 1, // 1GB for free trial
       duration: 1 // 1 day for free trial
     };
@@ -176,7 +229,7 @@ const FreeTrialButton = () => {
   }
 
   return (
-    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+    <Dialog open={isModalOpen} onOpenChange={handleModalOpen}>
       <DialogTrigger asChild>
         <Button 
           size="xl"
@@ -205,17 +258,41 @@ const FreeTrialButton = () => {
           </DialogDescription>
         </DialogHeader>
 
-        {isCreatingTrial ? (
+        {isLoadingPlans ? (
+          <div className="flex flex-col items-center justify-center py-8 space-y-4">
+            <Loader className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-center font-medium">
+              {language === 'fa' ? 'در حال بارگذاری پلن‌ها...' : 'Loading plans...'}
+            </p>
+          </div>
+        ) : isCreatingTrial ? (
           <div className="flex flex-col items-center justify-center py-8 space-y-4">
             <Loader className="w-8 h-8 animate-spin text-primary" />
             <p className="text-center font-medium">
               {language === 'fa' ? 'در حال ایجاد آزمایش رایگان...' : 'Creating your free trial...'}
             </p>
           </div>
+        ) : availablePlans.length === 0 ? (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
+            <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
+              <AlertCircle className="w-5 h-5" />
+              <p className="text-sm font-medium">
+                {language === 'fa' ? 
+                  'هیچ پلن فعالی با پنل اختصاصی یافت نشد' : 
+                  'No active plans with assigned panels found'
+                }
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-            {trialPlans.map((plan) => {
-              const IconComponent = plan.icon;
+            {availablePlans.map((plan) => {
+              // Determine icon based on plan type or name
+              let IconComponent = Shield; // default
+              if (plan.api_type === 'marzneshin' || plan.name_en.toLowerCase().includes('plus')) {
+                IconComponent = Zap;
+              }
+              
               return (
                 <Card 
                   key={plan.id} 
@@ -227,10 +304,10 @@ const FreeTrialButton = () => {
                       <IconComponent className="w-6 h-6 text-primary" />
                     </div>
                     <CardTitle className="text-lg">
-                      {language === 'fa' ? plan.nameFa : plan.nameEn}
+                      {language === 'fa' ? plan.name_fa : plan.name_en}
                     </CardTitle>
                     <CardDescription>
-                      {language === 'fa' ? plan.descriptionFa : plan.descriptionEn}
+                      {language === 'fa' ? plan.description_fa : plan.description_en}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pt-0">
@@ -246,6 +323,17 @@ const FreeTrialButton = () => {
                         <Badge variant="secondary">
                           {language === 'fa' ? '۱ گیگابایت' : '1 GB'}
                         </Badge>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span>{language === 'fa' ? 'پنل:' : 'Panel:'}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-600">
+                            {plan.panel_servers?.name}
+                          </span>
+                          <span className={`w-2 h-2 rounded-full ${
+                            plan.panel_servers?.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
+                          }`} />
+                        </div>
                       </div>
                       <div className="flex items-center justify-center pt-2">
                         <Button size="sm" className="w-full">
