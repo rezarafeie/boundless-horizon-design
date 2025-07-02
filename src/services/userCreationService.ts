@@ -61,7 +61,7 @@ export class UserCreationService {
 
   static async createFreeTrial(
     username: string, 
-    planType: 'lite' | 'plus',
+    planType: 'lite' | 'plus' | 'pro',
     dataLimitGB: number = 1,
     durationDays: number = 1
   ): Promise<CreateUserResponse> {
