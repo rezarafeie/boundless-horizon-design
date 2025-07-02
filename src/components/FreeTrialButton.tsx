@@ -158,8 +158,16 @@ const FreeTrialButton = () => {
       
       console.log('FREE_TRIAL_BUTTON: Creating trial with plan:', { username, planId: plan.id });
       
-      // Map plan_id to the expected format for UserCreationService
-      const planType = plan.plan_id.toLowerCase().includes('lite') ? 'lite' as const : 'plus' as const;
+      // Map plan_id to correct plan type based on the actual plan_id
+      let planType: 'lite' | 'plus' | 'pro' = 'lite';
+      
+      if (plan.plan_id.toLowerCase().includes('pro')) {
+        planType = 'pro';
+      } else if (plan.plan_id.toLowerCase().includes('plus')) {
+        planType = 'plus';
+      } else if (plan.plan_id.toLowerCase().includes('lite')) {
+        planType = 'lite';
+      }
       
       const result = await UserCreationService.createFreeTrial(username, planType, 1, 30);
 
@@ -256,7 +264,7 @@ const FreeTrialButton = () => {
         </Button>
       </DialogTrigger>
       
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-center text-xl font-bold">
             {language === 'fa' ? 'آزمایش رایگان خود را دریافت کنید - انتخاب پلن' : 'Claim Your Free Trial – Choose Plan'}
@@ -296,7 +304,7 @@ const FreeTrialButton = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 py-4 max-w-6xl mx-auto">
             {availablePlans.map((plan) => {
               // Determine icon based on plan type or name
               let IconComponent = Shield; // default
@@ -307,7 +315,7 @@ const FreeTrialButton = () => {
               return (
                 <Card 
                   key={plan.id} 
-                  className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary"
+                  className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary max-w-sm mx-auto w-full"
                   onClick={() => handlePlanSelect(plan)}
                 >
                   <CardHeader className="text-center pb-2">
@@ -317,7 +325,7 @@ const FreeTrialButton = () => {
                     <CardTitle className="text-lg">
                       {language === 'fa' ? plan.name_fa : plan.name_en}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-sm">
                       {language === 'fa' ? plan.description_fa : plan.description_en}
                     </CardDescription>
                   </CardHeader>
