@@ -161,7 +161,7 @@ const FreeTrialButton = () => {
       // Map plan_id to the expected format for UserCreationService
       const planType = plan.plan_id.toLowerCase().includes('lite') ? 'lite' as const : 'plus' as const;
       
-      const result = await UserCreationService.createFreeTrial(username, planType, 1, 1);
+      const result = await UserCreationService.createFreeTrial(username, planType, 1, 30);
 
       if (!result.success || !result.data) {
         throw new Error(result.error || 'Failed to create free trial');
@@ -223,7 +223,7 @@ const FreeTrialButton = () => {
       planName: language === 'fa' ? trialResult.plan.name_fa : trialResult.plan.name_en,
       apiType: trialResult.plan.api_type,
       dataLimit: 1, // 1GB for free trial
-      duration: 1 // 1 day for free trial
+      duration: 30 // 30 days for free trial
     };
 
     return (
@@ -263,8 +263,8 @@ const FreeTrialButton = () => {
           </DialogTitle>
           <DialogDescription className="text-center">
             {language === 'fa' ? 
-              '۱ روز رایگان با ۱ گیگابایت حجم داده' : 
-              '1 free day with 1 GB data volume'
+              '۳۰ روز رایگان با ۱ گیگابایت حجم داده' : 
+              '30 free days with 1 GB data volume'
             }
           </DialogDescription>
         </DialogHeader>
@@ -326,7 +326,7 @@ const FreeTrialButton = () => {
                       <div className="flex items-center justify-between text-sm">
                         <span>{language === 'fa' ? 'مدت زمان:' : 'Duration:'}</span>
                         <Badge variant="secondary">
-                          {language === 'fa' ? '۱ روز' : '1 Day'}
+                          {language === 'fa' ? '۳۰ روز' : '30 Days'}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between text-sm">
