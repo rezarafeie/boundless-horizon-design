@@ -12,7 +12,9 @@ import {
   DollarSign, 
   Server,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Send,
+  Trash2
 } from 'lucide-react';
 import {
   Dialog,
@@ -50,6 +52,23 @@ interface Subscription {
   admin_decision?: string;
   marzban_user_created?: boolean;
   plan_id?: string;
+  email?: string;
+  subscription_plans?: {
+    id: string;
+    plan_id: string;
+    name_en: string;
+    name_fa: string;
+    assigned_panel_id?: string;
+    panel_servers?: {
+      id: string;
+      name: string;
+      type: string;
+      health_status: string;
+      panel_url: string;
+      username: string;
+      password: string;
+    };
+  };
 }
 
 interface UserActionButtonsProps {
@@ -60,7 +79,200 @@ interface UserActionButtonsProps {
 export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCreatingVpn, setIsCreatingVpn] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSendingToAdmin, setIsSendingToAdmin] = useState(false);
   const { toast } = useToast();
+
+  const handleSendToAdmin = async () => {
+    setIsSendingToAdmin(true);
+    
+    try {
+      console.log('📤 SEND_TO_ADMIN: Sending subscription data to webhook:', subscription.id);
+      
+      // Prepare comprehensive subscription data
+      const webhookData = {
+        subscription_id: subscription.id,
+        username: subscription.username,
+        mobile: subscription.mobile,
+        email: subscription.email || '',
+        status: subscription.status,
+        data_limit_gb: subscription.data_limit_gb,
+        duration_days: subscription.duration_days,
+        price_toman: subscription.price_toman,
+        plan_id: subscription.plan_id || '',
+        created_at: subscription.created_at,
+        expire_at: subscription.expire_at || '',
+        subscription_url: subscription.subscription_url || '',
+        notes: subscription.notes || '',
+        panel_info: {
+          name: subscription.subscription_plans?.panel_servers?.name || 'Unknown',
+          url: subscription.subscription_plans?.panel_servers?.panel_url || '',
+          type: subscription.subscription_plans?.panel_servers?.type || 'unknown'
+        }
+      };
+
+      console.log('📤 SEND_TO_ADMIN: Webhook payload:', webhookData);
+
+      // Send POST request to webhook
+      const response = await fetch('https://rafeie.app.n8n.cloud/webhook-test/bnetswewbmailnewusernotification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(webhookData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook request failed: ${response.status} ${response.statusText}`);
+      }
+
+      console.log('✅ SEND_TO_ADMIN: Successfully sent to webhook');
+
+      toast({
+        title: 'Sent to Admin',
+        description: `Subscription info for ${subscription.username} has been sent to admin successfully`,
+      });
+
+    } catch (error) {
+      console.error('❌ SEND_TO_ADMIN: Error sending to webhook:', error);
+      
+      toast({
+        title: 'Error',
+        description: `Failed to send subscription info: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSendingToAdmin(false);
+    }
+  };
+
+  const handleDeleteSubscription = async () => {
+    setIsDeleting(true);
+    
+    try {
+      console.log('🗑️ DELETE_SUBSCRIPTION: Starting deletion process for:', subscription.id);
+      
+      // Step 1: Update subscription status to 'deleted' in database
+      const { error: updateError } = await supabase
+        .from('subscriptions')
+        .update({
+          status: 'deleted',
+          updated_at: new Date().toISOString(),
+          notes: `${subscription.notes || ''} - Deleted on ${new Date().toLocaleDateString()}`
+        })
+        .eq('id', subscription.id);
+
+      if (updateError) {
+        throw new Error(`Database update failed: ${updateError.message}`);
+      }
+
+      console.log('✅ DELETE_SUBSCRIPTION: Database updated to deleted status');
+
+      // Step 2: Get panel information and delete from panel
+      let panelInfo = subscription.subscription_plans?.panel_servers;
+      
+      if (!panelInfo) {
+        console.warn('⚠️ DELETE_SUBSCRIPTION: No panel info found, attempting fallback');
+        
+        // Fallback: get panel info based on plan_id
+        const { data: planData } = await supabase
+          .from('subscription_plans')
+          .select(`
+            *,
+            panel_servers!assigned_panel_id(
+              id,
+              name,
+              type,
+              panel_url,
+              username,
+              password,
+              health_status
+            )
+          `)
+          .eq('plan_id', subscription.plan_id || 'lite')
+          .single();
+        
+        panelInfo = planData?.panel_servers;
+      }
+
+      if (panelInfo && panelInfo.panel_url) {
+        console.log('🔥 DELETE_SUBSCRIPTION: Deleting from panel:', panelInfo.name);
+        
+        // Determine API endpoint based on panel type
+        const deleteEndpoint = panelInfo.type === 'marzneshin' 
+          ? `${panelInfo.panel_url}/api/users/${subscription.username}`
+          : `${panelInfo.panel_url}/api/user/${subscription.username}`;
+
+        // Create auth header
+        const authHeader = btoa(`${panelInfo.username}:${panelInfo.password}`);
+
+        const response = await fetch(deleteEndpoint, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Basic ${authHeader}`,
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok && response.status !== 404) {
+          // 404 is acceptable (user already doesn't exist)
+          throw new Error(`Panel deletion failed: ${response.status} ${response.statusText}`);
+        }
+
+        console.log('✅ DELETE_SUBSCRIPTION: Successfully deleted from panel');
+      } else {
+        console.warn('⚠️ DELETE_SUBSCRIPTION: No panel info available, skipping panel deletion');
+      }
+
+      // Step 3: Log the deletion attempt
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscription.id,
+        edge_function_name: 'manual-delete-subscription',
+        request_data: { 
+          username: subscription.username, 
+          plan_id: subscription.plan_id,
+          panel_info: panelInfo ? {
+            name: panelInfo.name,
+            url: panelInfo.panel_url,
+            type: panelInfo.type
+          } : null 
+        },
+        response_data: { deleted_at: new Date().toISOString() },
+        success: true,
+        panel_id: panelInfo?.id || null,
+        panel_name: panelInfo?.name || null,
+        panel_url: panelInfo?.panel_url || null
+      });
+
+      toast({
+        title: 'Subscription Deleted',
+        description: `Subscription for ${subscription.username} has been deleted successfully`,
+      });
+
+      onUpdate();
+      
+    } catch (error) {
+      console.error('❌ DELETE_SUBSCRIPTION: Error during deletion:', error);
+      
+      // Log the failed attempt
+      await supabase.from('user_creation_logs').insert({
+        subscription_id: subscription.id,
+        edge_function_name: 'manual-delete-subscription',
+        request_data: { username: subscription.username, plan_id: subscription.plan_id },
+        response_data: {},
+        success: false,
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      toast({
+        title: 'Error',
+        description: `Failed to delete subscription: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleRenew = async () => {
     setIsProcessing(true);
@@ -415,6 +627,22 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
         </DialogContent>
       </Dialog>
 
+      {/* Send to Admin Button */}
+      <Button 
+        size="sm" 
+        variant="outline"
+        onClick={handleSendToAdmin}
+        disabled={isSendingToAdmin}
+        className="border-blue-200 text-blue-700 hover:bg-blue-50"
+      >
+        {isSendingToAdmin ? (
+          <Loader className="w-4 h-4 mr-1 animate-spin" />
+        ) : (
+          <Send className="w-4 h-4 mr-1" />
+        )}
+        Send to Admin
+      </Button>
+
       {/* Create VPN User Button (only show if VPN not created yet) */}
       {!subscription.marzban_user_created && subscription.status === 'active' && (
         <Button 
@@ -469,6 +697,53 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
               className="bg-green-600 hover:bg-green-700"
             >
               Extend Subscription
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Subscription Button */}
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button 
+            size="sm" 
+            variant="destructive"
+            disabled={isDeleting}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            {isDeleting ? (
+              <Loader className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4 mr-1" />
+            )}
+            Delete
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-600" />
+              Delete Subscription
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the subscription for <strong>{subscription.username}</strong>?
+              <div className="mt-2 p-3 bg-red-50 rounded-lg text-sm">
+                <strong>This action will:</strong>
+                <ul className="list-disc list-inside mt-1 space-y-1">
+                  <li>Mark the subscription as deleted in the database</li>
+                  <li>Remove the user from the VPN panel</li>
+                  <li>Hide the subscription from the admin panel</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteSubscription}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete Subscription
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

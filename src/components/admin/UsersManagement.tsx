@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -70,6 +69,7 @@ export const UsersManagement = () => {
             )
           )
         `)
+        .neq('status', 'deleted')
         .order('created_at', { ascending: false });
 
       if (statusFilter !== 'all') {
