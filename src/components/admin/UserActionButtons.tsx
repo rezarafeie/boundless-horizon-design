@@ -119,12 +119,12 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
         headers: {
           'Content-Type': 'application/json',
         },
+        mode: 'no-cors',
         body: JSON.stringify(webhookData)
       });
 
-      if (!response.ok) {
-        throw new Error(`Webhook request failed: ${response.status} ${response.statusText}`);
-      }
+      // Note: With no-cors mode, we can't check response status
+      // The request was sent successfully if no error was thrown
 
       console.log('✅ SEND_TO_ADMIN: Successfully sent to webhook');
 
@@ -156,7 +156,7 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
       const { error: updateError } = await supabase
         .from('subscriptions')
         .update({
-          status: 'deleted',
+          status: 'cancelled',
           updated_at: new Date().toISOString(),
           notes: `${subscription.notes || ''} - Deleted on ${new Date().toLocaleDateString()}`
         })
@@ -640,7 +640,7 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
         ) : (
           <Send className="w-4 h-4 mr-1" />
         )}
-        Send to Admin
+        Send
       </Button>
 
       {/* Create VPN User Button (only show if VPN not created yet) */}

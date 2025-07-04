@@ -70,6 +70,7 @@ export const UsersManagement = () => {
           )
         `)
         .neq('status', 'deleted')
+        .not('notes', 'like', '%- Deleted on %')
         .order('created_at', { ascending: false });
 
       if (statusFilter !== 'all') {
