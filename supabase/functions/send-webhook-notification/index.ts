@@ -19,6 +19,19 @@ interface WebhookPayload {
   receipt_url?: string;
   approve_link?: string;
   reject_link?: string;
+  // Complete subscription data for paymentpending webhooks
+  subscription_url?: string;
+  plan_name?: string;
+  plan_id?: string;
+  panel_name?: string;
+  panel_type?: string;
+  panel_url?: string;
+  panel_country?: string;
+  data_limit_gb?: number;
+  duration_days?: number;
+  expire_at?: string;
+  protocol?: string;
+  status?: string;
   created_at: string;
 }
 
