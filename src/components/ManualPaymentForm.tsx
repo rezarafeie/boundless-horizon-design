@@ -193,11 +193,11 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
           .from('subscriptions')
           .select(`
             *,
-            subscription_plans!inner(
+            subscription_plans(
               name_en,
               plan_id,
               assigned_panel_id,
-              panel_servers!inner(
+              panel_servers(
                 name,
                 type,
                 panel_url,
