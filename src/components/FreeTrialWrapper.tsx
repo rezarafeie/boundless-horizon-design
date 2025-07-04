@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Gift } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Gift, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import FreeTrialDialog from './FreeTrialDialog';
 import FreeTrialResult from './FreeTrialResult';
@@ -18,36 +19,21 @@ const FreeTrialWrapper: React.FC<FreeTrialWrapperProps> = ({
 }) => {
   const { language } = useLanguage();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [trialResult, setTrialResult] = useState<any>(null);
 
   const handleSuccess = (result: any) => {
     console.log('FREE_TRIAL_WRAPPER: Trial created successfully:', result);
     setTrialResult(result);
     setIsDialogOpen(false);
+    setIsResultModalOpen(true);
   };
 
-  // If we have a trial result, show the result component
-  if (trialResult) {
-    return (
-      <div className="space-y-4">
-        <FreeTrialResult result={{
-          username: trialResult.username,
-          subscription_url: trialResult.subscription_url,
-          planName: trialResult.panel_name || 'Free Trial',
-          apiType: trialResult.panel_type || 'marzban',
-          dataLimit: 1, // 1GB for free trial
-          duration: 7 // 7 days for free trial
-        }} />
-        <Button 
-          onClick={() => setTrialResult(null)}
-          className="w-full"
-          variant="outline"
-        >
-          {language === 'fa' ? 'بستن' : 'Close'}
-        </Button>
-      </div>
-    );
-  }
+  const handleCloseResult = () => {
+    setIsResultModalOpen(false);
+    setTrialResult(null);
+  };
+
 
   return (
     <>
@@ -66,6 +52,30 @@ const FreeTrialWrapper: React.FC<FreeTrialWrapperProps> = ({
         onClose={() => setIsDialogOpen(false)}
         onSuccess={handleSuccess}
       />
+
+      {/* Success Result Modal */}
+      <Dialog open={isResultModalOpen} onOpenChange={setIsResultModalOpen}>
+        <DialogContent className="max-w-7xl w-[95vw] h-[95vh] p-0 overflow-hidden">
+          <div className="relative h-full overflow-y-auto">
+            <button
+              onClick={handleCloseResult}
+              className="absolute top-4 right-4 z-50 p-2 rounded-full bg-white/90 dark:bg-gray-800/90 hover:bg-white dark:hover:bg-gray-800 shadow-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            {trialResult && (
+              <FreeTrialResult result={{
+                username: trialResult.username,
+                subscription_url: trialResult.subscription_url,
+                planName: trialResult.panel_name || 'Free Trial',
+                apiType: trialResult.panel_type || 'marzban',
+                dataLimit: 1, // 1GB for free trial
+                duration: 7 // 7 days for free trial
+              }} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

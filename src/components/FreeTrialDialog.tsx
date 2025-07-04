@@ -21,6 +21,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
   const { language } = useLanguage();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [availablePlans, setAvailablePlans] = useState<any[]>([]);
   const [debugInfo, setDebugInfo] = useState<any>(null);
@@ -49,6 +50,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
   }, [isOpen]);
 
   const loadAvailablePlans = async () => {
+    setIsLoadingPlans(true);
     try {
       console.log('FREE_TRIAL: Loading plans with STRICT panel assignment requirements...');
       
@@ -155,6 +157,8 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           'Failed to load plans',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoadingPlans(false);
     }
   };
 
@@ -234,10 +238,9 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       console.log('FREE_TRIAL: Starting STRICT plan-to-panel free trial creation');
       console.log('FREE_TRIAL: Selected plan UUID for STRICT binding:', selectedPlan);
       
-      // Auto-generate unique username from email
-      const emailPrefix = formData.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
-      const timestamp = Date.now();
-      const uniqueUsername = `${emailPrefix}_trial_${timestamp}`;
+      // Auto-generate unique username with bnets_test format
+      const randomDigits = Math.floor(Math.random() * (999999 - 100000 + 1)) + 100000;
+      const uniqueUsername = `bnets_test_${randomDigits}`;
       
       // Use STRICT plan-to-panel binding with email and phone
       const result = await PanelUserCreationService.createFreeTrial(
@@ -383,55 +386,85 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
               
               {/* Card-based Plan Selection */}
               <div className="grid gap-3">
-                {availablePlans.map((plan) => (
-                  <button
-                    key={plan.id}
-                    type="button"
-                    onClick={() => setSelectedPlan(plan.id)}
-                    className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-                      selectedPlan === plan.id
-                        ? 'border-primary bg-primary/5 shadow-md'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-lg">
-                            {language === 'fa' ? plan.name_fa : plan.name_en}
-                          </h3>
-                          <div className={`w-3 h-3 rounded-full ${
-                            plan.panel_servers.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
-                          }`} />
+                {isLoadingPlans ? (
+                  // Loading skeleton
+                  Array.from({ length: 3 }).map((_, index) => (
+                    <div key={index} className="w-full p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 animate-pulse">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="h-6 bg-gray-300 dark:bg-gray-600 rounded w-32"></div>
+                            <div className="w-3 h-3 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded w-24"></div>
+                            <span>•</span>
+                            <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded w-16"></div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                          <span>🌍 {plan.panel_servers.name}</span>
-                          <span>•</span>
-                          <span className={`font-medium ${
-                            plan.panel_servers.health_status === 'online' 
-                              ? 'text-green-600 dark:text-green-400' 
-                              : 'text-red-600 dark:text-red-400'
-                          }`}>
-                            {plan.panel_servers.health_status === 'online' 
-                              ? (language === 'fa' ? 'آنلاین' : 'Online')
-                              : (language === 'fa' ? 'آفلاین' : 'Offline')
-                            }
-                          </span>
-                        </div>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 transition-all ${
-                        selectedPlan === plan.id
-                          ? 'border-primary bg-primary'
-                          : 'border-gray-300 dark:border-gray-600'
-                      }`}>
-                        {selectedPlan === plan.id && (
-                          <div className="w-full h-full rounded-full bg-white scale-50" />
-                        )}
+                        <div className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600"></div>
                       </div>
                     </div>
-                  </button>
-                ))}
+                  ))
+                ) : (
+                  availablePlans.map((plan) => (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => setSelectedPlan(plan.id)}
+                      className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                        selectedPlan === plan.id
+                          ? 'border-primary bg-primary/5 shadow-md'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-semibold text-lg">
+                              {language === 'fa' ? plan.name_fa : plan.name_en}
+                            </h3>
+                            <div className={`w-3 h-3 rounded-full ${
+                              plan.panel_servers.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
+                            }`} />
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                            <span>🌍 {plan.panel_servers.name}</span>
+                            <span>•</span>
+                            <span className={`font-medium ${
+                              plan.panel_servers.health_status === 'online' 
+                                ? 'text-green-600 dark:text-green-400' 
+                                : 'text-red-600 dark:text-red-400'
+                            }`}>
+                              {plan.panel_servers.health_status === 'online' 
+                                ? (language === 'fa' ? 'آنلاین' : 'Online')
+                                : (language === 'fa' ? 'آفلاین' : 'Offline')
+                              }
+                            </span>
+                          </div>
+                        </div>
+                        <div className={`w-5 h-5 rounded-full border-2 transition-all ${
+                          selectedPlan === plan.id
+                            ? 'border-primary bg-primary'
+                            : 'border-gray-300 dark:border-gray-600'
+                        }`}>
+                          {selectedPlan === plan.id && (
+                            <div className="w-full h-full rounded-full bg-white scale-50" />
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
+              
+              {isLoadingPlans && (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {language === 'fa' ? 'در حال بارگذاری پلن‌ها...' : 'Loading plans...'}
+                  </p>
+                </div>
+              )}
               
               {availablePlans.length === 0 && (
                 <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mt-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
@@ -481,7 +514,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
               <Button
                 type="submit"
                 className="flex-1"
-                disabled={isLoading || !selectedPlan || availablePlans.length === 0}
+                disabled={isLoading || isLoadingPlans || !selectedPlan || availablePlans.length === 0}
               >
                 {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {language === 'fa' ? 'شروع تست' : 'Start Trial'}
