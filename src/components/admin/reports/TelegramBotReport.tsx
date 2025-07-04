@@ -53,59 +53,26 @@ export const TelegramBotReport = ({ refreshTrigger, dateRange }: TelegramBotRepo
         preset: dateRange.preset
       });
 
-      // Fetch user statistics from external API with date filtering
-      const userStats = await logApiCall('Fetch Telegram user statistics', async () => {
-        const response = await fetch('http://b.bnets.co/api/users', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            token: '6169452dd5a55778f35fcedaa1fbd7b9',
-            date_from: dateRange.from.toISOString(),
-            date_to: dateRange.to.toISOString()
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Fetch real Telegram bot statistics
+      const telegramStats = await logApiCall('Fetch Telegram bot statistics', async () => {
+        const { telegramBotApi } = await import('@/services/telegramBotApi');
+        const result = await telegramBotApi.getDashboardStats();
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to fetch Telegram stats');
         }
-
-        const data = await response.json();
-        logInfo('User statistics API response', data);
-        return data;
+        
+        logInfo('Telegram bot statistics response', result.data);
+        return result.data;
       });
 
-      // Fetch invoice/revenue statistics from external API with date filtering
-      const invoiceStats = await logApiCall('Fetch Telegram invoice statistics', async () => {
-        const response = await fetch('http://b.bnets.co/api/invoice', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            token: '6169452dd5a55778f35fcedaa1fbd7b9',
-            date_from: dateRange.from.toISOString(),
-            date_to: dateRange.to.toISOString()
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        logInfo('Invoice statistics API response', data);
-        return data;
-      });
-
-      // Process the API responses and create stats
+      // Process the Telegram bot stats
       const processedStats = {
-        totalUsers: userStats.total_users || 0,
-        activeUsers: userStats.active_users || 0,
-        totalMessages: userStats.total_messages || 0,
-        revenue: invoiceStats.total_revenue || 0,
-        recentUsers: userStats.recent_users || []
+        totalUsers: telegramStats?.totalUsers || 0,
+        activeUsers: telegramStats?.activeUsers || 0,
+        totalMessages: 0, // Not available in current API
+        revenue: telegramStats?.totalRevenue || 0,
+        recentUsers: telegramStats?.recentUsers || []
       };
 
       setStats({

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Users, Database, DollarSign, Activity, Calendar, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { DateRange } from '../DateRangeSelector';
 
 interface GlobalSummaryProps {
@@ -25,16 +26,76 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
   const loadGlobalSummary = async () => {
     setLoading(true);
     try {
-      // This would aggregate data from all sources based on dateRange
-      // For now, we'll simulate the data
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get real data from database
+      const { count: dbUsers } = await supabase
+        .from('subscriptions')
+        .select('*', { count: 'exact', head: true });
+
+      const { count: activeDbUsers } = await supabase
+        .from('subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+
+      const { data: revenueData } = await supabase
+        .from('subscriptions')
+        .select('price_toman')
+        .in('status', ['paid', 'active', 'expired']);
+
+      const dbRevenue = revenueData?.reduce((sum, sub) => sum + sub.price_toman, 0) || 0;
+
+      // Get panel stats
+      let panelUsers = 0;
+      let totalBandwidth = 0;
       
+      const { data: panels } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('is_active', true);
+
+      if (panels) {
+        for (const panel of panels) {
+          try {
+            const functionName = panel.type === 'marzban' ? 'marzban-get-system-info' : 'marzneshin-get-system-info';
+            const { data } = await supabase.functions.invoke(functionName, {
+              body: { 
+                panelId: panel.id,
+                dateFrom: dateRange.from.toISOString(),
+                dateTo: dateRange.to.toISOString()
+              }
+            });
+            
+            if (data?.success && data?.systemInfo) {
+              panelUsers += data.systemInfo.total_user || 0;
+              totalBandwidth += (data.systemInfo.incoming_bandwidth || 0) + (data.systemInfo.outgoing_bandwidth || 0);
+            }
+          } catch (error) {
+            console.log(`Failed to get stats from panel ${panel.name}:`, error);
+          }
+        }
+      }
+
+      // Get Telegram stats
+      let telegramUsers = 0;
+      let telegramRevenue = 0;
+      
+      try {
+        const { telegramBotApi } = await import('@/services/telegramBotApi');
+        const telegramStats = await telegramBotApi.getDashboardStats();
+        
+        if (telegramStats.success && telegramStats.data) {
+          telegramUsers = telegramStats.data.totalUsers;
+          telegramRevenue = telegramStats.data.totalRevenue;
+        }
+      } catch (error) {
+        console.log('Telegram API unavailable:', error);
+      }
+
       setSummary({
-        totalUsers: 2150,
-        totalBandwidth: 5.2 * 1024 * 1024 * 1024 * 1024, // 5.2 TB
-        totalRevenue: 2450000, // 2.45M Toman
-        activeUsers: 1850,
-        peakUsageDate: '2025-07-03'
+        totalUsers: (dbUsers || 0) + panelUsers + telegramUsers,
+        totalBandwidth,
+        totalRevenue: dbRevenue + telegramRevenue,
+        activeUsers: (activeDbUsers || 0) + telegramUsers, // Assume telegram users are active
+        peakUsageDate: dateRange.to.toISOString().split('T')[0]
       });
     } catch (error) {
       toast({

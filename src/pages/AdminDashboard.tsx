@@ -121,9 +121,23 @@ const AdminDashboard = () => {
         console.log('Failed to get panel user counts:', error);
       }
 
-      // Mock Telegram stats (would need real bot integration)
-      const telegramUsers = Math.floor(Math.random() * 500) + 200;
-      const telegramRevenue = Math.floor(Math.random() * 10000000) + 5000000;
+      // Get real Telegram stats
+      let telegramUsers = 0;
+      let telegramRevenue = 0;
+      
+      try {
+        const { telegramBotApi } = await import('@/services/telegramBotApi');
+        const telegramStats = await telegramBotApi.getDashboardStats();
+        
+        if (telegramStats.success && telegramStats.data) {
+          telegramUsers = telegramStats.data.totalUsers;
+          telegramRevenue = telegramStats.data.totalRevenue;
+        } else {
+          console.log('Telegram Bot API unavailable:', telegramStats.error);
+        }
+      } catch (error) {
+        console.log('Failed to fetch Telegram stats:', error);
+      }
 
       const totalRevenue = dbRevenue + telegramRevenue;
 

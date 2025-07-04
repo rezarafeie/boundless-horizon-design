@@ -11,7 +11,8 @@ import {
   BarChart3,
   X,
   Moon,
-  Sun
+  Sun,
+  MessageSquare
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -52,6 +53,11 @@ export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
       title: 'Reports',
       href: '/admin/reports',
       icon: BarChart3,
+    },
+    {
+      title: 'Telegram Bot',
+      href: '/admin/telegrambot',
+      icon: MessageSquare,
     },
     {
       title: 'Discounts',
