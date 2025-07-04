@@ -2,7 +2,9 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, Database, MessageCircle, Server } from 'lucide-react';
+import { Search, Database, MessageCircle, Server, AlertCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface UserSearchReportProps {
   searchQuery: string;
@@ -13,9 +15,11 @@ interface SearchResult {
   username: string;
   status: string;
   details: any;
+  panel_name?: string;
 }
 
 export const UserSearchReport = ({ searchQuery }: UserSearchReportProps) => {
+  const { toast } = useToast();
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -32,51 +36,158 @@ export const UserSearchReport = ({ searchQuery }: UserSearchReportProps) => {
 
     setLoading(true);
     try {
-      // This would search across all systems
-      // For now, we'll simulate the search results
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Simulate some results
-      const mockResults: SearchResult[] = [
-        {
-          source: 'database',
-          username: searchQuery,
-          status: 'active',
-          details: {
-            mobile: '09123456789',
-            email: 'user@example.com',
-            created_at: '2025-07-01',
-            plan: 'Lite'
-          }
-        },
-        {
-          source: 'panel',
-          username: searchQuery,
-          status: 'online',
-          details: {
-            data_used: '2.5 GB',
-            expire_date: '2025-08-01',
-            panel_name: 'Marzban Panel 1'
-          }
-        },
-        {
-          source: 'telegram',
-          username: searchQuery,
-          status: 'active',
-          details: {
-            chat_id: '123456789',
-            first_name: 'John',
-            last_name: 'Doe',
-            last_seen: '2025-07-04'
-          }
-        }
-      ];
+      const searchResults: SearchResult[] = [];
 
-      setResults(mockResults);
+      // Search in database
+      await searchInDatabase(searchResults);
+      
+      // Search in panels
+      await searchInPanels(searchResults);
+      
+      // Search in Telegram bot
+      await searchInTelegramBot(searchResults);
+
+      setResults(searchResults);
     } catch (error) {
       console.error('Search error:', error);
+      toast({
+        title: "Search Error",
+        description: "Some search sources may be unavailable",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const searchInDatabase = async (results: SearchResult[]) => {
+    try {
+      const { data: subscriptions, error } = await supabase
+        .from('subscriptions')
+        .select('*, subscription_plans(name_en, name_fa)')
+        .or(`username.ilike.%${searchQuery}%,mobile.ilike.%${searchQuery}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      subscriptions?.forEach(sub => {
+        results.push({
+          source: 'database',
+          username: sub.username,
+          status: sub.status,
+          details: {
+            mobile: sub.mobile,
+            email: sub.email || 'N/A',
+            created_at: new Date(sub.created_at).toLocaleDateString(),
+            plan: sub.subscription_plans?.name_en || 'Unknown',
+            expire_at: sub.expire_at ? new Date(sub.expire_at).toLocaleDateString() : 'N/A',
+            data_limit_gb: sub.data_limit_gb,
+            price_toman: sub.price_toman
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Database search error:', error);
+    }
+  };
+
+  const searchInPanels = async (results: SearchResult[]) => {
+    try {
+      // Get active panels
+      const { data: panels, error } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      // Search in each panel
+      for (const panel of panels || []) {
+        try {
+          const functionName = panel.type === 'marzban' ? 'marzban-get-user' : 'marzneshin-get-user';
+          
+          const { data, error: searchError } = await supabase.functions.invoke(functionName, {
+            body: { 
+              username: searchQuery,
+              panelConfig: panel
+            }
+          });
+
+          if (!searchError && data?.success && data?.user) {
+            results.push({
+              source: 'panel',
+              username: data.user.username,
+              status: data.user.status || (data.user.is_active ? 'active' : 'inactive'),
+              panel_name: panel.name,
+              details: {
+                panel_name: panel.name,
+                panel_type: panel.type,
+                subscription_url: data.user.subscription_url || 'N/A',
+                data_limit: data.user.data_limit ? `${Math.round(data.user.data_limit / (1024*1024*1024))} GB` : 'N/A',
+                used_traffic: data.user.used_traffic ? `${Math.round(data.user.used_traffic / (1024*1024*1024))} GB` : '0 GB',
+                expire_date: data.user.expire_date || data.user.expire ? 
+                  new Date(data.user.expire_date || data.user.expire * 1000).toLocaleDateString() : 'N/A'
+              }
+            });
+          }
+        } catch (panelError) {
+          console.error(`Search error in panel ${panel.name}:`, panelError);
+        }
+      }
+    } catch (error) {
+      console.error('Panels search error:', error);
+    }
+  };
+
+  const searchInTelegramBot = async (results: SearchResult[]) => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch('http://b.bnets.co/api/users', {
+        method: 'POST',
+        headers: {
+          'Token': '6169452dd5a55778f35fcedaa1fbd7b9',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          actions: 'users',
+          limit: 1000
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+
+      if (response.ok) {
+        const data = await response.json();
+        const users = data.data || [];
+        
+        const matchedUsers = users.filter((user: any) => 
+          user.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          user.chat_id.includes(searchQuery) ||
+          user.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          user.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+
+        matchedUsers.forEach((user: any) => {
+          results.push({
+            source: 'telegram',
+            username: user.username || `${user.first_name} ${user.last_name}`,
+            status: user.status || 'unknown',
+            details: {
+              chat_id: user.chat_id,
+              first_name: user.first_name || 'N/A',
+              last_name: user.last_name || 'N/A',
+              username: user.username || 'N/A',
+              created_at: user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A',
+              last_seen: user.last_seen ? new Date(user.last_seen).toLocaleDateString() : 'N/A'
+            }
+          });
+        });
+      }
+    } catch (error) {
+      console.error('Telegram search error:', error);
     }
   };
 
@@ -116,6 +227,7 @@ export const UserSearchReport = ({ searchQuery }: UserSearchReportProps) => {
           <div className="text-center text-muted-foreground">
             <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p>Enter a search query to find users across all systems</p>
+            <p className="text-sm mt-2">Search by username, mobile number, or chat ID</p>
           </div>
         </CardContent>
       </Card>
@@ -129,6 +241,7 @@ export const UserSearchReport = ({ searchQuery }: UserSearchReportProps) => {
           <div className="text-center">
             <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
             <p className="text-muted-foreground">Searching across all systems...</p>
+            <p className="text-sm text-muted-foreground mt-1">Database • Panels • Telegram Bot</p>
           </div>
         </CardContent>
       </Card>
@@ -145,7 +258,7 @@ export const UserSearchReport = ({ searchQuery }: UserSearchReportProps) => {
         <Card>
           <CardContent className="py-8">
             <div className="text-center text-muted-foreground">
-              <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No users found matching "{searchQuery}"</p>
               <p className="text-sm mt-2">Try searching with a different username, mobile, or chat_id</p>
             </div>
@@ -160,6 +273,11 @@ export const UserSearchReport = ({ searchQuery }: UserSearchReportProps) => {
                   <div className="flex items-center gap-2">
                     {getSourceIcon(result.source)}
                     {result.username}
+                    {result.panel_name && (
+                      <Badge variant="outline" className="text-xs">
+                        {result.panel_name}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge className={getSourceColor(result.source)}>

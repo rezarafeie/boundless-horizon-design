@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, MessageCircle, Receipt, Users, Search } from 'lucide-react';
+import { RefreshCw, MessageCircle, Receipt, Users, Search, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface TelegramBotReportProps {
@@ -41,6 +41,7 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [apiError, setApiError] = useState<string | null>(null);
   const [stats, setStats] = useState<TelegramStats>({
     totalUsers: 0,
     totalInvoices: 0,
@@ -52,8 +53,13 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
 
   const loadTelegramData = async () => {
     setLoading(true);
+    setApiError(null);
+    
     try {
-      // Get users from Telegram bot API
+      // Try to fetch users with timeout and better error handling
+      const usersController = new AbortController();
+      const usersTimeout = setTimeout(() => usersController.abort(), 10000); // 10 second timeout
+
       const usersResponse = await fetch('http://b.bnets.co/api/users', {
         method: 'POST',
         headers: {
@@ -63,12 +69,22 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
         body: JSON.stringify({
           actions: 'users',
           limit: 1000
-        })
+        }),
+        signal: usersController.signal
       });
+
+      clearTimeout(usersTimeout);
+
+      if (!usersResponse.ok) {
+        throw new Error(`Users API returned ${usersResponse.status}: ${usersResponse.statusText}`);
+      }
 
       const usersData = await usersResponse.json();
 
-      // Get invoices from Telegram bot API
+      // Try to fetch invoices with timeout
+      const invoicesController = new AbortController();
+      const invoicesTimeout = setTimeout(() => invoicesController.abort(), 10000);
+
       const invoicesResponse = await fetch('http://b.bnets.co/api/invoice', {
         method: 'POST',
         headers: {
@@ -79,8 +95,15 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
           actions: 'invoices',
           limit: 1000,
           page: 1
-        })
+        }),
+        signal: invoicesController.signal
       });
+
+      clearTimeout(invoicesTimeout);
+
+      if (!invoicesResponse.ok) {
+        throw new Error(`Invoices API returned ${invoicesResponse.status}: ${invoicesResponse.statusText}`);
+      }
 
       const invoicesData = await invoicesResponse.json();
 
@@ -105,11 +128,29 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
         invoices: invoices.slice(0, 20) // Show first 20 invoices
       });
 
+      console.log('Telegram data loaded successfully:', { 
+        users: users.length, 
+        invoices: invoices.length 
+      });
+
     } catch (error) {
       console.error('Error loading Telegram data:', error);
+      
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = 'Request timed out - API may be slow or unreachable';
+        } else if (error.message.includes('NetworkError') || error.message.includes('fetch')) {
+          errorMessage = 'Network error - Check internet connection and API availability';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setApiError(errorMessage);
       toast({
         title: "Error",
-        description: "Failed to load Telegram bot data. Check API connection.",
+        description: `Failed to load Telegram bot data: ${errorMessage}`,
         variant: "destructive"
       });
     } finally {
@@ -134,7 +175,6 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
         user.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
-      // Could also make additional API call for more specific search
       console.log('Search results:', filteredUsers);
       
     } catch (error) {
@@ -165,6 +205,29 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
           Refresh Bot Data
         </Button>
       </div>
+
+      {/* Error Display */}
+      {apiError && (
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm font-medium">API Connection Error:</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">{apiError}</p>
+            <Button 
+              onClick={loadTelegramData} 
+              variant="outline" 
+              size="sm" 
+              className="mt-3"
+              disabled={loading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Retry Connection
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Search */}
       <Card>
@@ -264,8 +327,14 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
                   </div>
                 </div>
               ))}
-              {stats.users.length === 0 && (
+              {stats.users.length === 0 && !loading && (
                 <p className="text-sm text-muted-foreground text-center py-4">No users data available</p>
+              )}
+              {loading && (
+                <div className="text-center py-4">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Loading users...</p>
+                </div>
               )}
             </div>
           </CardContent>
@@ -294,8 +363,14 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
                   </div>
                 </div>
               ))}
-              {stats.invoices.length === 0 && (
+              {stats.invoices.length === 0 && !loading && (
                 <p className="text-sm text-muted-foreground text-center py-4">No invoices data available</p>
+              )}
+              {loading && (
+                <div className="text-center py-4">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Loading invoices...</p>
+                </div>
               )}
             </div>
           </CardContent>

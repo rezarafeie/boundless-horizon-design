@@ -20,7 +20,7 @@ export const ReportsMain = () => {
   };
 
   const handleSearch = () => {
-    // Trigger search across all systems
+    // Search is handled automatically by UserSearchReport component
     console.log('Searching for:', searchQuery);
   };
 
@@ -65,11 +65,11 @@ export const ReportsMain = () => {
 
       {/* Main Tabs */}
       <Tabs defaultValue="panels" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
-          <TabsTrigger value="panels">Active Panels</TabsTrigger>
-          <TabsTrigger value="database">Database Stats</TabsTrigger>
-          <TabsTrigger value="telegram">Telegram Bot</TabsTrigger>
-          <TabsTrigger value="search">Search Results</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 gap-1">
+          <TabsTrigger value="panels" className="text-xs sm:text-sm">Active Panels</TabsTrigger>
+          <TabsTrigger value="database" className="text-xs sm:text-sm">Database Stats</TabsTrigger>
+          <TabsTrigger value="telegram" className="text-xs sm:text-sm">Telegram Bot</TabsTrigger>
+          <TabsTrigger value="search" className="text-xs sm:text-sm">Search Results</TabsTrigger>
         </TabsList>
 
         <TabsContent value="panels" className="space-y-4">

@@ -43,24 +43,57 @@ export const DatabaseStatsReport = ({ refreshTrigger }: DatabaseStatsReportProps
     recentSubscriptions: []
   });
 
+  const getDateFilter = (range: string) => {
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (range) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case 'year':
+        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    }
+    
+    return startDate.toISOString();
+  };
+
   const loadDatabaseStats = async () => {
     setLoading(true);
     try {
-      // Get subscription counts
+      const startDate = getDateFilter(dateRange);
+      
+      // Get all subscriptions with date filter
       const { data: subscriptions, error: subsError } = await supabase
         .from('subscriptions')
-        .select('status, price_toman, plan_id, created_at, username, id, expire_at');
+        .select('status, price_toman, plan_id, created_at, username, id, expire_at')
+        .gte('created_at', startDate);
 
       if (subsError) throw subsError;
 
-      // Calculate stats
       const now = new Date();
+      
+      // Calculate stats with proper logic
       const activeCount = subscriptions?.filter(s => 
-        s.status === 'active' && new Date(s.expire_at || '') > now
+        s.status === 'active' && (!s.expire_at || new Date(s.expire_at) > now)
       ).length || 0;
       
       const expiredCount = subscriptions?.filter(s => 
-        s.status === 'active' && new Date(s.expire_at || '') <= now
+        (s.status === 'active' && s.expire_at && new Date(s.expire_at) <= now) ||
+        s.status === 'expired'
+      ).length || 0;
+
+      const deletedCount = subscriptions?.filter(s => 
+        s.status === 'deleted' || s.status === 'cancelled'
       ).length || 0;
 
       // Get plan stats
@@ -95,7 +128,7 @@ export const DatabaseStatsReport = ({ refreshTrigger }: DatabaseStatsReportProps
         totalUsers: subscriptions?.length || 0,
         activeSubscriptions: activeCount,
         expiredSubscriptions: expiredCount,
-        deletedUsers: subscriptions?.filter(s => s.status === 'deleted').length || 0,
+        deletedUsers: deletedCount,
         planStats,
         recentSubscriptions: recentSubs
       });
