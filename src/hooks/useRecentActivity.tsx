@@ -96,9 +96,9 @@ export const useRecentActivity = () => {
   useEffect(() => {
     fetchRecentActivity();
 
-    // Set up real-time subscriptions
+    // Set up real-time subscriptions with unique channel names
     const subscriptionsChannel = supabase
-      .channel('subscriptions-changes')
+      .channel('admin-subscriptions-changes')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'subscriptions' },
         () => fetchRecentActivity()
@@ -106,7 +106,7 @@ export const useRecentActivity = () => {
       .subscribe();
 
     const userLogsChannel = supabase
-      .channel('user-logs-changes')
+      .channel('admin-user-logs-changes')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'user_creation_logs' },
         () => fetchRecentActivity()

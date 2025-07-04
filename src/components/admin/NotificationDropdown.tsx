@@ -49,17 +49,21 @@ export const NotificationDropdown = () => {
     }
   };
 
+  // Handle potential errors gracefully
+  const safeActivities = activities || [];
+  const safeUnreadCount = unreadCount || 0;
+
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="relative">
           <Bell className="w-4 h-4" />
-          {unreadCount > 0 && (
+          {safeUnreadCount > 0 && (
             <Badge 
               variant="destructive" 
               className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
             >
-              {unreadCount > 99 ? '99+' : unreadCount}
+              {safeUnreadCount > 99 ? '99+' : safeUnreadCount}
             </Badge>
           )}
         </Button>
@@ -69,9 +73,9 @@ export const NotificationDropdown = () => {
         <div className="border-b p-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">Recent Activity</h3>
-            {unreadCount > 0 && (
+            {safeUnreadCount > 0 && (
               <Badge variant="secondary" className="text-xs">
-                {unreadCount} new
+                {safeUnreadCount} new
               </Badge>
             )}
           </div>
@@ -83,14 +87,14 @@ export const NotificationDropdown = () => {
               <Clock className="w-8 h-8 mx-auto mb-2 animate-pulse" />
               Loading activities...
             </div>
-          ) : activities.length === 0 ? (
+          ) : safeActivities.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
               <Bell className="w-8 h-8 mx-auto mb-2" />
               No recent activity
             </div>
           ) : (
             <div className="divide-y">
-              {activities.map((activity) => (
+              {safeActivities.map((activity) => (
                 <div key={activity.id} className="p-3 hover:bg-muted/50 transition-colors">
                   <div className="flex items-start gap-3">
                     <div className="mt-1">
@@ -116,7 +120,7 @@ export const NotificationDropdown = () => {
           )}
         </ScrollArea>
         
-        {activities.length > 0 && (
+        {safeActivities.length > 0 && (
           <div className="border-t p-2">
             <Button variant="ghost" size="sm" className="w-full text-xs">
               View All Activity

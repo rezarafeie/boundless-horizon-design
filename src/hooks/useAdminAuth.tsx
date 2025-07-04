@@ -12,12 +12,34 @@ interface AdminUser {
 export const useAdminAuth = () => {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const checkAdminStatus = async () => {
     try {
       console.log('=== ADMIN AUTH: Checking admin status ===');
       
-      // Use the correct existing admin user UUID
+      // Check if user is logged in via session
+      const adminSession = localStorage.getItem('admin_session');
+      if (!adminSession) {
+        console.log('ADMIN AUTH: No session found');
+        setAdminUser(null);
+        setIsAuthenticated(false);
+        setLoading(false);
+        return;
+      }
+
+      // Parse session data
+      const sessionData = JSON.parse(adminSession);
+      if (!sessionData.isLoggedIn || sessionData.username !== 'bnets') {
+        console.log('ADMIN AUTH: Invalid session data');
+        localStorage.removeItem('admin_session');
+        setAdminUser(null);
+        setIsAuthenticated(false);
+        setLoading(false);
+        return;
+      }
+      
+      // Verify admin user exists in database
       const { data: adminData, error } = await supabase
         .from('admin_users')
         .select('*')
@@ -28,13 +50,15 @@ export const useAdminAuth = () => {
       console.log('ADMIN AUTH: Admin query result:', { adminData, error });
       
       if (error || !adminData) {
-        console.log('ADMIN AUTH: No admin user found');
+        console.log('ADMIN AUTH: No admin user found in database');
+        localStorage.removeItem('admin_session');
         setAdminUser(null);
+        setIsAuthenticated(false);
         setLoading(false);
         return;
       }
       
-      console.log('ADMIN AUTH: User is admin with role:', adminData.role);
+      console.log('ADMIN AUTH: User is authenticated admin with role:', adminData.role);
       
       const typedAdminData: AdminUser = {
         id: adminData.id,
@@ -44,10 +68,13 @@ export const useAdminAuth = () => {
       };
       
       setAdminUser(typedAdminData);
+      setIsAuthenticated(true);
       setLoading(false);
     } catch (error) {
       console.log('ADMIN AUTH: Exception checking admin status:', error);
+      localStorage.removeItem('admin_session');
       setAdminUser(null);
+      setIsAuthenticated(false);
       setLoading(false);
     }
   };
@@ -58,15 +85,17 @@ export const useAdminAuth = () => {
 
   const signOut = async () => {
     console.log('ADMIN AUTH: Signing out');
+    localStorage.removeItem('admin_session');
     setAdminUser(null);
+    setIsAuthenticated(false);
     window.location.href = '/admin/login';
     return { error: null };
   };
 
-  const isAdmin = !!adminUser;
-  const isSuperAdmin = adminUser?.role === 'superadmin';
+  const isAdmin = !!adminUser && isAuthenticated;
+  const isSuperAdmin = adminUser?.role === 'superadmin' && isAuthenticated;
 
-  console.log('ADMIN AUTH: Current state - isAdmin:', isAdmin, 'isSuperAdmin:', isSuperAdmin, 'loading:', loading);
+  console.log('ADMIN AUTH: Current state - isAdmin:', isAdmin, 'isSuperAdmin:', isSuperAdmin, 'isAuthenticated:', isAuthenticated, 'loading:', loading);
 
   return {
     user: null,
@@ -75,6 +104,7 @@ export const useAdminAuth = () => {
     loading,
     isAdmin,
     isSuperAdmin,
+    isAuthenticated,
     signIn: async () => ({ error: null }),
     signOut
   };

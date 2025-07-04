@@ -61,9 +61,17 @@ export const AdminLogin = () => {
       }
 
       console.log('Admin login successful');
+      
+      // Set session in localStorage
+      localStorage.setItem('admin_session', JSON.stringify({
+        isLoggedIn: true,
+        username: 'bnets',
+        loginTime: new Date().toISOString()
+      }));
+      
       toast.success('Login successful');
       
-      // Force a page reload to trigger admin auth check
+      // Redirect to admin dashboard
       window.location.href = '/admin/dashboard';
 
     } catch (err: any) {
