@@ -119,12 +119,12 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
         headers: {
           'Content-Type': 'application/json',
         },
-        mode: 'no-cors',
         body: JSON.stringify(webhookData)
       });
 
-      // Note: With no-cors mode, we can't check response status
-      // The request was sent successfully if no error was thrown
+      if (!response.ok) {
+        throw new Error(`Webhook request failed: ${response.status} ${response.statusText}`);
+      }
 
       console.log('✅ SEND_TO_ADMIN: Successfully sent to webhook');
 
@@ -198,28 +198,64 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
       if (panelInfo && panelInfo.panel_url) {
         console.log('🔥 DELETE_SUBSCRIPTION: Deleting from panel:', panelInfo.name);
         
-        // Determine API endpoint based on panel type
-        const deleteEndpoint = panelInfo.type === 'marzneshin' 
-          ? `${panelInfo.panel_url}/api/users/${subscription.username}`
-          : `${panelInfo.panel_url}/api/user/${subscription.username}`;
+        try {
+          // Step 1: Get access token (following VPN creation pattern)
+          const authEndpoint = panelInfo.type === 'marzneshin' 
+            ? `${panelInfo.panel_url}/api/admins/token`  // Marzneshin
+            : `${panelInfo.panel_url}/api/admin/token`;   // Marzban
 
-        // Create auth header
-        const authHeader = btoa(`${panelInfo.username}:${panelInfo.password}`);
+          const params = new URLSearchParams();
+          params.append('username', panelInfo.username);
+          params.append('password', panelInfo.password);
 
-        const response = await fetch(deleteEndpoint, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Basic ${authHeader}`,
-            'Content-Type': 'application/json',
+          console.log('🔑 DELETE_SUBSCRIPTION: Getting access token from:', authEndpoint);
+
+          const authResponse = await fetch(authEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: params.toString()
+          });
+
+          if (!authResponse.ok) {
+            throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
           }
-        });
 
-        if (!response.ok && response.status !== 404) {
-          // 404 is acceptable (user already doesn't exist)
-          throw new Error(`Panel deletion failed: ${response.status} ${response.statusText}`);
+          const authData = await authResponse.json();
+          const accessToken = authData.access_token;
+
+          if (!accessToken) {
+            throw new Error('No access token received from panel');
+          }
+
+          console.log('✅ DELETE_SUBSCRIPTION: Got access token, proceeding with deletion');
+
+          // Step 2: Delete user with Bearer token
+          const deleteEndpoint = panelInfo.type === 'marzneshin' 
+            ? `${panelInfo.panel_url}/api/users/${subscription.username}`
+            : `${panelInfo.panel_url}/api/user/${subscription.username}`;
+
+          const deleteResponse = await fetch(deleteEndpoint, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,  // Bearer instead of Basic
+              'Content-Type': 'application/json',
+            }
+          });
+
+          if (!deleteResponse.ok && deleteResponse.status !== 404) {
+            // 404 is acceptable (user already doesn't exist)
+            throw new Error(`Panel deletion failed: ${deleteResponse.status} ${deleteResponse.statusText}`);
+          }
+
+          console.log('✅ DELETE_SUBSCRIPTION: Successfully deleted from panel');
+        } catch (authError) {
+          console.error('❌ DELETE_SUBSCRIPTION: Panel deletion error:', authError);
+          // Don't throw here - log but continue with database cleanup
+          console.warn('⚠️ DELETE_SUBSCRIPTION: Panel deletion failed, but continuing with database cleanup');
         }
-
-        console.log('✅ DELETE_SUBSCRIPTION: Successfully deleted from panel');
       } else {
         console.warn('⚠️ DELETE_SUBSCRIPTION: No panel info available, skipping panel deletion');
       }
