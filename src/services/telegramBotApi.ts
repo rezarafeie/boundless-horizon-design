@@ -11,16 +11,25 @@ interface TelegramApiResponse<T = any> {
   message?: string;
 }
 
-// Helper function to make GET requests with JSON body
+// Helper function to make GET requests with URL parameters
 async function makeApiCall<T = any>(endpoint: string, payload: Record<string, any>): Promise<TelegramApiResponse<T>> {
   try {
-    const response = await fetch(`${BASE_URL}${endpoint}`, {
+    // Convert payload to URL parameters
+    const urlParams = new URLSearchParams();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        urlParams.append(key, String(value));
+      }
+    });
+    
+    const url = `${BASE_URL}${endpoint}?${urlParams.toString()}`;
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Token': API_TOKEN,
         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
+      }
     });
 
     if (!response.ok) {
