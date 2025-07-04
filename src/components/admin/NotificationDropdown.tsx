@@ -38,8 +38,26 @@ const getActivityColor = (activity: Activity) => {
 };
 
 export const NotificationDropdown = () => {
-  const { activities, loading, unreadCount, markAllAsRead } = useRecentActivity();
   const [isOpen, setIsOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Safely use the hook with error handling
+  let activities, loading, unreadCount, markAllAsRead;
+  
+  try {
+    const hookResult = useRecentActivity();
+    activities = hookResult.activities;
+    loading = hookResult.loading;
+    unreadCount = hookResult.unreadCount;
+    markAllAsRead = hookResult.markAllAsRead;
+  } catch (err) {
+    console.error('Error in useRecentActivity:', err);
+    setError('Failed to load notifications');
+    activities = [];
+    loading = false;
+    unreadCount = 0;
+    markAllAsRead = () => {};
+  }
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
@@ -52,6 +70,14 @@ export const NotificationDropdown = () => {
   // Handle potential errors gracefully
   const safeActivities = activities || [];
   const safeUnreadCount = unreadCount || 0;
+
+  if (error) {
+    return (
+      <Button variant="ghost" size="sm" className="relative">
+        <Bell className="w-4 h-4 text-muted-foreground" />
+      </Button>
+    );
+  }
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>

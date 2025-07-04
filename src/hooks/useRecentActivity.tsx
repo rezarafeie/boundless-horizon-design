@@ -98,24 +98,31 @@ export const useRecentActivity = () => {
 
     // Set up real-time subscriptions with unique channel names
     const subscriptionsChannel = supabase
-      .channel('admin-subscriptions-changes')
+      .channel(`admin-subscriptions-changes-${Date.now()}`)
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'subscriptions' },
-        () => fetchRecentActivity()
+        () => {
+          console.log('Subscriptions updated, refreshing activity');
+          fetchRecentActivity();
+        }
       )
       .subscribe();
 
     const userLogsChannel = supabase
-      .channel('admin-user-logs-changes')
+      .channel(`admin-user-logs-changes-${Date.now()}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'user_creation_logs' },
-        () => fetchRecentActivity()
+        () => {
+          console.log('User logs updated, refreshing activity');
+          fetchRecentActivity();
+        }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(subscriptionsChannel);
-      supabase.removeChannel(userLogsChannel);
+      console.log('Cleaning up subscriptions');
+      subscriptionsChannel.unsubscribe();
+      userLogsChannel.unsubscribe();
     };
   }, []);
 
