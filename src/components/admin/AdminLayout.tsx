@@ -63,7 +63,7 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/admin/login" replace />;
+    return <Navigate to="/admin" replace />;
   }
 
   return (

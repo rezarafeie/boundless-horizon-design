@@ -1,8 +1,7 @@
 // Telegram Bot API Service for b.bnets.co integration
-// Uses GET method with JSON body as required by the API
+// Uses Supabase Edge Function proxy to avoid CORS issues
 
-const BASE_URL = 'https://b.bnets.co/api';
-const API_TOKEN = '6169452dd5a55778f35fcedaa1fbd7b9';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TelegramApiResponse<T = any> {
   success?: boolean;
@@ -11,33 +10,28 @@ interface TelegramApiResponse<T = any> {
   message?: string;
 }
 
-// Helper function to make GET requests with URL parameters
+// Helper function to make API calls via Supabase Edge Function proxy
 async function makeApiCall<T = any>(endpoint: string, payload: Record<string, any>): Promise<TelegramApiResponse<T>> {
   try {
-    // Convert payload to URL parameters
-    const urlParams = new URLSearchParams();
-    Object.entries(payload).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        urlParams.append(key, String(value));
-      }
-    });
-    
-    const url = `${BASE_URL}${endpoint}?${urlParams.toString()}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Token': API_TOKEN,
-        'Content-Type': 'application/json',
+    console.log(`Telegram Bot API: Calling ${endpoint} via proxy with payload:`, payload);
+
+    const { data, error } = await supabase.functions.invoke('telegram-bot-proxy', {
+      body: {
+        endpoint,
+        payload
       }
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (error) {
+      throw new Error(`Supabase function error: ${error.message}`);
     }
 
-    const data = await response.json();
-    return { success: true, data };
+    if (!data.success) {
+      throw new Error(data.error || 'API request failed');
+    }
+
+    console.log(`Telegram Bot API: Response from ${endpoint}:`, data.data);
+    return { success: true, data: data.data };
   } catch (error: any) {
     console.error(`Telegram Bot API Error (${endpoint}):`, error);
     return { 
