@@ -256,6 +256,25 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
       if (result.success && result.data) {
         console.log('FREE_TRIAL: STRICT SUCCESS - calling onSuccess callback');
+        
+        // Send webhook notification for new test user
+        try {
+          console.log('FREE_TRIAL: Sending webhook notification');
+          await supabase.functions.invoke('send-webhook-notification', {
+            body: {
+              type: 'new_test_user',
+              test_user_id: result.data.username,
+              username: result.data.username,
+              mobile: formData.phone,
+              email: formData.email,
+              created_at: new Date().toISOString()
+            }
+          });
+        } catch (webhookError) {
+          console.error('FREE_TRIAL: Failed to send webhook notification:', webhookError);
+          // Don't fail the trial creation for webhook issues
+        }
+        
         toast({
           title: language === 'fa' ? 'موفقیت!' : 'Success!',
           description: language === 'fa' ? 

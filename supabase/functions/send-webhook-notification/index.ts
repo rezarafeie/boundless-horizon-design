@@ -14,6 +14,7 @@ interface WebhookPayload {
   email?: string;
   amount?: number;
   plan?: string;
+  payment_method?: string;
   receipt_url?: string;
   approve_link?: string;
   reject_link?: string;
@@ -28,7 +29,14 @@ serve(async (req) => {
   try {
     const payload: WebhookPayload = await req.json();
     
-    console.log('WEBHOOK: Sending notification to n8n:', payload);
+    // Only include approve/reject links for manual payments
+    const finalPayload = { ...payload };
+    if (payload.payment_method !== 'manual') {
+      delete finalPayload.approve_link;
+      delete finalPayload.reject_link;
+    }
+    
+    console.log('WEBHOOK: Sending notification to n8n:', finalPayload);
 
     const webhookUrl = 'https://rafeie.app.n8n.cloud/webhook-test/bnetswewbmailnewusernotification';
     
@@ -37,7 +45,7 @@ serve(async (req) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(finalPayload),
     });
 
     if (!response.ok) {

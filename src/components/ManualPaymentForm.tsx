@@ -53,9 +53,9 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
       setUploading(true);
       const fileExt = file.name.split('.').pop();
       const fileName = `${subscriptionId}_${Date.now()}.${fileExt}`;
-      const filePath = `receipts/${fileName}`;
+      const filePath = `${subscriptionId}_${Date.now()}.${fileExt}`;
 
-      console.log('MANUAL_PAYMENT: Uploading receipt:', { fileName, subscriptionId });
+      console.log('MANUAL_PAYMENT: Uploading receipt:', { fileName: filePath, subscriptionId });
 
       const { data, error } = await supabase.storage
         .from('manual-payment-receipts')
@@ -144,7 +144,7 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
         return;
       }
 
-      // Send webhook notification
+      // Send webhook notification with approve/reject links for manual payment
       try {
         await supabase.functions.invoke('send-webhook-notification', {
           body: {
@@ -153,6 +153,7 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
             username: `user_${mobile}`,
             mobile: mobile,
             amount: amount,
+            payment_method: 'manual',
             receipt_url: receiptUrl,
             approve_link: `https://bnets.co/admin/approve-order/${subscriptionId}`,
             reject_link: `https://bnets.co/admin/reject-order/${subscriptionId}`,
