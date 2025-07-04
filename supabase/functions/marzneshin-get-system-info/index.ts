@@ -36,35 +36,9 @@ serve(async (req) => {
 
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Found panel: ${panel.name} at ${panel.panel_url}`);
 
-    // For Marzneshin panels, we'll create mock data with proper structure
-    // This is because the actual Marzneshin API might have different endpoints
-    const systemInfo = {
-      version: "marzneshin-mock",
-      mem_total: 8589934592, // 8GB
-      mem_used: 4294967296,  // 4GB
-      cpu_cores: 4,
-      cpu_usage: 45.2,
-      total_user: 156,
-      users_active: 89,
-      users_on_hold: 12,
-      users_disabled: 8,
-      users_expired: 47,
-      users_limited: 0,
-      incoming_bandwidth: 5368709120, // 5GB
-      outgoing_bandwidth: 8589934592, // 8GB
-      incoming_bandwidth_speed: 1048576, // 1MB/s
-      outgoing_bandwidth_speed: 2097152  // 2MB/s
-    };
-
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Returning mock system info for ${panel.name}`);
-
-    return new Response(JSON.stringify({
-      success: true,
-      systemInfo: systemInfo
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    // For Marzneshin panels, the API connection is not yet implemented
+    // Return an error instead of fake data
+    throw new Error('Marzneshin API integration not yet implemented');
 
   } catch (error) {
     console.error('[MARZNESHIN-GET-SYSTEM-INFO] Error:', error);

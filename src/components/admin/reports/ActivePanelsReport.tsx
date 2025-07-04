@@ -258,11 +258,6 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                   </div>
                  ) : panel.systemInfo ? (
                    <div className="space-y-4">
-                     {/* Debug info */}
-                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                       Debug - System Info Keys: {Object.keys(panel.systemInfo).join(', ')}
-                     </div>
-                     
                      <div className="grid grid-cols-2 gap-4">
                        <div className="flex items-center gap-2">
                          <Users className="w-4 h-4 text-blue-600" />
@@ -307,18 +302,8 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                            <p>{(panel.systemInfo.outgoing_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
                          </div>
                        </div>
-                     </div>
-                     
-                     {/* Debug raw data */}
-                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                       <details>
-                         <summary>Raw System Info Data</summary>
-                         <pre className="mt-2 whitespace-pre-wrap">
-                           {JSON.stringify(panel.systemInfo, null, 2)}
-                         </pre>
-                       </details>
-                     </div>
-                   </div>
+                      </div>
+                    </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
                     No system information available
