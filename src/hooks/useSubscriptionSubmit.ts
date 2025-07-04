@@ -109,29 +109,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         // Don't fail the subscription creation for email issues
       }
 
-      // Send webhook notification for new subscription (paid subscriptions only)
-      if (finalPrice > 0) {
-        try {
-          console.log('SUBSCRIPTION_SUBMIT: Sending webhook notification for paid subscription');
-          await supabase.functions.invoke('send-webhook-notification', {
-            body: {
-              type: 'new_subscription',
-              webhook_type: 'newsub',
-              subscription_id: subscription.id,
-              username: uniqueUsername,
-              mobile: data.mobile,
-              email: data.email,
-              amount: finalPrice,
-              plan: latestPlan.name_en,
-              payment_method: 'pending', // Will be updated when payment is completed
-              created_at: new Date().toISOString()
-            }
-          });
-        } catch (webhookError) {
-          console.error('SUBSCRIPTION_SUBMIT: Failed to send webhook notification:', webhookError);
-          // Don't fail the subscription creation for webhook issues
-        }
-      }
+      // Webhook will be sent from PaymentSuccess page after successful payment
       
       // If price is 0, create VPN user immediately using ULTRA STRICT PanelUserCreationService
       if (finalPrice === 0) {

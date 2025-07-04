@@ -50,6 +50,27 @@ const PaymentSuccess = () => {
             
             await createVpnUserAutomatically(data.subscription);
             
+            // Send new subscription webhook notification
+            try {
+              console.log('PAYMENT_SUCCESS: Sending new subscription webhook notification');
+              await supabase.functions.invoke('send-webhook-notification', {
+                body: {
+                  type: 'new_subscription',
+                  webhook_type: 'newsub',
+                  subscription_id: data.subscription.id,
+                  username: data.subscription.username,
+                  mobile: data.subscription.mobile,
+                  email: data.subscription.email,
+                  amount: data.subscription.price_toman,
+                  payment_method: 'stripe',
+                  created_at: new Date().toISOString()
+                }
+              });
+            } catch (webhookError) {
+              console.error('PAYMENT_SUCCESS: Failed to send webhook notification:', webhookError);
+              // Don't fail for webhook issues
+            }
+
             // Send user confirmation email
             if (data.subscription.email) {
               try {
@@ -141,6 +162,27 @@ const PaymentSuccess = () => {
             // Create VPN user automatically
             await createVpnUserAutomatically(finalSubscription);
             
+            // Send new subscription webhook notification
+            try {
+              console.log('PAYMENT_SUCCESS: Sending new subscription webhook notification for Zarinpal');
+              await supabase.functions.invoke('send-webhook-notification', {
+                body: {
+                  type: 'new_subscription',
+                  webhook_type: 'newsub',
+                  subscription_id: finalSubscription.id,
+                  username: finalSubscription.username,
+                  mobile: finalSubscription.mobile,
+                  email: finalSubscription.email,
+                  amount: finalSubscription.price_toman,
+                  payment_method: 'zarinpal',
+                  created_at: new Date().toISOString()
+                }
+              });
+            } catch (webhookError) {
+              console.error('PAYMENT_SUCCESS: Failed to send webhook notification:', webhookError);
+              // Don't fail for webhook issues
+            }
+            
             // Send user confirmation email
             if (finalSubscription.email) {
               try {
@@ -178,6 +220,27 @@ const PaymentSuccess = () => {
             console.log('Decoded subscription data:', decodedData);
             
             await createVpnUserAutomatically(decodedData);
+            
+            // Send new subscription webhook notification
+            try {
+              console.log('PAYMENT_SUCCESS: Sending new subscription webhook notification for other payment method');
+              await supabase.functions.invoke('send-webhook-notification', {
+                body: {
+                  type: 'new_subscription',
+                  webhook_type: 'newsub',
+                  subscription_id: decodedData.id,
+                  username: decodedData.username,
+                  mobile: decodedData.mobile,
+                  email: decodedData.email,
+                  amount: decodedData.price_toman,
+                  payment_method: 'other',
+                  created_at: new Date().toISOString()
+                }
+              });
+            } catch (webhookError) {
+              console.error('PAYMENT_SUCCESS: Failed to send webhook notification:', webhookError);
+              // Don't fail for webhook issues
+            }
             
             // Send user confirmation email
             if (decodedData.email) {
