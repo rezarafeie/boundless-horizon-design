@@ -30,9 +30,9 @@ serve(async (req) => {
   try {
     const payload: WebhookPayload = await req.json();
     
-    // Only include approve/reject links for manual payments
+    // Only include approve/reject links for payment pending webhooks (manual payments)
     const finalPayload = { ...payload };
-    if (payload.payment_method !== 'manual') {
+    if (payload.webhook_type !== 'paymentpending') {
       delete finalPayload.approve_link;
       delete finalPayload.reject_link;
     }
