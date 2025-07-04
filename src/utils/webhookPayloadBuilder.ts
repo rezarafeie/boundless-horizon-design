@@ -2,11 +2,13 @@
 
 interface BaseWebhookPayload {
   type: 'new_subscription' | 'new_test_user';
+  webhook_type: 'testuser' | 'newsub' | 'paymentpending';
   created_at: string;
 }
 
 interface SubscriptionWebhookPayload extends BaseWebhookPayload {
   type: 'new_subscription';
+  webhook_type: 'newsub' | 'paymentpending';
   subscription_id: string;
   username: string;
   mobile?: string;
@@ -33,6 +35,7 @@ interface SubscriptionWebhookPayload extends BaseWebhookPayload {
 
 interface TestUserWebhookPayload extends BaseWebhookPayload {
   type: 'new_test_user';
+  webhook_type: 'testuser';
   test_user_id: string;
   username: string;
   email: string;
@@ -74,9 +77,11 @@ export class WebhookPayloadBuilder {
     expireAt?: string;
     protocol?: string;
     status?: string;
+    webhookType: 'newsub' | 'paymentpending';
   }): SubscriptionWebhookPayload {
     return {
       type: 'new_subscription',
+      webhook_type: data.webhookType,
       subscription_id: data.subscriptionId,
       username: data.username,
       mobile: data.mobile,
@@ -119,6 +124,7 @@ export class WebhookPayloadBuilder {
   }): TestUserWebhookPayload {
     return {
       type: 'new_test_user',
+      webhook_type: 'testuser',
       test_user_id: data.testUserId,
       username: data.username,
       email: data.email,

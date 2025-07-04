@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface WebhookPayload {
   type: 'new_subscription' | 'new_test_user';
+  webhook_type: 'testuser' | 'newsub' | 'paymentpending';
   subscription_id?: string;
   test_user_id?: string;
   username: string;

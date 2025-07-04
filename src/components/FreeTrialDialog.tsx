@@ -263,6 +263,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           await supabase.functions.invoke('send-webhook-notification', {
             body: {
               type: 'new_test_user',
+              webhook_type: 'testuser',
               test_user_id: result.data.username,
               username: result.data.username,
               mobile: formData.phone,

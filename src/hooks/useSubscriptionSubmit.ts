@@ -116,6 +116,7 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
           await supabase.functions.invoke('send-webhook-notification', {
             body: {
               type: 'new_subscription',
+              webhook_type: 'newsub',
               subscription_id: subscription.id,
               username: uniqueUsername,
               mobile: data.mobile,
