@@ -1,4 +1,3 @@
-
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -9,6 +8,7 @@ import {
   Settings, 
   Server,
   TestTube,
+  BarChart3,
   X,
   Moon,
   Sun
@@ -47,6 +47,11 @@ export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
       title: 'Tests',
       href: '/admin/tests',
       icon: TestTube,
+    },
+    {
+      title: 'Reports',
+      href: '/admin/reports',
+      icon: BarChart3,
     },
     {
       title: 'Discounts',

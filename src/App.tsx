@@ -16,6 +16,7 @@ import AdminPlans from "./pages/AdminPlans";
 import AdminPanels from "./pages/AdminPanels";
 import AdminDiscounts from "./pages/AdminDiscounts";
 import AdminTests from "./pages/AdminTests";
+import AdminReports from "./pages/AdminReports";
 import AdminApproveOrder from "./pages/AdminApproveOrder";
 import AdminRejectOrder from "./pages/AdminRejectOrder";
 import DeliveryPage from "./pages/DeliveryPage";
@@ -44,6 +45,7 @@ const App = () => (
               <Route path="/admin/panels" element={<AdminPanels />} />
               <Route path="/admin/discounts" element={<AdminDiscounts />} />
               <Route path="/admin/tests" element={<AdminTests />} />
+              <Route path="/admin/reports" element={<AdminReports />} />
               <Route path="/admin/approve-order/:id" element={<AdminApproveOrder />} />
               <Route path="/admin/reject-order/:id" element={<AdminRejectOrder />} />
               <Route path="/delivery" element={<DeliveryPage />} />
