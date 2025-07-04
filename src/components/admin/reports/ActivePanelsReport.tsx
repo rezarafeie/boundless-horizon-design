@@ -21,7 +21,7 @@ interface PanelInfo {
   health_status: string;
   last_health_check: string | null;
   systemInfo?: any;
-  error?: string;
+  error?: string; // Add optional error property
 }
 
 export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) => {
