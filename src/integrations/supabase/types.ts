@@ -584,6 +584,65 @@ export type Database = {
           },
         ]
       }
+      test_users: {
+        Row: {
+          created_at: string
+          data_limit_bytes: number
+          device_info: Json | null
+          email: string
+          expire_date: string
+          id: string
+          ip_address: unknown | null
+          panel_id: string | null
+          panel_name: string
+          phone_number: string
+          status: string | null
+          subscription_url: string | null
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          data_limit_bytes?: number
+          device_info?: Json | null
+          email: string
+          expire_date: string
+          id?: string
+          ip_address?: unknown | null
+          panel_id?: string | null
+          panel_name: string
+          phone_number: string
+          status?: string | null
+          subscription_url?: string | null
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          data_limit_bytes?: number
+          device_info?: Json | null
+          email?: string
+          expire_date?: string
+          id?: string
+          ip_address?: unknown | null
+          panel_id?: string | null
+          panel_name?: string
+          phone_number?: string
+          status?: string | null
+          subscription_url?: string | null
+          updated_at?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_users_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "panel_servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_creation_logs: {
         Row: {
           created_at: string

@@ -8,6 +8,7 @@ import {
   CreditCard, 
   Settings, 
   Server,
+  TestTube,
   X,
   Moon,
   Sun
@@ -43,6 +44,11 @@ export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
       icon: Server,
     },
     {
+      title: 'Tests',
+      href: '/admin/tests',
+      icon: TestTube,
+    },
+    {
       title: 'Discounts',
       href: '/admin/discounts',
       icon: Settings,
@@ -51,7 +57,7 @@ export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
 
   const isActive = (href: string) => {
     if (href === '/admin') {
-      return location.pathname ===  '/admin';
+      return location.pathname === '/admin' || location.pathname === '/admin/dashboard';
     }
     return location.pathname.startsWith(href);
   };

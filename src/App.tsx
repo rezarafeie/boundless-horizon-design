@@ -15,6 +15,7 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminPlans from "./pages/AdminPlans";
 import AdminPanels from "./pages/AdminPanels";
 import AdminDiscounts from "./pages/AdminDiscounts";
+import AdminTests from "./pages/AdminTests";
 import DeliveryPage from "./pages/DeliveryPage";
 import SubscriptionDelivery from "./pages/SubscriptionDelivery";
 import PaymentSuccess from "./pages/PaymentSuccess";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/admin/plans" element={<AdminPlans />} />
               <Route path="/admin/panels" element={<AdminPanels />} />
               <Route path="/admin/discounts" element={<AdminDiscounts />} />
+              <Route path="/admin/tests" element={<AdminTests />} />
               <Route path="/delivery" element={<DeliveryPage />} />
               <Route path="/subscription-delivery" element={<SubscriptionDelivery />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />

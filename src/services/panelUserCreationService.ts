@@ -389,8 +389,8 @@ export class PanelUserCreationService {
         console.log('PANEL_USER_CREATION: Resolved plan name to UUID for STRICT binding:', { name: planIdOrUuid, uuid: actualPlanId, planName: plan.name_en });
       }
       
-      // Use STRICT plan-to-panel binding
-      return this.createUserFromPanel({
+      // Use STRICT plan-to-panel binding and store test user data
+      const result = await this.createUserFromPanel({
         planId: actualPlanId,
         username,
         dataLimitGB,
@@ -398,6 +398,48 @@ export class PanelUserCreationService {
         notes: `Free Trial - Plan: ${planIdOrUuid}`,
         isFreeTriaL: true
       });
+
+      // Store test user data in the database if email and phone are provided
+      if (result.success && result.data && email && phoneNumber) {
+        try {
+          const expireDate = new Date();
+          expireDate.setDate(expireDate.getDate() + durationDays);
+          
+          // Get plan details for the test user data
+          const { data: planData } = await supabase
+            .from('subscription_plans')
+            .select('panel_servers(name)')
+            .eq('id', actualPlanId)
+            .single();
+          
+          const testUserData = {
+            email: email,
+            phone_number: phoneNumber,
+            username: result.data.username,
+            panel_id: actualPlanId,
+            panel_name: result.data.panel_name || planData?.panel_servers?.name || 'Unknown Panel',
+            subscription_url: result.data.subscription_url,
+            expire_date: expireDate.toISOString(),
+            data_limit_bytes: dataLimitGB * 1024 * 1024 * 1024, // Convert GB to bytes
+            ip_address: null, // Will be set by the client
+            device_info: {}
+          };
+          
+          const { error: insertError } = await supabase
+            .from('test_users')
+            .insert([testUserData]);
+            
+          if (insertError) {
+            console.error('PANEL_USER_CREATION: Failed to store test user data:', insertError);
+          } else {
+            console.log('PANEL_USER_CREATION: Test user data stored successfully');
+          }
+        } catch (error) {
+          console.error('PANEL_USER_CREATION: Error storing test user data:', error);
+        }
+      }
+
+      return result;
     } catch (error) {
       console.error('PANEL_USER_CREATION: Error in createFreeTrial with STRICT binding:', error);
       return {

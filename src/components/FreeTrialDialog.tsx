@@ -24,15 +24,27 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [availablePlans, setAvailablePlans] = useState<any[]>([]);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [currentStep, setCurrentStep] = useState(1); // Step 1: Email/Phone, Step 2: Username/Plan
   const [formData, setFormData] = useState({
+    email: '',
+    phone: '',
     username: '',
     mobile: ''
   });
 
-  // Load available plans with STRICT panel requirements
+  // Load available plans when moving to step 2
+  const resetDialog = () => {
+    setCurrentStep(1);
+    setFormData({ email: '', phone: '', username: '', mobile: '' });
+    setSelectedPlan('');
+    setAvailablePlans([]);
+    setDebugInfo(null);
+  };
+
+  // Reset when dialog closes
   React.useEffect(() => {
-    if (isOpen) {
-      loadAvailablePlans();
+    if (!isOpen) {
+      resetDialog();
     }
   }, [isOpen]);
 
@@ -146,15 +158,60 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Handle step 1 submission (email/phone)
+  const handleStep1Submit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.username.trim() || !formData.mobile.trim() || !selectedPlan) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^(\+98|0)?9\d{9}$/;
+    
+    if (!formData.email.trim() || !formData.phone.trim()) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
-          'لطفاً تمام فیلدها را پر کنید' : 
-          'Please fill in all fields',
+          'لطفاً ایمیل و شماره تلفن را وارد کنید' : 
+          'Please enter email and phone number',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (!emailRegex.test(formData.email)) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً ایمیل معتبر وارد کنید' : 
+          'Please enter a valid email address',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (!phoneRegex.test(formData.phone)) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً شماره موبایل معتبر وارد کنید' : 
+          'Please enter a valid mobile number',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setCurrentStep(2);
+    loadAvailablePlans();
+  };
+
+  // Handle step 2 submission (username/plan)
+  const handleStep2Submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.username.trim() || !selectedPlan) {
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 
+          'لطفاً نام کاربری و پلن را انتخاب کنید' : 
+          'Please enter username and select a plan',
         variant: 'destructive',
       });
       return;
@@ -181,12 +238,14 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       const timestamp = Date.now();
       const uniqueUsername = `${formData.username}_trial_${timestamp}`;
       
-      // Use STRICT plan-to-panel binding
+      // Use STRICT plan-to-panel binding with email and phone
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
         selectedPlan, // UUID with STRICT panel assignment
         1, // 1 GB for free trial
-        1  // 1 day for free trial
+        7, // 7 days for free trial
+        formData.email,
+        formData.phone
       );
 
       console.log('FREE_TRIAL: STRICT creation result:', result);
@@ -213,8 +272,9 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         onClose();
         
         // Reset form
-        setFormData({ username: '', mobile: '' });
+        setFormData({ email: '', phone: '', username: '', mobile: '' });
         setSelectedPlan('');
+        setCurrentStep(1);
       } else {
         console.error('FREE_TRIAL: STRICT creation failed:', result.error);
         toast({
@@ -246,10 +306,72 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           <DialogTitle className="flex items-center gap-2 text-blue-600">
             <Zap className="w-5 h-5" />
             {language === 'fa' ? 'تست رایگان' : 'Free Trial'}
+            <span className="text-sm text-gray-500">
+              ({currentStep}/2)
+            </span>
           </DialogTitle>
         </DialogHeader>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
+
+        {currentStep === 1 ? (
+          // Step 1: Email and Phone Collection
+          <form onSubmit={handleStep1Submit} className="space-y-4">
+            <div>
+              <Label htmlFor="email">
+                {language === 'fa' ? 'آدرس ایمیل' : 'Email Address'}
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder={language === 'fa' ? 'example@gmail.com' : 'example@gmail.com'}
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                required
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="phone">
+                {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder={language === 'fa' ? '09123456789' : '09123456789'}
+                value={formData.phone}
+                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg text-sm">
+              <p className="text-blue-800">
+                {language === 'fa' ? 
+                  '🎉 تست رایگان: ۱ گیگابایت برای ۷ روز' : 
+                  '🎉 Free Trial: 1 GB for 7 days'
+                }
+              </p>
+            </div>
+            
+            <div className="flex gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                className="flex-1"
+              >
+                {language === 'fa' ? 'انصراف' : 'Cancel'}
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+              >
+                {language === 'fa' ? 'ادامه' : 'Continue'}
+              </Button>
+            </div>
+          </form>
+        ) : (
+          // Step 2: Username and Plan Selection
+          <form onSubmit={handleStep2Submit} className="space-y-4">
           <div>
             <Label htmlFor="plan">
               {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
@@ -312,14 +434,23 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
             />
           </div>
 
-          <div className="bg-blue-50 p-3 rounded-lg text-sm">
-            <p className="text-blue-800">
-              {language === 'fa' ? 
-                '🎉 تست رایگان: ۱ گیگابایت برای ۱ روز' : 
-                '🎉 Free Trial: 1 GB for 1 day'
-              }
-            </p>
-          </div>
+            <div className="bg-green-50 p-3 rounded-lg text-sm">
+              <p className="text-green-800">
+                {language === 'fa' ? 
+                  `✅ ایمیل: ${formData.email} | موبایل: ${formData.phone}` : 
+                  `✅ Email: ${formData.email} | Mobile: ${formData.phone}`
+                }
+              </p>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg text-sm">
+              <p className="text-blue-800">
+                {language === 'fa' ? 
+                  '🎉 تست رایگان: ۱ گیگابایت برای ۷ روز' : 
+                  '🎉 Free Trial: 1 GB for 7 days'
+                }
+              </p>
+            </div>
 
           {/* Debug info for development */}
           {debugInfo && process.env.NODE_ENV === 'development' && (
@@ -328,26 +459,27 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
             </div>
           )}
           
-          <div className="flex gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="flex-1"
-              disabled={isLoading}
-            >
-              {language === 'fa' ? 'انصراف' : 'Cancel'}
-            </Button>
-            <Button
-              type="submit"
-              className="flex-1"
-              disabled={isLoading || !selectedPlan || availablePlans.length === 0}
-            >
-              {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {language === 'fa' ? 'شروع تست' : 'Start Trial'}
-            </Button>
-          </div>
-        </form>
+            <div className="flex gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCurrentStep(1)}
+                className="flex-1"
+                disabled={isLoading}
+              >
+                {language === 'fa' ? 'قبلی' : 'Back'}
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={isLoading || !selectedPlan || availablePlans.length === 0}
+              >
+                {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {language === 'fa' ? 'شروع تست' : 'Start Trial'}
+              </Button>
+            </div>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );
