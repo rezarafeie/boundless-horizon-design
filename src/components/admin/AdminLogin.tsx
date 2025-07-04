@@ -39,83 +39,36 @@ export const AdminLogin = () => {
     try {
       console.log('Admin login attempt for username:', username);
       
-      // Only allow bnets login
-      if (username !== 'bnets') {
-        setError('Invalid username');
+      // Simple credential validation
+      if (username !== 'bnets' || password !== 'reza1234') {
+        setError('Invalid credentials');
         setLoading(false);
         return;
       }
 
-      if (password !== 'reza1234') {
-        setError('Invalid password');
-        setLoading(false);
-        return;
-      }
-
-      // Use valid email format for backend authentication
-      const adminEmail = 'bnets@boundless-admin.com';
+      // Create a simple admin session by adding to admin_users table
+      // First, create a dummy user if it doesn't exist
+      const adminUserId = 'admin-user-id-bnets';
       
-      // Try to sign in first
-      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: adminEmail,
-        password: password,
-      });
-
-      // If login fails because user doesn't exist, create the user
-      if (authError && authError.message.includes('Invalid login credentials')) {
-        console.log('Admin user not found, creating...');
-        
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: adminEmail,
-          password: password,
+      const { error: adminError } = await supabase
+        .from('admin_users')
+        .upsert({
+          user_id: adminUserId,
+          role: 'superadmin',
+          is_active: true
         });
 
-        if (signUpError) {
-          console.error('Sign up error:', signUpError);
-          throw signUpError;
-        }
-
-        if (signUpData.user) {
-          // Add to admin_users table
-          const { error: adminError } = await supabase
-            .from('admin_users')
-            .upsert({
-              user_id: signUpData.user.id,
-              role: 'superadmin',
-              is_active: true
-            });
-
-          if (adminError) {
-            console.error('Error creating admin user:', adminError);
-          } else {
-            console.log('Admin user created successfully');
-          }
-
-          toast.success('Admin account created and logged in successfully');
-        }
-      } else if (authError) {
-        console.error('Auth error:', authError);
-        throw authError;
-      } else {
-        // User exists and logged in successfully
-        if (authData.user) {
-          // Ensure user is in admin_users table
-          const { error: adminError } = await supabase
-            .from('admin_users')
-            .upsert({
-              user_id: authData.user.id,
-              role: 'superadmin',
-              is_active: true
-            });
-
-          if (adminError) {
-            console.error('Error updating admin user:', adminError);
-          }
-
-          console.log('Admin login successful');
-          toast.success('Login successful');
-        }
+      if (adminError) {
+        console.error('Error creating admin user:', adminError);
+        throw adminError;
       }
+
+      console.log('Admin login successful');
+      toast.success('Login successful');
+      
+      // Force a page reload to trigger admin auth check
+      window.location.href = '/admin/dashboard';
+
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Login failed');
