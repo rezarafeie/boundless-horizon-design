@@ -44,6 +44,14 @@ export const useRecentActivity = () => {
         .order('created_at', { ascending: false })
         .limit(5);
 
+      // Fetch recent test users
+      const { data: testUsers } = await supabase
+        .from('test_users')
+        .select('id, username, email, phone_number, status, created_at, expire_date')
+        .gte('created_at', oneDayAgo)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
       const allActivities: Activity[] = [];
 
       // Process subscriptions
@@ -78,6 +86,19 @@ export const useRecentActivity = () => {
           title: 'Admin Action',
           description: `${log.action} on ${log.table_name}`,
           timestamp: log.created_at
+        });
+      });
+
+      // Process test users
+      testUsers?.forEach(user => {
+        const isExpired = new Date(user.expire_date) <= new Date();
+        allActivities.push({
+          id: `test-${user.id}`,
+          type: 'user_creation',
+          title: 'Test Account Created',
+          description: `${user.username} (${user.email}) - ${isExpired ? 'Expired' : 'Active'}`,
+          timestamp: user.created_at,
+          status: user.status === 'deleted' ? 'error' : (isExpired ? 'expired' : 'success')
         });
       });
 
@@ -119,10 +140,22 @@ export const useRecentActivity = () => {
       )
       .subscribe();
 
+    const testUsersChannel = supabase
+      .channel(`admin-test-users-changes-${Date.now()}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'test_users' },
+        () => {
+          console.log('Test users updated, refreshing activity');
+          fetchRecentActivity();
+        }
+      )
+      .subscribe();
+
     return () => {
       console.log('Cleaning up subscriptions');
       subscriptionsChannel.unsubscribe();
       userLogsChannel.unsubscribe();
+      testUsersChannel.unsubscribe();
     };
   }, []);
 
