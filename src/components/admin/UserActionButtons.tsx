@@ -208,7 +208,33 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
           params.append('username', panelInfo.username);
           params.append('password', panelInfo.password);
 
+          const authStartTime = Date.now();
           console.log('🔑 DELETE_SUBSCRIPTION: Getting access token from:', authEndpoint);
+          console.log('🔑 DELETE_SUBSCRIPTION: Auth request details:', {
+            method: 'POST',
+            endpoint: authEndpoint,
+            panelType: panelInfo.type,
+            username: panelInfo.username,
+            password: '[REDACTED]',
+            body: `username=${panelInfo.username}&password=[REDACTED]`
+          });
+
+          // Log authentication attempt
+          await supabase.from('user_creation_logs').insert({
+            subscription_id: subscription.id,
+            edge_function_name: 'manual-delete-auth-attempt',
+            request_data: { 
+              auth_endpoint: authEndpoint,
+              panel_type: panelInfo.type,
+              username: panelInfo.username,
+              timestamp: new Date().toISOString()
+            },
+            response_data: {},
+            success: false,
+            panel_id: panelInfo.id,
+            panel_name: panelInfo.name,
+            panel_url: panelInfo.panel_url
+          });
 
           const authResponse = await fetch(authEndpoint, {
             method: 'POST',
@@ -219,16 +245,89 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
             body: params.toString()
           });
 
+          const authEndTime = Date.now();
+          const authDuration = authEndTime - authStartTime;
+
+          console.log('🔑 DELETE_SUBSCRIPTION: Auth response details:', {
+            status: authResponse.status,
+            statusText: authResponse.statusText,
+            duration: `${authDuration}ms`,
+            headers: Object.fromEntries(authResponse.headers.entries())
+          });
+
           if (!authResponse.ok) {
+            const errorText = await authResponse.text().catch(() => 'No response body');
+            console.error('❌ DELETE_SUBSCRIPTION: Auth failed with response:', errorText);
+            
+            // Log authentication failure
+            await supabase.from('user_creation_logs').insert({
+              subscription_id: subscription.id,
+              edge_function_name: 'manual-delete-auth-failed',
+              request_data: { 
+                auth_endpoint: authEndpoint,
+                panel_type: panelInfo.type,
+                duration_ms: authDuration
+              },
+              response_data: { 
+                status: authResponse.status,
+                statusText: authResponse.statusText,
+                error_body: errorText
+              },
+              success: false,
+              error_message: `Authentication failed: ${authResponse.status} ${authResponse.statusText}`,
+              panel_id: panelInfo.id,
+              panel_name: panelInfo.name,
+              panel_url: panelInfo.panel_url
+            });
+            
             throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
           }
 
           const authData = await authResponse.json();
           const accessToken = authData.access_token;
 
+          console.log('✅ DELETE_SUBSCRIPTION: Auth successful, token received:', {
+            tokenReceived: !!accessToken,
+            tokenLength: accessToken?.length || 0,
+            duration: `${authDuration}ms`,
+            authData: { ...authData, access_token: accessToken ? '[REDACTED]' : null }
+          });
+
           if (!accessToken) {
+            // Log token missing
+            await supabase.from('user_creation_logs').insert({
+              subscription_id: subscription.id,
+              edge_function_name: 'manual-delete-no-token',
+              request_data: { auth_endpoint: authEndpoint },
+              response_data: authData,
+              success: false,
+              error_message: 'No access token received from panel',
+              panel_id: panelInfo.id,
+              panel_name: panelInfo.name,
+              panel_url: panelInfo.panel_url
+            });
+            
             throw new Error('No access token received from panel');
           }
+
+          // Log successful authentication
+          await supabase.from('user_creation_logs').insert({
+            subscription_id: subscription.id,
+            edge_function_name: 'manual-delete-auth-success',
+            request_data: { 
+              auth_endpoint: authEndpoint,
+              duration_ms: authDuration
+            },
+            response_data: { 
+              status: authResponse.status,
+              token_received: true,
+              token_length: accessToken.length
+            },
+            success: true,
+            panel_id: panelInfo.id,
+            panel_name: panelInfo.name,
+            panel_url: panelInfo.panel_url
+          });
 
           console.log('✅ DELETE_SUBSCRIPTION: Got access token, proceeding with deletion');
 
@@ -236,6 +335,17 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
           const deleteEndpoint = panelInfo.type === 'marzneshin' 
             ? `${panelInfo.panel_url}/api/users/${subscription.username}`
             : `${panelInfo.panel_url}/api/user/${subscription.username}`;
+
+          const deleteStartTime = Date.now();
+          console.log('🗑️ DELETE_SUBSCRIPTION: Sending DELETE request:', {
+            method: 'DELETE',
+            endpoint: deleteEndpoint,
+            username: subscription.username,
+            headers: {
+              'Authorization': `Bearer [TOKEN-${accessToken.length}-CHARS]`,
+              'Content-Type': 'application/json'
+            }
+          });
 
           const deleteResponse = await fetch(deleteEndpoint, {
             method: 'DELETE',
@@ -245,14 +355,91 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
             }
           });
 
+          const deleteEndTime = Date.now();
+          const deleteDuration = deleteEndTime - deleteStartTime;
+
+          console.log('🗑️ DELETE_SUBSCRIPTION: DELETE response details:', {
+            status: deleteResponse.status,
+            statusText: deleteResponse.statusText,
+            duration: `${deleteDuration}ms`,
+            headers: Object.fromEntries(deleteResponse.headers.entries())
+          });
+
+          let deleteResponseBody = '';
+          try {
+            deleteResponseBody = await deleteResponse.text();
+            console.log('🗑️ DELETE_SUBSCRIPTION: DELETE response body:', deleteResponseBody);
+          } catch (e) {
+            console.log('🗑️ DELETE_SUBSCRIPTION: No response body or failed to read');
+          }
+
           if (!deleteResponse.ok && deleteResponse.status !== 404) {
+            // Log deletion failure
+            await supabase.from('user_creation_logs').insert({
+              subscription_id: subscription.id,
+              edge_function_name: 'manual-delete-failed',
+              request_data: { 
+                delete_endpoint: deleteEndpoint,
+                username: subscription.username,
+                duration_ms: deleteDuration
+              },
+              response_data: { 
+                status: deleteResponse.status,
+                statusText: deleteResponse.statusText,
+                response_body: deleteResponseBody
+              },
+              success: false,
+              error_message: `Panel deletion failed: ${deleteResponse.status} ${deleteResponse.statusText}`,
+              panel_id: panelInfo.id,
+              panel_name: panelInfo.name,
+              panel_url: panelInfo.panel_url
+            });
+            
             // 404 is acceptable (user already doesn't exist)
             throw new Error(`Panel deletion failed: ${deleteResponse.status} ${deleteResponse.statusText}`);
           }
 
+          // Log successful deletion
+          await supabase.from('user_creation_logs').insert({
+            subscription_id: subscription.id,
+            edge_function_name: 'manual-delete-success',
+            request_data: { 
+              delete_endpoint: deleteEndpoint,
+              username: subscription.username,
+              duration_ms: deleteDuration
+            },
+            response_data: { 
+              status: deleteResponse.status,
+              statusText: deleteResponse.statusText,
+              response_body: deleteResponseBody
+            },
+            success: true,
+            panel_id: panelInfo.id,
+            panel_name: panelInfo.name,
+            panel_url: panelInfo.panel_url
+          });
+
           console.log('✅ DELETE_SUBSCRIPTION: Successfully deleted from panel');
         } catch (authError) {
           console.error('❌ DELETE_SUBSCRIPTION: Panel deletion error:', authError);
+          
+          // Log the overall error
+          await supabase.from('user_creation_logs').insert({
+            subscription_id: subscription.id,
+            edge_function_name: 'manual-delete-error',
+            request_data: { 
+              username: subscription.username,
+              panel_name: panelInfo.name,
+              panel_url: panelInfo.panel_url
+            },
+            response_data: {},
+            success: false,
+            error_message: authError instanceof Error ? authError.message : 'Unknown deletion error',
+            panel_id: panelInfo.id,
+            panel_name: panelInfo.name,
+            panel_url: panelInfo.panel_url
+          });
+          
           // Don't throw here - log but continue with database cleanup
           console.warn('⚠️ DELETE_SUBSCRIPTION: Panel deletion failed, but continuing with database cleanup');
         }

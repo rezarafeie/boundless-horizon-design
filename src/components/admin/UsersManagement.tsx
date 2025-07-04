@@ -65,12 +65,12 @@ export const UsersManagement = () => {
               name,
               type,
               health_status,
-              panel_url
+              panel_url,
+              username,
+              password
             )
           )
         `)
-        .neq('status', 'deleted')
-        .not('notes', 'like', '%- Deleted on %')
         .order('created_at', { ascending: false });
 
       if (statusFilter !== 'all') {
@@ -109,9 +109,10 @@ export const UsersManagement = () => {
     total: subscriptions.length,
     active: subscriptions.filter(s => s.status === 'active').length,
     pending: subscriptions.filter(s => s.status === 'pending').length,
+    cancelled: subscriptions.filter(s => s.status === 'cancelled' || s.notes?.includes('- Deleted on')).length,
     awaitingReview: subscriptions.filter(s => s.status === 'pending' && s.admin_decision === 'pending').length,
     totalRevenue: subscriptions.reduce((sum, s) => sum + s.price_toman, 0),
-  } : { total: 0, active: 0, pending: 0, awaitingReview: 0, totalRevenue: 0 };
+  } : { total: 0, active: 0, pending: 0, cancelled: 0, awaitingReview: 0, totalRevenue: 0 };
 
   const handleRefresh = () => {
     refetch();
@@ -160,7 +161,7 @@ export const UsersManagement = () => {
       </div>
 
       {/* Stats Cards - Mobile responsive grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
         <Card className="overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
@@ -200,6 +201,18 @@ export const UsersManagement = () => {
         <Card className="overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
+              <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-red-600 flex-shrink-0" />
+              <div className="ml-2 sm:ml-3 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Cancelled</p>
+                <p className="text-lg sm:text-xl font-bold">{stats.cancelled}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center">
               <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-orange-600 flex-shrink-0" />
               <div className="ml-2 sm:ml-3 min-w-0">
                 <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Review</p>
@@ -209,7 +222,7 @@ export const UsersManagement = () => {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden col-span-2 sm:col-span-1">
+        <Card className="overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center">
               <DollarSign className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0" />
