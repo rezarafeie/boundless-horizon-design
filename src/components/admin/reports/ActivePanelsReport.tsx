@@ -256,54 +256,69 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                     <p className="text-sm text-destructive font-medium">Error</p>
                     <p className="text-sm text-destructive/80">{panel.error}</p>
                   </div>
-                ) : panel.systemInfo ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-blue-600" />
-                        <div>
-                          <p className="text-sm font-medium">Total Users</p>
-                          <p className="text-lg font-bold">{formatNumber(panel.systemInfo.total_user)}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-4 h-4 text-green-600" />
-                        <div>
-                          <p className="text-sm font-medium">Active Users</p>
-                          <p className="text-lg font-bold">{formatNumber(panel.systemInfo.users_active)}</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm font-medium">Expired</p>
-                        <p className="text-sm text-yellow-600">{formatNumber(panel.systemInfo.users_expired)}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Disabled</p>
-                        <p className="text-sm text-red-600">{formatNumber(panel.systemInfo.users_disabled || 0)}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="pt-3 border-t">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Database className="w-4 h-4" />
-                        <span className="text-sm font-medium">Bandwidth</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Incoming</p>
-                          <p>{(panel.systemInfo.incoming_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Outgoing</p>
-                          <p>{(panel.systemInfo.outgoing_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                 ) : panel.systemInfo ? (
+                   <div className="space-y-4">
+                     {/* Debug info */}
+                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                       Debug - System Info Keys: {Object.keys(panel.systemInfo).join(', ')}
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-4">
+                       <div className="flex items-center gap-2">
+                         <Users className="w-4 h-4 text-blue-600" />
+                         <div>
+                           <p className="text-sm font-medium">Total Users</p>
+                           <p className="text-lg font-bold">{formatNumber(panel.systemInfo.total_user)}</p>
+                         </div>
+                       </div>
+                       
+                       <div className="flex items-center gap-2">
+                         <Activity className="w-4 h-4 text-green-600" />
+                         <div>
+                           <p className="text-sm font-medium">Active Users</p>
+                           <p className="text-lg font-bold">{formatNumber(panel.systemInfo.users_active)}</p>
+                         </div>
+                       </div>
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-4">
+                       <div>
+                         <p className="text-sm font-medium">Expired</p>
+                         <p className="text-sm text-yellow-600">{formatNumber(panel.systemInfo.users_expired)}</p>
+                       </div>
+                       <div>
+                         <p className="text-sm font-medium">Disabled</p>
+                         <p className="text-sm text-red-600">{formatNumber(panel.systemInfo.users_disabled || 0)}</p>
+                       </div>
+                     </div>
+                     
+                     <div className="pt-3 border-t">
+                       <div className="flex items-center gap-2 mb-2">
+                         <Database className="w-4 h-4" />
+                         <span className="text-sm font-medium">Bandwidth</span>
+                       </div>
+                       <div className="grid grid-cols-2 gap-4 text-sm">
+                         <div>
+                           <p className="text-muted-foreground">Incoming</p>
+                           <p>{(panel.systemInfo.incoming_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
+                         </div>
+                         <div>
+                           <p className="text-muted-foreground">Outgoing</p>
+                           <p>{(panel.systemInfo.outgoing_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
+                         </div>
+                       </div>
+                     </div>
+                     
+                     {/* Debug raw data */}
+                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                       <details>
+                         <summary>Raw System Info Data</summary>
+                         <pre className="mt-2 whitespace-pre-wrap">
+                           {JSON.stringify(panel.systemInfo, null, 2)}
+                         </pre>
+                       </details>
+                     </div>
+                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
                     No system information available
