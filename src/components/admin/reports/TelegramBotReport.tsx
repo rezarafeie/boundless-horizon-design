@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, MessageSquare, Users, CreditCard, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { DebugLogger } from './DebugLogger';
-import { useDebugLogger } from '@/hooks/useDebugLogger';
 import { DateRange } from '../DateRangeSelector';
 
 interface TelegramBotReportProps {
@@ -31,7 +29,6 @@ interface TelegramStats {
 
 export const TelegramBotReport = ({ refreshTrigger, dateRange }: TelegramBotReportProps) => {
   const { toast } = useToast();
-  const { logs, logApiCall, logInfo, logError, clearLogs } = useDebugLogger();
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<TelegramStats>({
     botStatus: 'unknown',
@@ -47,24 +44,15 @@ export const TelegramBotReport = ({ refreshTrigger, dateRange }: TelegramBotRepo
     setLoading(true);
     
     try {
-      logInfo('Starting Telegram bot data load with date range', { 
-        from: dateRange.from.toISOString(),
-        to: dateRange.to.toISOString(),
-        preset: dateRange.preset
-      });
-
       // Fetch real Telegram bot statistics
-      const telegramStats = await logApiCall('Fetch Telegram bot statistics', async () => {
-        const { telegramBotApi } = await import('@/services/telegramBotApi');
-        const result = await telegramBotApi.getDashboardStats();
-        
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to fetch Telegram stats');
-        }
-        
-        logInfo('Telegram bot statistics response', result.data);
-        return result.data;
-      });
+      const { telegramBotApi } = await import('@/services/telegramBotApi');
+      const result = await telegramBotApi.getDashboardStats();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch Telegram stats');
+      }
+      
+      const telegramStats = result.data;
 
       // Process the Telegram bot stats
       const processedStats = {
@@ -81,20 +69,7 @@ export const TelegramBotReport = ({ refreshTrigger, dateRange }: TelegramBotRepo
         lastUpdate: new Date().toISOString()
       });
 
-      logInfo('Telegram data load completed successfully', {
-        botStatus: 'online',
-        userCount: processedStats.totalUsers,
-        revenue: processedStats.revenue,
-        dateRange: dateRange.preset
-      });
-
     } catch (error: any) {
-      logError('Failed to load Telegram data', {
-        error: error.message,
-        stack: error.stack,
-        name: error.name,
-        dateRange: dateRange.preset
-      });
 
       // Set fallback data to show the error state
       setStats(prev => ({
@@ -133,8 +108,6 @@ export const TelegramBotReport = ({ refreshTrigger, dateRange }: TelegramBotRepo
 
   return (
     <div className="space-y-4">
-      <DebugLogger logs={logs} onClear={clearLogs} />
-      
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">Telegram Bot Report</h2>

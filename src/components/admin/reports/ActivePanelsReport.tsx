@@ -5,8 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Server, Users, Activity, Database } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { DebugLogger } from './DebugLogger';
-import { useDebugLogger } from '@/hooks/useDebugLogger';
 import { DateRange } from '../DateRangeSelector';
 
 interface ActivePanelsReportProps {
@@ -27,113 +25,69 @@ interface PanelInfo {
 
 export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsReportProps) => {
   const { toast } = useToast();
-  const { logs, logApiCall, logInfo, logError, clearLogs } = useDebugLogger();
   const [loading, setLoading] = useState(false);
   const [panels, setPanels] = useState<PanelInfo[]>([]);
 
   const loadPanelData = async () => {
     setLoading(true);
     try {
-      logInfo('Starting panel data load with date range', { 
-        from: dateRange.from.toISOString(),
-        to: dateRange.to.toISOString(),
-        preset: dateRange.preset
-      });
-
       // Fetch panels from database
-      const panelsData = await logApiCall('Fetch panels from database', async () => {
-        const { data, error } = await supabase
-          .from('panel_servers')
-          .select('*')
-          .eq('is_active', true);
-        
-        if (error) {
-          logError('Database query failed', error);
-          throw error;
-        }
-        return data || [];
-      });
-
-      logInfo('Panels fetched from database', { count: panelsData.length, panels: panelsData });
+      const { data: panelsData, error } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (error) {
+        throw error;
+      }
 
       // Fetch system info for each panel with date filtering
       const panelsWithInfo: PanelInfo[] = await Promise.all(
-        panelsData.map(async (panel): Promise<PanelInfo> => {
-          logInfo(`Processing panel: ${panel.name}`, { 
-            panelId: panel.id, 
-            type: panel.type,
-            url: panel.panel_url,
-            country: panel.country_en,
-            dateRange: dateRange.preset
-          });
-          
+        (panelsData || []).map(async (panel): Promise<PanelInfo> => {
           try {
             let systemInfo;
             
             if (panel.type === 'marzban') {
-              systemInfo = await logApiCall(`Get Marzban system info for ${panel.name}`, async () => {
-                logInfo(`Calling marzban-get-system-info edge function`, { 
+              const { data, error } = await supabase.functions.invoke('marzban-get-system-info', {
+                body: { 
                   panelId: panel.id,
-                  dateRange: dateRange.preset
-                });
-                
-                const { data, error } = await supabase.functions.invoke('marzban-get-system-info', {
-                  body: { 
-                    panelId: panel.id,
-                    dateFrom: dateRange.from.toISOString(),
-                    dateTo: dateRange.to.toISOString()
-                  }
-                });
-                
-                if (error) {
-                  logError(`Edge function invocation failed for ${panel.name}`, error);
-                  throw error;
+                  dateFrom: dateRange.from.toISOString(),
+                  dateTo: dateRange.to.toISOString()
                 }
-                
-                if (!data?.success) {
-                  const errorMsg = data?.error || 'Failed to get system info';
-                  logError(`Edge function returned error for ${panel.name}`, { error: errorMsg, data });
-                  throw new Error(errorMsg);
-                }
-                
-                logInfo(`System info received for ${panel.name}`, data.systemInfo);
-                return data.systemInfo;
               });
+              
+              if (error) {
+                throw error;
+              }
+              
+              if (!data?.success) {
+                const errorMsg = data?.error || 'Failed to get system info';
+                throw new Error(errorMsg);
+              }
+              
+              systemInfo = data.systemInfo;
             } else if (panel.type === 'marzneshin') {
-              systemInfo = await logApiCall(`Get Marzneshin system info for ${panel.name}`, async () => {
-                logInfo(`Calling marzneshin-get-system-info edge function`, { 
+              const { data, error } = await supabase.functions.invoke('marzneshin-get-system-info', {
+                body: { 
                   panelId: panel.id,
-                  dateRange: dateRange.preset
-                });
-                
-                const { data, error } = await supabase.functions.invoke('marzneshin-get-system-info', {
-                  body: { 
-                    panelId: panel.id,
-                    dateFrom: dateRange.from.toISOString(),
-                    dateTo: dateRange.to.toISOString()
-                  }
-                });
-                
-                if (error) {
-                  logError(`Edge function invocation failed for ${panel.name}`, error);
-                  throw error;
+                  dateFrom: dateRange.from.toISOString(),
+                  dateTo: dateRange.to.toISOString()
                 }
-                
-                if (!data?.success) {
-                  const errorMsg = data?.error || 'Failed to get system info';
-                  logError(`Edge function returned error for ${panel.name}`, { error: errorMsg, data });
-                  throw new Error(errorMsg);
-                }
-                
-                logInfo(`System info received for ${panel.name}`, data.systemInfo);
-                return data.systemInfo;
               });
+              
+              if (error) {
+                throw error;
+              }
+              
+              if (!data?.success) {
+                const errorMsg = data?.error || 'Failed to get system info';
+                throw new Error(errorMsg);
+              }
+              
+              systemInfo = data.systemInfo;
             } else {
-              logError(`Unknown panel type for ${panel.name}`, { type: panel.type });
               throw new Error(`Unknown panel type: ${panel.type}`);
             }
-            
-            logInfo(`System info loaded successfully for ${panel.name}`, systemInfo);
             
             return {
               id: panel.id,
@@ -145,13 +99,6 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
               systemInfo
             };
           } catch (error: any) {
-            logError(`Failed to load system info for ${panel.name}`, {
-              error: error.message,
-              stack: error.stack,
-              panelId: panel.id,
-              panelType: panel.type
-            });
-            
             return {
               id: panel.id,
               name: panel.name,
@@ -166,20 +113,8 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
       );
 
       setPanels(panelsWithInfo);
-      logInfo('Panel data loading completed', { 
-        totalPanels: panelsWithInfo.length,
-        successfulPanels: panelsWithInfo.filter(p => !p.error).length,
-        failedPanels: panelsWithInfo.filter(p => p.error).length,
-        dateRange: dateRange.preset
-      });
 
     } catch (error: any) {
-      logError('Failed to load panel data', {
-        error: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      
       toast({
         title: "Error",
         description: "Failed to load panel data: " + error.message,
@@ -210,8 +145,6 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
 
   return (
     <div className="space-y-4">
-      <DebugLogger logs={logs} onClear={clearLogs} />
-      
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">Active Panels Report</h2>
