@@ -186,19 +186,57 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
 
       console.log('MANUAL_PAYMENT: Database update successful:', updateData);
 
-      // Send webhook notification with enhanced retry logic
+      // Send webhook notification with complete subscription data
       try {
+        // Fetch complete subscription data from database
+        const { data: fullSubscription, error: fetchError } = await supabase
+          .from('subscriptions')
+          .select(`
+            *,
+            subscription_plans!inner(
+              name_en,
+              plan_id,
+              assigned_panel_id,
+              panel_servers!inner(
+                name,
+                type,
+                panel_url,
+                country_en
+              )
+            )
+          `)
+          .eq('id', subscriptionId)
+          .single();
+
+        if (fetchError || !fullSubscription) {
+          console.error('MANUAL_PAYMENT: Failed to fetch complete subscription data:', fetchError);
+        }
+
         const webhookPayload = {
           type: 'new_subscription' as const,
           subscription_id: subscriptionId,
-          username: `user_${mobile}`,
+          username: fullSubscription?.username || `user_${mobile}`,
           mobile: mobile,
+          email: fullSubscription?.email || null,
           amount: amount,
           payment_method: 'manual',
           receipt_url: receiptUrl,
           approve_link: `https://bnets.co/admin/approve-order/${subscriptionId}`,
           reject_link: `https://bnets.co/admin/reject-order/${subscriptionId}`,
-          created_at: new Date().toISOString()
+          // Complete subscription data
+          subscription_url: fullSubscription?.subscription_url || null,
+          plan_name: fullSubscription?.subscription_plans?.name_en || 'Unknown Plan',
+          plan_id: fullSubscription?.subscription_plans?.plan_id || 'unknown',
+          panel_name: fullSubscription?.subscription_plans?.panel_servers?.name || 'Unknown Panel',
+          panel_type: fullSubscription?.subscription_plans?.panel_servers?.type || 'unknown',
+          panel_url: fullSubscription?.subscription_plans?.panel_servers?.panel_url || null,
+          panel_country: fullSubscription?.subscription_plans?.panel_servers?.country_en || 'Unknown',
+          data_limit_gb: fullSubscription?.data_limit_gb || 0,
+          duration_days: fullSubscription?.duration_days || 0,
+          expire_at: fullSubscription?.expire_at || null,
+          protocol: fullSubscription?.protocol || null,
+          status: fullSubscription?.status || 'pending',
+          created_at: fullSubscription?.created_at || new Date().toISOString()
         };
 
         const webhookResult = await WebhookService.sendWithRetry(webhookPayload);

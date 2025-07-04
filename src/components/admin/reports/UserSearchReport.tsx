@@ -81,10 +81,10 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
       // Search panels using real API
       if (sourceFilter === 'all' || sourceFilter === 'panel') {
         try {
-          // Get active panels
+          // Get active panels (including all types)
           const { data: panelsData } = await supabase
             .from('panel_servers')
-            .select('id')
+            .select('id, name, type')
             .eq('is_active', true);
 
           if (panelsData && panelsData.length > 0) {

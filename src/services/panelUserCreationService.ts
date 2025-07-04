@@ -435,8 +435,15 @@ export class PanelUserCreationService {
           } else {
             console.log('PANEL_USER_CREATION: Test user data stored successfully');
             
-            // Send webhook notification for new test user
+            // Send webhook notification for new test user with complete data
             try {
+              // Get plan details for webhook
+              const { data: planDetails } = await supabase
+                .from('subscription_plans')
+                .select('name_en, plan_id')
+                .eq('id', actualPlanId)
+                .single();
+
               await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_test_user',
@@ -444,10 +451,20 @@ export class PanelUserCreationService {
                   username: result.data.username,
                   email: email,
                   mobile: phone,
+                  subscription_url: result.data.subscription_url,
+                  panel_name: result.data.panel_name,
+                  panel_type: result.data.panel_type,
+                  panel_url: result.data.panel_url,
+                  plan_name: planDetails?.name_en || planDetails?.plan_id || 'Unknown Plan',
+                  plan_id: planDetails?.plan_id || 'unknown',
+                  data_limit_gb: dataLimitGB,
+                  duration_days: durationDays,
+                  expire_date: expireDate.toISOString(),
+                  is_free_trial: true,
                   created_at: new Date().toISOString()
                 }
               });
-              console.log('PANEL_USER_CREATION: Webhook notification sent for test user');
+              console.log('PANEL_USER_CREATION: Complete webhook notification sent for test user');
             } catch (webhookError) {
               console.error('PANEL_USER_CREATION: Failed to send webhook notification:', webhookError);
               // Don't fail the trial creation for webhook issues

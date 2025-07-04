@@ -38,23 +38,45 @@ Deno.serve(async (req) => {
           urlParams.append(key, String(value))
         }
       })
-      url = `${url}?${urlParams.toString()}`
+      if (urlParams.toString()) {
+        url = `${url}?${urlParams.toString()}`
+      }
     }
     // For POST requests, add JSON body
     else if (method === 'POST' && payload) {
       requestOptions.body = JSON.stringify(payload)
     }
 
+    console.log('Telegram Bot Proxy - Request details:', {
+      method,
+      url,
+      headers: requestOptions.headers,
+      bodySize: requestOptions.body?.length || 0
+    })
+
     console.log('Telegram Bot Proxy - Full URL:', url)
     const response = await fetch(url, requestOptions)
 
     if (!response.ok) {
       console.error('Telegram Bot API Error:', response.status, response.statusText)
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      // Try to get response body for debugging
+      try {
+        const errorBody = await response.text()
+        console.error('Telegram Bot API Error Body:', errorBody)
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorBody}`)
+      } catch (bodyError) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
     }
 
     const data = await response.json()
     console.log('Telegram Bot Proxy - Response:', data)
+    
+    // Check if the API returned an error in the response body
+    if (data && data.status === false) {
+      console.error('Telegram Bot API returned error:', data)
+      throw new Error(`Telegram API Error: ${data.msg || 'Unknown error'} - ${JSON.stringify(data)}`)
+    }
 
     return new Response(JSON.stringify({ success: true, data }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

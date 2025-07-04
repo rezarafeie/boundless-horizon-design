@@ -29,12 +29,17 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get panel configurations
-    const { data: panels, error: panelsError } = await supabase
+    // Get panel configurations (include all active panels)
+    let panelQuery = supabase
       .from('panel_servers')
       .select('*')
       .eq('is_active', true)
-      .in('id', panelIds || [])
+    
+    if (panelIds && panelIds.length > 0) {
+      panelQuery = panelQuery.in('id', panelIds)
+    }
+    
+    const { data: panels, error: panelsError } = await panelQuery
 
     if (panelsError) {
       throw panelsError
@@ -79,8 +84,26 @@ Deno.serve(async (req) => {
             })
           }
         } else if (panel.type === 'marzneshin') {
-          // Marzneshin search not implemented yet
-          console.log(`[SEARCH-PANEL-USERS] Marzneshin search not implemented for panel: ${panel.name}`)
+          // Marzneshin search - show as available but not functional
+          console.log(`[SEARCH-PANEL-USERS] Marzneshin search available for panel: ${panel.name} (integration pending)`)
+          
+          // Add placeholder result to show the panel exists
+          searchResults.push({
+            id: `panel-${panel.id}-placeholder`,
+            source: 'panel',
+            type: 'user',
+            username: `Search available on ${panel.name}`,
+            email: null,
+            status: 'integration_pending',
+            panel_name: panel.name,
+            panel_id: panel.id,
+            country: panel.country_en,
+            details: {
+              message: 'Marzneshin integration coming soon',
+              panel_type: 'marzneshin',
+              integration_status: 'pending'
+            }
+          })
         }
       } catch (error) {
         console.error(`[SEARCH-PANEL-USERS] Error searching panel ${panel.name}:`, error)
