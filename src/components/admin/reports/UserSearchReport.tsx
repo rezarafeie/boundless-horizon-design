@@ -178,7 +178,9 @@ export const UserSearchReport = ({ searchQuery }: UserSearchReportProps) => {
                       <span className="text-sm font-medium capitalize">
                         {key.replace('_', ' ')}:
                       </span>
-                      <span className="text-sm font-mono">{String(value)}</span>
+                      <span className="text-sm font-mono">
+                        {value !== null && value !== undefined ? String(value) : 'N/A'}
+                      </span>
                     </div>
                   ))}
                 </div>
