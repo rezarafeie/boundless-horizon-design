@@ -11,14 +11,15 @@ interface TelegramApiResponse<T = any> {
 }
 
 // Helper function to make API calls via Supabase Edge Function proxy
-async function makeApiCall<T = any>(endpoint: string, payload: Record<string, any>): Promise<TelegramApiResponse<T>> {
+async function makeApiCall<T = any>(endpoint: string, payload: Record<string, any>, method: string = 'GET'): Promise<TelegramApiResponse<T>> {
   try {
     console.log(`Telegram Bot API: Calling ${endpoint} via proxy with payload:`, payload);
 
     const { data, error } = await supabase.functions.invoke('telegram-bot-proxy', {
       body: {
         endpoint,
-        params: payload
+        payload,
+        method
       }
     });
 
@@ -49,7 +50,7 @@ export const telegramBotApi = {
     return makeApiCall('/users', {
       actions: 'users',
       limit
-    });
+    }, 'GET');
   },
 
   // Get user by chat ID
@@ -57,7 +58,7 @@ export const telegramBotApi = {
     return makeApiCall('/users', {
       actions: 'user',
       chat_id: chatId
-    });
+    }, 'GET');
   },
 
   // Add new user
@@ -65,7 +66,7 @@ export const telegramBotApi = {
     return makeApiCall('/users', {
       actions: 'user_add',
       chat_id: chatId
-    });
+    }, 'POST');
   },
 
   // Get all invoices
@@ -74,7 +75,7 @@ export const telegramBotApi = {
       actions: 'invoices',
       limit,
       page
-    });
+    }, 'GET');
   },
 
   // Get invoice by username
@@ -82,7 +83,7 @@ export const telegramBotApi = {
     return makeApiCall('/invoice', {
       actions: 'invoice',
       username
-    });
+    }, 'GET');
   },
 
   // Add new invoice
@@ -102,7 +103,7 @@ export const telegramBotApi = {
       location: params.location,
       status: params.status,
       note: params.note || ''
-    });
+    }, 'POST');
   },
 
   // Get all services
@@ -110,7 +111,7 @@ export const telegramBotApi = {
     return makeApiCall('/service', {
       actions: 'services',
       limit
-    });
+    }, 'GET');
   },
 
   // Get dashboard stats (combined users and invoices data)
