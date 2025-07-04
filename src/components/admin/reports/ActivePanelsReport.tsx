@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, Server, Users, Activity, Database } from 'lucide-react';
+import { RefreshCw, Server, Users, Activity, Database, TrendingUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange } from '../DateRangeSelector';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface ActivePanelsReportProps {
   refreshTrigger: number;
@@ -23,6 +24,8 @@ interface PanelInfo {
   error?: string;
   isNotImplemented?: boolean;
 }
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
 export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsReportProps) => {
   const { toast } = useToast();
@@ -209,6 +212,7 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                   </div>
                  ) : panel.systemInfo ? (
                    <div className="space-y-4">
+                     {/* Basic Stats */}
                      <div className="grid grid-cols-2 gap-4">
                        <div className="flex items-center gap-2">
                          <Users className="w-4 h-4 text-blue-600" />
@@ -226,35 +230,107 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                          </div>
                        </div>
                      </div>
-                     
-                     <div className="grid grid-cols-2 gap-4">
-                       <div>
-                         <p className="text-sm font-medium">Expired</p>
-                         <p className="text-sm text-yellow-600">{formatNumber(panel.systemInfo.users_expired)}</p>
-                       </div>
-                       <div>
-                         <p className="text-sm font-medium">Disabled</p>
-                         <p className="text-sm text-red-600">{formatNumber(panel.systemInfo.users_disabled || 0)}</p>
-                       </div>
-                     </div>
-                     
-                     <div className="pt-3 border-t">
-                       <div className="flex items-center gap-2 mb-2">
-                         <Database className="w-4 h-4" />
-                         <span className="text-sm font-medium">Bandwidth</span>
-                       </div>
-                       <div className="grid grid-cols-2 gap-4 text-sm">
-                         <div>
-                           <p className="text-muted-foreground">Incoming</p>
-                           <p>{(panel.systemInfo.incoming_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
+
+                     {/* Marzneshin-specific User Status Chart */}
+                     {panel.type === 'marzneshin' && panel.systemInfo.total_user > 0 && (
+                       <div className="pt-3 border-t">
+                         <div className="flex items-center gap-2 mb-2">
+                           <Users className="w-4 h-4" />
+                           <span className="text-sm font-medium">User Status Overview</span>
                          </div>
-                         <div>
-                           <p className="text-muted-foreground">Outgoing</p>
-                           <p>{(panel.systemInfo.outgoing_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
+                         <div className="h-48">
+                           <ResponsiveContainer width="100%" height="100%">
+                             <PieChart>
+                               <Pie
+                                 data={[
+                                   { name: 'Active', value: panel.systemInfo.users_active, color: COLORS[0] },
+                                   { name: 'Expired', value: panel.systemInfo.users_expired, color: COLORS[1] },
+                                   { name: 'On Hold', value: panel.systemInfo.users_on_hold || 0, color: COLORS[2] },
+                                   { name: 'Limited', value: panel.systemInfo.users_disabled || 0, color: COLORS[3] },
+                                   { name: 'Online', value: panel.systemInfo.users_online || 0, color: COLORS[4] }
+                                 ].filter(item => item.value > 0)}
+                                 cx="50%"
+                                 cy="50%"
+                                 labelLine={false}
+                                 label={({ name, value }) => `${name}: ${value}`}
+                                 outerRadius={60}
+                                 fill="#8884d8"
+                                 dataKey="value"
+                               >
+                                 {[
+                                   { name: 'Active', value: panel.systemInfo.users_active, color: COLORS[0] },
+                                   { name: 'Expired', value: panel.systemInfo.users_expired, color: COLORS[1] },
+                                   { name: 'On Hold', value: panel.systemInfo.users_on_hold || 0, color: COLORS[2] },
+                                   { name: 'Limited', value: panel.systemInfo.users_disabled || 0, color: COLORS[3] },
+                                   { name: 'Online', value: panel.systemInfo.users_online || 0, color: COLORS[4] }
+                                 ].filter(item => item.value > 0).map((entry, index) => (
+                                   <Cell key={`cell-${index}`} fill={entry.color} />
+                                 ))}
+                               </Pie>
+                               <Tooltip />
+                             </PieChart>
+                           </ResponsiveContainer>
                          </div>
                        </div>
-                      </div>
-                    </div>
+                     )}
+
+                     {/* Marzneshin Traffic Chart */}
+                     {panel.type === 'marzneshin' && panel.systemInfo.traffic_data && Array.isArray(panel.systemInfo.traffic_data) && panel.systemInfo.traffic_data.length > 0 && (
+                       <div className="pt-3 border-t">
+                         <div className="flex items-center gap-2 mb-2">
+                           <TrendingUp className="w-4 h-4" />
+                           <span className="text-sm font-medium">Traffic Usage (Last 7 Days)</span>
+                         </div>
+                         <div className="h-48">
+                           <ResponsiveContainer width="100%" height="100%">
+                             <LineChart data={panel.systemInfo.traffic_data.map((point: any) => ({
+                               timestamp: new Date(point.timestamp).toLocaleDateString(),
+                               traffic: ((point.incoming || 0) + (point.outgoing || 0)) / (1024*1024*1024) // Convert to GB
+                             }))}>
+                               <CartesianGrid strokeDasharray="3 3" />
+                               <XAxis dataKey="timestamp" />
+                               <YAxis label={{ value: 'GB', angle: -90, position: 'insideLeft' }} />
+                               <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} GB`, 'Traffic']} />
+                               <Line type="monotone" dataKey="traffic" stroke="#8884d8" strokeWidth={2} />
+                             </LineChart>
+                           </ResponsiveContainer>
+                         </div>
+                       </div>
+                     )}
+                     
+                     {/* Traditional grid for non-Marzneshin or fallback */}
+                     {panel.type !== 'marzneshin' && (
+                       <>
+                         <div className="grid grid-cols-2 gap-4">
+                           <div>
+                             <p className="text-sm font-medium">Expired</p>
+                             <p className="text-sm text-yellow-600">{formatNumber(panel.systemInfo.users_expired)}</p>
+                           </div>
+                           <div>
+                             <p className="text-sm font-medium">Disabled</p>
+                             <p className="text-sm text-red-600">{formatNumber(panel.systemInfo.users_disabled || 0)}</p>
+                           </div>
+                         </div>
+                         
+                         <div className="pt-3 border-t">
+                           <div className="flex items-center gap-2 mb-2">
+                             <Database className="w-4 h-4" />
+                             <span className="text-sm font-medium">Bandwidth</span>
+                           </div>
+                           <div className="grid grid-cols-2 gap-4 text-sm">
+                             <div>
+                               <p className="text-muted-foreground">Incoming</p>
+                               <p>{(panel.systemInfo.incoming_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
+                             </div>
+                             <div>
+                               <p className="text-muted-foreground">Outgoing</p>
+                               <p>{(panel.systemInfo.outgoing_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
+                             </div>
+                           </div>
+                         </div>
+                       </>
+                     )}
+                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
                     No system information available

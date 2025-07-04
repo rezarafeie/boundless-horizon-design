@@ -84,26 +84,54 @@ Deno.serve(async (req) => {
             })
           }
         } else if (panel.type === 'marzneshin') {
-          // Marzneshin search - show as available but not functional
-          console.log(`[SEARCH-PANEL-USERS] Marzneshin search available for panel: ${panel.name} (integration pending)`)
-          
-          // Add placeholder result to show the panel exists
-          searchResults.push({
-            id: `panel-${panel.id}-placeholder`,
-            source: 'panel',
-            type: 'user',
-            username: `Search available on ${panel.name}`,
-            email: null,
-            status: 'integration_pending',
-            panel_name: panel.name,
-            panel_id: panel.id,
-            country: panel.country_en,
-            details: {
-              message: 'Marzneshin integration coming soon',
-              panel_type: 'marzneshin',
-              integration_status: 'pending'
+          // Call marzneshin search function
+          const { data, error } = await supabase.functions.invoke('marzneshin-search-user', {
+            body: { 
+              panelId: panel.id,
+              searchQuery: searchQuery.trim()
             }
           })
+          
+          if (!error && data?.success && data.users) {
+            data.users.forEach((user: any) => {
+              searchResults.push({
+                id: `panel-${panel.id}-${user.username || user.id}`,
+                source: 'panel',
+                type: 'user',
+                username: user.username,
+                email: user.email,
+                status: user.status,
+                panel_name: panel.name,
+                panel_id: panel.id,
+                country: panel.country_en,
+                details: {
+                  data_limit_bytes: user.data_limit,
+                  used_traffic: user.used_traffic,
+                  expire_date: user.expire_date,
+                  online: user.online,
+                  created_at: user.created_at
+                }
+              })
+            })
+          } else if (error) {
+            console.error(`[SEARCH-PANEL-USERS] Error searching Marzneshin panel ${panel.name}:`, error)
+            // Add error result to show panel exists but search failed
+            searchResults.push({
+              id: `panel-${panel.id}-error`,
+              source: 'panel',
+              type: 'user',
+              username: `Search error on ${panel.name}`,
+              email: null,
+              status: 'error',
+              panel_name: panel.name,
+              panel_id: panel.id,
+              country: panel.country_en,
+              details: {
+                error_message: error.message || 'Search failed',
+                panel_type: 'marzneshin'
+              }
+            })
+          }
         }
       } catch (error) {
         console.error(`[SEARCH-PANEL-USERS] Error searching panel ${panel.name}:`, error)

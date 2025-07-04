@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.marzneshin-update-user]
 verify_jwt = false
+
+[functions.marzneshin-search-user]
+verify_jwt = false
