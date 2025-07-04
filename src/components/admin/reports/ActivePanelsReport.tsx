@@ -52,8 +52,8 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
       logInfo('Panels fetched from database', { count: panelsData.length, panels: panelsData });
 
       // Fetch system info for each panel
-      const panelsWithInfo = await Promise.all(
-        panelsData.map(async (panel) => {
+      const panelsWithInfo: PanelInfo[] = await Promise.all(
+        panelsData.map(async (panel): Promise<PanelInfo> => {
           logInfo(`Processing panel: ${panel.name}`, { 
             panelId: panel.id, 
             type: panel.type,
@@ -116,7 +116,12 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
             logInfo(`System info loaded successfully for ${panel.name}`, systemInfo);
             
             return {
-              ...panel,
+              id: panel.id,
+              name: panel.name,
+              type: panel.type,
+              country_en: panel.country_en,
+              health_status: panel.health_status,
+              last_health_check: panel.last_health_check,
               systemInfo
             };
           } catch (error: any) {
@@ -128,7 +133,12 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
             });
             
             return {
-              ...panel,
+              id: panel.id,
+              name: panel.name,
+              type: panel.type,
+              country_en: panel.country_en,
+              health_status: panel.health_status,
+              last_health_check: panel.last_health_check,
               error: error.message
             };
           }
