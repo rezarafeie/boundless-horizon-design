@@ -21,10 +21,7 @@ Deno.serve(async (req) => {
     console.log('Telegram Bot Proxy - Payload:', payload)
     console.log('Telegram Bot Proxy - Method:', method)
 
-    const url = `${TELEGRAM_BASE_URL}${endpoint}`
-    console.log('Telegram Bot Proxy - Full URL:', url)
-    
-    // Make the request to the Telegram Bot API
+    let url = `${TELEGRAM_BASE_URL}${endpoint}`
     const requestOptions: RequestInit = {
       method: method,
       headers: {
@@ -33,11 +30,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Add body for POST requests or when payload is provided
-    if (method === 'POST' || payload) {
+    // For GET requests, convert payload to URL parameters
+    if (method === 'GET' && payload) {
+      const urlParams = new URLSearchParams()
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          urlParams.append(key, String(value))
+        }
+      })
+      url = `${url}?${urlParams.toString()}`
+    }
+    // For POST requests, add JSON body
+    else if (method === 'POST' && payload) {
       requestOptions.body = JSON.stringify(payload)
     }
 
+    console.log('Telegram Bot Proxy - Full URL:', url)
     const response = await fetch(url, requestOptions)
 
     if (!response.ok) {

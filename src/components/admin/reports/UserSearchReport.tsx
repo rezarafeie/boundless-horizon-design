@@ -4,10 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Database, MessageSquare, Server, Users, RefreshCw } from 'lucide-react';
+import { Search, Database, Server, Users, RefreshCw, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange } from '../DateRangeSelector';
+import { SubscriptionDetailsModal } from '../SubscriptionDetailsModal';
 
 interface UserSearchReportProps {
   searchQuery: string;
@@ -32,6 +33,8 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [selectedSubscription, setSelectedSubscription] = useState<SearchResult | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   const searchUsers = async () => {
     if (!searchQuery.trim()) {
@@ -75,41 +78,46 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
         }
       }
 
-      // Search panels (mock data with date consideration)
+      // Search panels using real API
       if (sourceFilter === 'all' || sourceFilter === 'panel') {
-        // This would normally call panel APIs to search for users
-        // For now, we'll add mock panel results
-        if (searchQuery.toLowerCase().includes('test')) {
-          searchResults.push({
-            id: `panel-mock-1`,
-            source: 'panel',
-            type: 'user',
-            username: `${searchQuery}_panel_user`,
-            panel_name: 'Germany Panel',
-            status: 'active',
-            details: {
-              data_used: '5.2 GB',
-              data_limit: '10 GB',
-              expire_date: '2025-08-04'
-            }
-          });
-        }
-      }
+        try {
+          // Get active panels
+          const { data: panelsData } = await supabase
+            .from('panel_servers')
+            .select('id')
+            .eq('is_active', true);
 
-      // Mock Telegram search (would normally call Telegram API)
-      if (sourceFilter === 'all' || sourceFilter === 'telegram') {
-        if (searchQuery.length > 3) {
-          searchResults.push({
-            id: `tg-mock-1`,
-            source: 'telegram',
-            type: 'telegram_user',
-            username: `@${searchQuery}_tg`,
-            details: {
-              first_name: 'Mock User',
-              last_seen: new Date().toISOString(),
-              chat_id: '123456789'
+          if (panelsData && panelsData.length > 0) {
+            const panelIds = panelsData.map(p => p.id);
+            
+            const { data: panelSearchResults, error: panelError } = await supabase.functions.invoke('search-panel-users', {
+              body: { 
+                searchQuery: searchQuery.trim(),
+                panelIds
+              }
+            });
+
+            if (!panelError && panelSearchResults?.success && panelSearchResults.results) {
+              panelSearchResults.results.forEach((user: any) => {
+                searchResults.push({
+                  id: user.id,
+                  source: 'panel',
+                  type: 'user',
+                  username: user.username,
+                  email: user.email,
+                  status: user.status,
+                  panel_name: user.panel_name,
+                  details: {
+                    ...user.details,
+                    country: user.country,
+                    panel_id: user.panel_id
+                  }
+                });
+              });
             }
-          });
+          }
+        } catch (error) {
+          console.error('Panel search error:', error);
         }
       }
 
@@ -144,11 +152,14 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
         return <Database className="w-4 h-4 text-blue-600" />;
       case 'panel':
         return <Server className="w-4 h-4 text-green-600" />;
-      case 'telegram':
-        return <MessageSquare className="w-4 h-4 text-purple-600" />;
       default:
         return <Users className="w-4 h-4" />;
     }
+  };
+
+  const handleViewDetails = (result: SearchResult) => {
+    setSelectedSubscription(result);
+    setIsDetailsModalOpen(true);
   };
 
   const getStatusColor = (status?: string) => {
@@ -185,7 +196,6 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
               <SelectItem value="all">All Sources</SelectItem>
               <SelectItem value="database">Database</SelectItem>
               <SelectItem value="panel">Panels</SelectItem>
-              <SelectItem value="telegram">Telegram</SelectItem>
             </SelectContent>
           </Select>
           <Button onClick={searchUsers} disabled={loading} size="sm">
@@ -259,7 +269,6 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
                       <div className="space-y-1 text-sm">
                         {result.mobile && <p>Mobile: {result.mobile}</p>}
                         {result.email && <p>Email: {result.email}</p>}
-                        {result.details.chat_id && <p>Chat ID: {result.details.chat_id}</p>}
                       </div>
                     </div>
                     
@@ -278,14 +287,23 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
                         {result.details.expire_date && (
                           <p>Expires: {new Date(result.details.expire_date).toLocaleDateString()}</p>
                         )}
-                        {result.details.first_name && (
-                          <p>Name: {result.details.first_name}</p>
-                        )}
                         {result.created_at && (
                           <p>Created: {new Date(result.created_at).toLocaleDateString()}</p>
                         )}
                       </div>
                     </div>
+                  </div>
+                  
+                  <div className="flex justify-end mt-4">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleViewDetails(result)}
+                      className="flex items-center gap-2"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View Details
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -293,6 +311,12 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
           </div>
         </div>
       )}
+      
+      <SubscriptionDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        subscription={selectedSubscription}
+      />
     </div>
   );
 };

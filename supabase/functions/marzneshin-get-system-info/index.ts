@@ -37,8 +37,15 @@ serve(async (req) => {
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Found panel: ${panel.name} at ${panel.panel_url}`);
 
     // For Marzneshin panels, the API connection is not yet implemented
-    // Return an error instead of fake data
-    throw new Error('Marzneshin API integration not yet implemented');
+    // Return proper "not implemented" response instead of error
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'not_implemented',
+      message: 'Marzneshin API integration is pending implementation'
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
 
   } catch (error) {
     console.error('[MARZNESHIN-GET-SYSTEM-INFO] Error:', error);

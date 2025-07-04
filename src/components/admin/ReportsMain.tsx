@@ -54,38 +54,10 @@ export const ReportsMain = () => {
         </div>
       </div>
 
-      {/* Global Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="w-5 h-5" />
-            Universal User Search
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Input
-              placeholder="Search by username, chat_id, mobile, or email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1"
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            <Button onClick={handleSearch} className="w-full sm:w-auto">
-              <Search className="w-4 h-4 mr-2" />
-              Search
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Searches across database, all panels, and Telegram bot
-          </p>
-        </CardContent>
-      </Card>
-
       {/* Global Summary */}
       <GlobalSummary refreshTrigger={refreshTrigger} dateRange={dateRange} />
 
-      {/* Main Tabs - Improved Mobile Layout */}
+      {/* Main Tabs - Restructured with dedicated search */}
       <Tabs defaultValue="panels" className="space-y-4">
         <div className="overflow-x-auto">
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 min-w-full gap-1">
@@ -102,7 +74,7 @@ export const ReportsMain = () => {
               <span className="sm:hidden">Telegram</span>
             </TabsTrigger>
             <TabsTrigger value="search" className="text-xs sm:text-sm px-2 sm:px-4">
-              <span className="hidden sm:inline">Search Results</span>
+              <span className="hidden sm:inline">Universal Search</span>
               <span className="sm:hidden">Search</span>
             </TabsTrigger>
           </TabsList>
@@ -121,6 +93,33 @@ export const ReportsMain = () => {
         </TabsContent>
 
         <TabsContent value="search" className="space-y-4">
+          {/* Dedicated Search Tab with its own search input */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Search className="w-5 h-5" />
+                Universal User Search
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <Input
+                  placeholder="Search by username, chat_id, mobile, or email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1"
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                />
+                <Button onClick={handleSearch} className="w-full sm:w-auto">
+                  <Search className="w-4 h-4 mr-2" />
+                  Search
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Searches across database, active panels, and Telegram bot
+              </p>
+            </CardContent>
+          </Card>
           <UserSearchReport searchQuery={searchQuery} dateRange={dateRange} />
         </TabsContent>
       </Tabs>

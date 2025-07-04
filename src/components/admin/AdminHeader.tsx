@@ -1,10 +1,11 @@
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { LogOut } from 'lucide-react';
+import { LogOut, Bell } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { OfflineStatus } from './OfflineStatus';
 import { NotificationDropdown } from './NotificationDropdown';
+import { ErrorBoundary } from './ErrorBoundary';
 
 export const AdminHeader = () => {
   const { theme } = useTheme();
@@ -28,7 +29,15 @@ export const AdminHeader = () => {
         <div className="flex items-center gap-2">
           <OfflineStatus />
           
-          <NotificationDropdown />
+          <ErrorBoundary 
+            fallback={
+              <Button variant="ghost" size="sm" disabled>
+                <Bell className="w-4 h-4 text-muted-foreground" />
+              </Button>
+            }
+          >
+            <NotificationDropdown />
+          </ErrorBoundary>
           
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             <LogOut className="w-4 h-4" />

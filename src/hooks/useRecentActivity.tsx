@@ -117,45 +117,37 @@ export const useRecentActivity = () => {
   useEffect(() => {
     fetchRecentActivity();
 
-    // Set up real-time subscriptions with unique channel names
-    const subscriptionsChannel = supabase
-      .channel(`admin-subscriptions-changes-${Date.now()}`)
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'subscriptions' },
-        () => {
-          console.log('Subscriptions updated, refreshing activity');
-          fetchRecentActivity();
-        }
-      )
-      .subscribe();
-
-    const userLogsChannel = supabase
-      .channel(`admin-user-logs-changes-${Date.now()}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'user_creation_logs' },
-        () => {
-          console.log('User logs updated, refreshing activity');
-          fetchRecentActivity();
-        }
-      )
-      .subscribe();
-
-    const testUsersChannel = supabase
-      .channel(`admin-test-users-changes-${Date.now()}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'test_users' },
-        () => {
-          console.log('Test users updated, refreshing activity');
-          fetchRecentActivity();
-        }
-      )
-      .subscribe();
+    // Set up a single real-time subscription to reduce connection issues
+    let channel: any = null;
+    
+    try {
+      channel = supabase
+        .channel(`admin-activity-${Date.now()}`)
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'subscriptions' },
+          () => fetchRecentActivity()
+        )
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'user_creation_logs' },
+          () => fetchRecentActivity()
+        )
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'test_users' },
+          () => fetchRecentActivity()
+        )
+        .subscribe();
+    } catch (error) {
+      console.error('Error setting up real-time subscription:', error);
+    }
 
     return () => {
-      console.log('Cleaning up subscriptions');
-      subscriptionsChannel.unsubscribe();
-      userLogsChannel.unsubscribe();
-      testUsersChannel.unsubscribe();
+      try {
+        if (channel) {
+          channel.unsubscribe();
+        }
+      } catch (error) {
+        console.error('Error cleaning up subscription:', error);
+      }
     };
   }, []);
 

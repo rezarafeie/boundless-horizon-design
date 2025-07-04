@@ -21,6 +21,7 @@ interface PanelInfo {
   last_health_check: string | null;
   systemInfo?: any;
   error?: string;
+  isNotImplemented?: boolean;
 }
 
 export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsReportProps) => {
@@ -81,6 +82,10 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
               
               if (!data?.success) {
                 const errorMsg = data?.error || 'Failed to get system info';
+                // Handle "not implemented" as special case
+                if (data?.error === 'not_implemented') {
+                  throw new Error('API_NOT_IMPLEMENTED');
+                }
                 throw new Error(errorMsg);
               }
               
@@ -106,7 +111,8 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
               country_en: panel.country_en,
               health_status: panel.health_status,
               last_health_check: panel.last_health_check,
-              error: error.message
+              error: error.message,
+              isNotImplemented: error.message === 'API_NOT_IMPLEMENTED'
             };
           }
         })
@@ -185,9 +191,21 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
               
               <CardContent>
                 {panel.error ? (
-                  <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                    <p className="text-sm text-destructive font-medium">Error</p>
-                    <p className="text-sm text-destructive/80">{panel.error}</p>
+                  <div className={`p-4 border rounded-lg ${
+                    panel.isNotImplemented 
+                      ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800' 
+                      : 'bg-destructive/10 border-destructive/20'
+                  }`}>
+                    <p className={`text-sm font-medium ${
+                      panel.isNotImplemented ? 'text-yellow-700 dark:text-yellow-300' : 'text-destructive'
+                    }`}>
+                      {panel.isNotImplemented ? 'Integration Pending' : 'Error'}
+                    </p>
+                    <p className={`text-sm ${
+                      panel.isNotImplemented ? 'text-yellow-600 dark:text-yellow-400' : 'text-destructive/80'
+                    }`}>
+                      {panel.isNotImplemented ? 'Marzneshin API integration is coming soon' : panel.error}
+                    </p>
                   </div>
                  ) : panel.systemInfo ? (
                    <div className="space-y-4">
