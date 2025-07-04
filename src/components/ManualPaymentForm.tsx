@@ -193,11 +193,11 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
           .from('subscriptions')
           .select(`
             *,
-            subscription_plans!inner(
+            subscription_plans(
               name_en,
               plan_id,
               assigned_panel_id,
-              panel_servers!inner(
+              panel_servers(
                 name,
                 type,
                 panel_url,
@@ -240,10 +240,29 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
           created_at: fullSubscription?.created_at || new Date().toISOString()
         };
 
-        const webhookResult = await WebhookService.sendWithRetry(webhookPayload);
+        console.log('MANUAL_PAYMENT: Sending webhook notification directly', {
+          payload: webhookPayload,
+          subscriptionId,
+          webhookUrl: 'send-webhook-notification'
+        });
         
-        if (!webhookResult.success) {
-          console.error('MANUAL_PAYMENT: Webhook notification failed after retries:', webhookResult.error);
+        const { data: webhookData, error: webhookError } = await supabase.functions.invoke('send-webhook-notification', {
+          body: webhookPayload
+        });
+        
+        console.log('MANUAL_PAYMENT: Webhook response:', { 
+          success: webhookData?.success, 
+          webhookData, 
+          webhookError,
+          errorDetails: webhookError?.message || webhookError
+        });
+        
+        if (webhookError || !webhookData?.success) {
+          console.error('MANUAL_PAYMENT: Webhook notification failed:', {
+            error: webhookError,
+            data: webhookData,
+            payload: webhookPayload
+          });
           // Don't fail the payment for webhook issues, but show warning
           toast({
             title: language === 'fa' ? 'هشدار' : 'Warning',
@@ -252,7 +271,7 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
               'Payment recorded but admin notification may be delayed',
           });
         } else {
-          console.log('MANUAL_PAYMENT: Webhook notification sent successfully');
+          console.log('MANUAL_PAYMENT: Webhook notification sent successfully:', webhookData);
         }
       } catch (webhookError) {
         console.error('MANUAL_PAYMENT: Webhook notification error:', webhookError);
