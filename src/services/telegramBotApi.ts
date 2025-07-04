@@ -18,7 +18,7 @@ async function makeApiCall<T = any>(endpoint: string, payload: Record<string, an
     const { data, error } = await supabase.functions.invoke('telegram-bot-proxy', {
       body: {
         endpoint,
-        payload
+        params: payload
       }
     });
 

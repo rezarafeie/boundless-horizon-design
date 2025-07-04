@@ -1,86 +1,70 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const TELEGRAM_BOT_BASE_URL = 'https://b.bnets.co/api';
-const TELEGRAM_BOT_API_TOKEN = '6169452dd5a55778f35fcedaa1fbd7b9';
+const TELEGRAM_BASE_URL = 'https://b.bnets.co/api'
+const TELEGRAM_API_TOKEN = '6169452dd5a55778f35fcedaa1fbd7b9'
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { 
-      status: 405, 
-      headers: corsHeaders 
-    });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { endpoint, payload } = await req.json();
+    const { endpoint, params } = await req.json()
     
-    if (!endpoint) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'Endpoint parameter is required' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    console.log('Telegram Bot Proxy - Endpoint:', endpoint)
+    console.log('Telegram Bot Proxy - Params:', params)
 
-    console.log(`Telegram Bot Proxy: Calling ${endpoint} with payload:`, payload);
-
-    // Convert payload to URL parameters
-    const urlParams = new URLSearchParams();
-    if (payload) {
-      Object.entries(payload).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          urlParams.append(key, String(value));
-        }
-      });
-    }
+    // Convert params to URL parameters
+    const urlParams = new URLSearchParams()
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        urlParams.append(key, String(value))
+      }
+    })
     
-    const url = `${TELEGRAM_BOT_BASE_URL}${endpoint}?${urlParams.toString()}`;
-
+    const url = `${TELEGRAM_BASE_URL}${endpoint}?${urlParams.toString()}`
+    console.log('Telegram Bot Proxy - Full URL:', url)
+    
+    // Make the request to the Telegram Bot API
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Token': TELEGRAM_BOT_API_TOKEN,
+        'Token': TELEGRAM_API_TOKEN,
         'Content-Type': 'application/json',
       }
-    });
+    })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      console.error('Telegram Bot API Error:', response.status, response.statusText)
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
 
-    const data = await response.json();
-    
-    console.log(`Telegram Bot Proxy: Response from ${endpoint}:`, data);
+    const data = await response.json()
+    console.log('Telegram Bot Proxy - Response:', data)
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      data 
-    }), {
+    return new Response(JSON.stringify({ success: true, data }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    })
 
   } catch (error: any) {
-    console.error('Telegram Bot Proxy Error:', error);
+    console.error('Telegram Bot Proxy Error:', error)
     
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message || 'API request failed',
-      data: null
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error.message || 'Proxy request failed',
+        data: null 
+      }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
   }
 })
