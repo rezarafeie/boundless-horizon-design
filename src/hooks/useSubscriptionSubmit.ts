@@ -108,6 +108,26 @@ export const useSubscriptionSubmit = (): UseSubscriptionSubmitResult => {
         console.error('SUBSCRIPTION_SUBMIT: Failed to send admin notification email:', emailError);
         // Don't fail the subscription creation for email issues
       }
+
+      // Send webhook notification for new subscription
+      try {
+        console.log('SUBSCRIPTION_SUBMIT: Sending webhook notification');
+        await supabase.functions.invoke('send-webhook-notification', {
+          body: {
+            type: 'new_subscription',
+            subscription_id: subscription.id,
+            username: uniqueUsername,
+            mobile: data.mobile,
+            email: data.email,
+            amount: finalPrice,
+            plan: latestPlan.name_en,
+            created_at: new Date().toISOString()
+          }
+        });
+      } catch (webhookError) {
+        console.error('SUBSCRIPTION_SUBMIT: Failed to send webhook notification:', webhookError);
+        // Don't fail the subscription creation for webhook issues
+      }
       
       // If price is 0, create VPN user immediately using ULTRA STRICT PanelUserCreationService
       if (finalPrice === 0) {

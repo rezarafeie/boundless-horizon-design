@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Copy, CheckCircle, AlertCircle, Loader, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { PersianDateTimePicker } from './PersianDateTimePicker';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ManualPaymentFormProps {
   amount: number;
@@ -23,9 +23,8 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
   const { toast } = useToast();
   const navigate = useNavigate();
   const [confirmed, setConfirmed] = useState(false);
-  const [trackingNumber, setTrackingNumber] = useState('');
-  const [paymentTime, setPaymentTime] = useState('');
-  const [payerName, setPayerName] = useState('');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const debugLog = (type: 'info' | 'error' | 'success' | 'warning', message: string, data?: any) => {
     console.log(`[MANUAL-PAYMENT] ${type.toUpperCase()}: ${message}`, data || '');
@@ -49,25 +48,41 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
     });
   };
 
-  // Convert datetime-local to Persian date for display
-  const formatPersianDateTime = (dateTimeString: string) => {
-    if (!dateTimeString) return '';
-    
+  const uploadReceipt = async (file: File): Promise<string | null> => {
     try {
-      const date = new Date(dateTimeString);
-      const options: Intl.DateTimeFormatOptions = {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        calendar: 'persian',
-        numberingSystem: 'latn'
-      };
-      
-      return new Intl.DateTimeFormat('fa-IR-u-ca-persian', options).format(date);
+      setUploading(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${subscriptionId}_${Date.now()}.${fileExt}`;
+      const filePath = `receipts/${fileName}`;
+
+      console.log('MANUAL_PAYMENT: Uploading receipt:', { fileName, subscriptionId });
+
+      const { data, error } = await supabase.storage
+        .from('manual-payment-receipts')
+        .upload(filePath, file);
+
+      if (error) {
+        console.error('MANUAL_PAYMENT: Upload error:', error);
+        throw error;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('manual-payment-receipts')
+        .getPublicUrl(filePath);
+
+      console.log('MANUAL_PAYMENT: Receipt uploaded successfully:', urlData.publicUrl);
+      return urlData.publicUrl;
     } catch (error) {
-      return dateTimeString;
+      console.error('MANUAL_PAYMENT: Upload failed:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'خطا در بارگذاری رسید' : 'Failed to upload receipt',
+        variant: 'destructive'
+      });
+      return null;
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -82,22 +97,20 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
       return;
     }
 
-    if (!trackingNumber || !paymentTime || !payerName) {
-      debugLog('warning', 'Required fields missing');
+    if (!receiptFile) {
+      debugLog('warning', 'Receipt file missing');
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
-          'لطفاً تمام فیلدهای الزامی را پر کنید' : 
-          'Please fill all required fields',
+          'لطفاً رسید پرداخت را بارگذاری کنید' : 
+          'Please upload payment receipt',
         variant: 'destructive'
       });
       return;
     }
 
     debugLog('info', 'Manual payment submission started', { 
-      trackingNumber,
-      paymentTime,
-      payerName,
+      receiptFile: receiptFile.name,
       confirmed,
       subscriptionId,
       mobile
@@ -105,24 +118,72 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
 
     onPaymentStart();
 
-    // Format the payment time for display
-    const formattedPaymentTime = language === 'fa' ? 
-      formatPersianDateTime(paymentTime) : 
-      new Date(paymentTime).toLocaleString();
+    // Upload receipt file
+    const receiptUrl = await uploadReceipt(receiptFile);
+    if (!receiptUrl) {
+      return; // Upload failed, error already shown
+    }
 
-    // Here you would typically send the manual payment data to your backend
-    // For now, we'll just call the onPaymentStart callback
-    toast({
-      title: language === 'fa' ? 'پرداخت ثبت شد' : 'Payment Recorded',
-      description: language === 'fa' ? 
-        'اطلاعات پرداخت شما ثبت شد و به ادمین ارسال خواهد شد' : 
-        'Your payment information has been recorded and will be sent to admin',
-    });
+    // Update subscription with receipt URL
+    try {
+      const { error: updateError } = await supabase
+        .from('subscriptions')
+        .update({ 
+          receipt_image_url: receiptUrl,
+          status: 'pending_approval'
+        })
+        .eq('id', subscriptionId);
 
-    // Redirect to delivery page with subscription ID
-    setTimeout(() => {
-      navigate(`/delivery?id=${subscriptionId}`);
-    }, 2000);
+      if (updateError) {
+        console.error('MANUAL_PAYMENT: Failed to update subscription:', updateError);
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 'خطا در ثبت اطلاعات پرداخت' : 'Failed to record payment information',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Send webhook notification
+      try {
+        await supabase.functions.invoke('send-webhook-notification', {
+          body: {
+            type: 'new_subscription',
+            subscription_id: subscriptionId,
+            username: `user_${mobile}`,
+            mobile: mobile,
+            amount: amount,
+            receipt_url: receiptUrl,
+            approve_link: `https://bnets.co/admin/approve-order/${subscriptionId}`,
+            reject_link: `https://bnets.co/admin/reject-order/${subscriptionId}`,
+            created_at: new Date().toISOString()
+          }
+        });
+      } catch (webhookError) {
+        console.error('MANUAL_PAYMENT: Webhook notification failed:', webhookError);
+        // Don't fail the payment for webhook issues
+      }
+
+      toast({
+        title: language === 'fa' ? 'پرداخت ثبت شد' : 'Payment Recorded',
+        description: language === 'fa' ? 
+          'رسید پرداخت شما بارگذاری شد و به ادمین ارسال خواهد شد' : 
+          'Your payment receipt has been uploaded and sent to admin',
+      });
+
+      // Redirect to delivery page with subscription ID
+      setTimeout(() => {
+        navigate(`/delivery?id=${subscriptionId}`);
+      }, 2000);
+
+    } catch (error) {
+      console.error('MANUAL_PAYMENT: Error processing payment:', error);
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'خطا در پردازش پرداخت' : 'Error processing payment',
+        variant: 'destructive'
+      });
+    }
   };
 
   return (
@@ -182,47 +243,69 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
       <Card>
         <CardHeader>
           <CardTitle>
-            {language === 'fa' ? 'اطلاعات پرداخت' : 'Payment Details'}
+            {language === 'fa' ? 'بارگذاری رسید پرداخت' : 'Upload Payment Receipt'}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="tracking-number" className="text-sm font-medium">
-                {language === 'fa' ? 'شماره پیگیری *' : 'Tracking Number *'}
+              <Label htmlFor="receipt-upload" className="text-sm font-medium">
+                {language === 'fa' ? 'رسید پرداخت *' : 'Payment Receipt *'}
               </Label>
-              <Input
-                id="tracking-number"
-                type="text"
-                value={trackingNumber}
-                onChange={(e) => setTrackingNumber(e.target.value)}
-                placeholder={language === 'fa' ? 'شماره پیگیری تراکنش را وارد کنید' : 'Enter transaction tracking number'}
-                className="mt-1"
-                required
-              />
-            </div>
-
-            <PersianDateTimePicker
-              value={paymentTime}
-              onChange={setPaymentTime}
-              label={language === 'fa' ? 'زمان دقیق پرداخت' : 'Exact Payment Time'}
-              placeholder={language === 'fa' ? 'زمان پرداخت را انتخاب کنید' : 'Select payment time'}
-              required
-            />
-
-            <div>
-              <Label htmlFor="payer-name" className="text-sm font-medium">
-                {language === 'fa' ? 'نام پرداخت کننده *' : 'Payer Name *'}
-              </Label>
-              <Input
-                id="payer-name"
-                type="text"
-                value={payerName}
-                onChange={(e) => setPayerName(e.target.value)}
-                placeholder={language === 'fa' ? 'نام کامل پرداخت کننده را وارد کنید' : 'Enter full name of payer'}
-                className="mt-1"
-                required
-              />
+              <p className="text-sm text-muted-foreground mt-1 mb-3">
+                {language === 'fa' ? 
+                  'لطفاً تصویر رسید کارت‌به‌کارت خود را بارگذاری کنید.' : 
+                  'Please upload your card-to-card payment receipt image.'
+                }
+              </p>
+              
+              <div className="relative">
+                <Input
+                  id="receipt-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setReceiptFile(file);
+                    }
+                  }}
+                  className="hidden"
+                  required
+                />
+                <div 
+                  className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => document.getElementById('receipt-upload')?.click()}
+                >
+                  {receiptFile ? (
+                    <div className="space-y-2">
+                      <CheckCircle className="w-8 h-8 text-green-600 mx-auto" />
+                      <p className="font-medium text-green-800 dark:text-green-400">
+                        {receiptFile.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {language === 'fa' ? 'فایل انتخاب شده' : 'File selected'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Upload className="w-8 h-8 text-gray-400 mx-auto" />
+                      <p className="font-medium">
+                        {language === 'fa' ? 
+                          'برای انتخاب فایل کلیک کنید' : 
+                          'Click to select file'
+                        }
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {language === 'fa' ? 
+                          'فرمت‌های پشتیبانی شده: JPG, PNG, GIF' : 
+                          'Supported formats: JPG, PNG, GIF'
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -254,14 +337,17 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
 
           <Button 
             onClick={handleSubmit}
-            disabled={!confirmed || !trackingNumber || !paymentTime || !payerName || isSubmitting}
+            disabled={!confirmed || !receiptFile || isSubmitting || uploading}
             className="w-full mt-4"
             size="lg"
           >
-            {isSubmitting ? (
+            {isSubmitting || uploading ? (
               <>
                 <Loader className="w-4 h-4 mr-2 animate-spin" />
-                {language === 'fa' ? 'در حال پردازش...' : 'Processing...'}
+                {uploading ? 
+                  (language === 'fa' ? 'در حال بارگذاری...' : 'Uploading...') :
+                  (language === 'fa' ? 'در حال پردازش...' : 'Processing...')
+                }
               </>
             ) : (
               language === 'fa' ? 'تأیید پرداخت' : 'Confirm Payment'

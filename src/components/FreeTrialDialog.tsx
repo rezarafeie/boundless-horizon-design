@@ -238,7 +238,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       console.log('FREE_TRIAL: Starting STRICT plan-to-panel free trial creation');
       console.log('FREE_TRIAL: Selected plan UUID for STRICT binding:', selectedPlan);
       
-      // Auto-generate unique username with bnets_test format
+      // Auto-generate unique username with bnets_test format (6 digits)
       const randomDigits = Math.floor(Math.random() * (999999 - 100000 + 1)) + 100000;
       const uniqueUsername = `bnets_test_${randomDigits}`;
       

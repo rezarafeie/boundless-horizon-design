@@ -400,7 +400,7 @@ export class PanelUserCreationService {
         isFreeTriaL: true
       });
 
-      // Store test user data in the database if email and phone are provided
+      // Store test user data in the database and send webhook if email and phone are provided
       if (result.success && result.data && email && phone) {
         try {
           const expireDate = new Date();
@@ -434,6 +434,24 @@ export class PanelUserCreationService {
             console.error('PANEL_USER_CREATION: Failed to store test user data:', insertError);
           } else {
             console.log('PANEL_USER_CREATION: Test user data stored successfully');
+            
+            // Send webhook notification for new test user
+            try {
+              await supabase.functions.invoke('send-webhook-notification', {
+                body: {
+                  type: 'new_test_user',
+                  test_user_id: result.data.username,
+                  username: result.data.username,
+                  email: email,
+                  mobile: phone,
+                  created_at: new Date().toISOString()
+                }
+              });
+              console.log('PANEL_USER_CREATION: Webhook notification sent for test user');
+            } catch (webhookError) {
+              console.error('PANEL_USER_CREATION: Failed to send webhook notification:', webhookError);
+              // Don't fail the trial creation for webhook issues
+            }
           }
         } catch (error) {
           console.error('PANEL_USER_CREATION: Error storing test user data:', error);
