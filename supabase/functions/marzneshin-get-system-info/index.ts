@@ -36,13 +36,13 @@ serve(async (req) => {
 
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Found panel: ${panel.name} at ${panel.panel_url}`);
 
-    // Get Marzneshin credentials
-    const marzneshinBaseUrl = Deno.env.get('MARZNESHIN_BASE_URL');
-    const marzneshinUsername = Deno.env.get('MARZNESHIN_ADMIN_USERNAME');
-    const marzneshinPassword = Deno.env.get('MARZNESHIN_ADMIN_PASSWORD');
-
-    if (!marzneshinBaseUrl || !marzneshinUsername || !marzneshinPassword) {
-      throw new Error('Marzneshin credentials not configured');
+    // Verify panel has credentials
+    if (!panel.username || !panel.password) {
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Panel missing credentials:`, { 
+        hasUsername: !!panel.username, 
+        hasPassword: !!panel.password 
+      });
+      throw new Error(`Panel ${panel.name} is missing username or password credentials`);
     }
 
     // Authenticate with Marzneshin
@@ -62,7 +62,7 @@ serve(async (req) => {
     if (!authResponse.ok) {
       const errorText = await authResponse.text();
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Auth failed: ${authResponse.status} - ${errorText}`);
-      throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
+      throw new Error(`Authentication failed for panel ${panel.name}: ${authResponse.status} ${authResponse.statusText}. Response: ${errorText}`);
     }
 
     const authData = await authResponse.json();
@@ -93,7 +93,8 @@ serve(async (req) => {
       trafficData = await trafficResponse.json();
       console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic data received:`, trafficData);
     } else {
-      console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic API failed: ${trafficResponse.status}`);
+      const errorText = await trafficResponse.text();
+      console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic API failed: ${trafficResponse.status} - ${errorText}`);
     }
 
     // Get user status overview
@@ -111,7 +112,8 @@ serve(async (req) => {
       userStatsData = await userStatsResponse.json();
       console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats received:`, userStatsData);
     } else {
-      console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed: ${userStatsResponse.status}`);
+      const errorText = await userStatsResponse.text();
+      console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed: ${userStatsResponse.status} - ${errorText}`);
     }
 
     // Format response data
