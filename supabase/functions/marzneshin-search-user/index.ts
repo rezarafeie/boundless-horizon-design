@@ -70,34 +70,59 @@ serve(async (req) => {
 
     console.log(`[MARZNESHIN-SEARCH-USER] Authentication successful`);
 
-    // Search for users
+    // Search for users - try both search query and direct username lookup
     console.log(`[MARZNESHIN-SEARCH-USER] Searching for users with query: ${searchQuery}`);
-    const searchResponse = await fetch(`${panel.panel_url}/api/users?search=${encodeURIComponent(searchQuery.trim())}&limit=20`, {
+    
+    // Try direct username lookup first
+    let searchResponse = await fetch(`${panel.panel_url}/api/users/${encodeURIComponent(searchQuery.trim())}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       }
     });
 
-    if (!searchResponse.ok) {
-      throw new Error(`Search failed: ${searchResponse.status} ${searchResponse.statusText}`);
-    }
-
-    const searchData = await searchResponse.json();
-    console.log(`[MARZNESHIN-SEARCH-USER] Search response:`, searchData);
-
-    // Handle different response formats
+    let searchData = null;
     let users = [];
-    if (Array.isArray(searchData)) {
-      users = searchData;
-    } else if (searchData.users && Array.isArray(searchData.users)) {
-      users = searchData.users;
-    } else if (searchData.items && Array.isArray(searchData.items)) {
-      users = searchData.items;
+
+    if (searchResponse.ok) {
+      // Direct user lookup successful
+      searchData = await searchResponse.json();
+      users = [searchData]; // Single user response
+      console.log(`[MARZNESHIN-SEARCH-USER] Direct user lookup successful:`, searchData);
     } else {
-      console.warn(`[MARZNESHIN-SEARCH-USER] Unexpected response format:`, searchData);
-      users = [];
+      // Try general search if direct lookup fails
+      console.log(`[MARZNESHIN-SEARCH-USER] Direct lookup failed, trying general search`);
+      searchResponse = await fetch(`${panel.panel_url}/api/users?search=${encodeURIComponent(searchQuery.trim())}&limit=20`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        }
+      });
+
+      if (!searchResponse.ok) {
+        const errorText = await searchResponse.text();
+        console.error(`[MARZNESHIN-SEARCH-USER] Search failed: ${searchResponse.status} - ${errorText}`);
+        throw new Error(`Search failed: ${searchResponse.status} ${searchResponse.statusText}`);
+      }
+
+      searchData = await searchResponse.json();
+      console.log(`[MARZNESHIN-SEARCH-USER] General search response:`, searchData);
+
+      // Handle different response formats for general search
+      if (Array.isArray(searchData)) {
+        users = searchData;
+      } else if (searchData.users && Array.isArray(searchData.users)) {
+        users = searchData.users;
+      } else if (searchData.items && Array.isArray(searchData.items)) {
+        users = searchData.items;
+      } else {
+        console.warn(`[MARZNESHIN-SEARCH-USER] Unexpected response format:`, searchData);
+        users = [];
+      }
     }
 
     // Format users for consistent response
@@ -105,10 +130,14 @@ serve(async (req) => {
       id: user.id || user.username,
       username: user.username,
       email: user.email || null,
-      status: user.status || 'unknown',
-      data_limit: user.data_limit || user.data_limit_bytes,
-      used_traffic: user.used_traffic || user.used_traffic_bytes,
+      subscription_url: user.subscription_url || user.links?.subscription || null,
       expire_date: user.expire_date || user.expire_at,
+      data_limit: user.data_limit ? (user.data_limit / (1024*1024*1024)).toFixed(2) : '0', // Convert to GB
+      used_traffic: user.used_traffic ? (user.used_traffic / (1024*1024*1024)).toFixed(2) : '0', // Convert to GB
+      is_active: user.is_active || user.status === 'active',
+      expired: user.expired || (user.expire_date && new Date(user.expire_date) < new Date()),
+      enabled: user.enabled !== false,
+      status: user.status || 'unknown',
       online: user.online || false,
       created_at: user.created_at,
       updated_at: user.updated_at

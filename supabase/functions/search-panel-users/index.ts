@@ -105,9 +105,14 @@ Deno.serve(async (req) => {
                 panel_id: panel.id,
                 country: panel.country_en,
                 details: {
-                  data_limit_bytes: user.data_limit,
+                  data_limit_bytes: user.data_limit_bytes || user.data_limit,
+                  data_limit: user.data_limit, // GB format for Marzneshin
                   used_traffic: user.used_traffic,
                   expire_date: user.expire_date,
+                  subscription_url: user.subscription_url,
+                  is_active: user.is_active,
+                  expired: user.expired,
+                  enabled: user.enabled,
                   online: user.online,
                   created_at: user.created_at
                 }

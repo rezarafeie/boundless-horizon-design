@@ -51,6 +51,7 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify({
         username: panel.username,
@@ -59,6 +60,8 @@ serve(async (req) => {
     });
 
     if (!authResponse.ok) {
+      const errorText = await authResponse.text();
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Auth failed: ${authResponse.status} - ${errorText}`);
       throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
     }
 

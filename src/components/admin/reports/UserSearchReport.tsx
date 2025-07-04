@@ -281,11 +281,29 @@ export const UserSearchReport = ({ searchQuery, dateRange }: UserSearchReportPro
                         {result.details.data_limit_gb && (
                           <p>Data Limit: {result.details.data_limit_gb} GB</p>
                         )}
+                        {result.details.data_limit && (
+                          <p>Data Limit: {result.details.data_limit} GB</p>
+                        )}
+                        {result.details.used_traffic && (
+                          <p>Used Traffic: {result.details.used_traffic} GB</p>
+                        )}
                         {result.details.data_used && (
                           <p>Data Used: {result.details.data_used}</p>
                         )}
                         {result.details.expire_date && (
                           <p>Expires: {new Date(result.details.expire_date).toLocaleDateString()}</p>
+                        )}
+                        {result.details.subscription_url && (
+                          <p>Subscription: <a href={result.details.subscription_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View Config</a></p>
+                        )}
+                        {result.details.is_active !== undefined && (
+                          <p>Active: {result.details.is_active ? 'Yes' : 'No'}</p>
+                        )}
+                        {result.details.expired !== undefined && (
+                          <p>Expired: {result.details.expired ? 'Yes' : 'No'}</p>
+                        )}
+                        {result.details.enabled !== undefined && (
+                          <p>Enabled: {result.details.enabled ? 'Yes' : 'No'}</p>
                         )}
                         {result.created_at && (
                           <p>Created: {new Date(result.created_at).toLocaleDateString()}</p>
