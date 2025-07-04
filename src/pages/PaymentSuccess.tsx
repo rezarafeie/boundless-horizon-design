@@ -50,9 +50,34 @@ const PaymentSuccess = () => {
             
             await createVpnUserAutomatically(data.subscription);
             
-            // Send new subscription webhook notification
+            // Send new subscription webhook notification with complete data
             try {
               console.log('PAYMENT_SUCCESS: Sending new subscription webhook notification');
+              
+              // Get full subscription with plan and panel details
+              const { data: fullSubscription } = await supabase
+                .from('subscriptions')
+                .select(`
+                  *,
+                  subscription_plans (
+                    name_en,
+                    name_fa,
+                    plan_id,
+                    assigned_panel_id,
+                    panel_servers (
+                      name,
+                      type,
+                      panel_url,
+                      country_en
+                    )
+                  )
+                `)
+                .eq('id', data.subscription.id)
+                .single();
+
+              const plan = fullSubscription?.subscription_plans;
+              const panel = plan?.panel_servers;
+              
               await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_subscription',
@@ -63,6 +88,18 @@ const PaymentSuccess = () => {
                   email: data.subscription.email,
                   amount: data.subscription.price_toman,
                   payment_method: 'stripe',
+                  subscription_url: data.subscription.subscription_url,
+                  plan_name: plan?.name_en,
+                  plan_id: plan?.plan_id,
+                  panel_name: panel?.name,
+                  panel_type: panel?.type,
+                  panel_url: panel?.panel_url,
+                  panel_country: panel?.country_en,
+                  data_limit_gb: data.subscription.data_limit_gb,
+                  duration_days: data.subscription.duration_days,
+                  expire_at: data.subscription.expire_at,
+                  protocol: data.subscription.protocol,
+                  status: data.subscription.status,
                   created_at: new Date().toISOString()
                 }
               });
@@ -162,9 +199,34 @@ const PaymentSuccess = () => {
             // Create VPN user automatically
             await createVpnUserAutomatically(finalSubscription);
             
-            // Send new subscription webhook notification
+            // Send new subscription webhook notification with complete data
             try {
               console.log('PAYMENT_SUCCESS: Sending new subscription webhook notification for Zarinpal');
+              
+              // Get full subscription with plan and panel details
+              const { data: fullSubscription } = await supabase
+                .from('subscriptions')
+                .select(`
+                  *,
+                  subscription_plans (
+                    name_en,
+                    name_fa,
+                    plan_id,
+                    assigned_panel_id,
+                    panel_servers (
+                      name,
+                      type,
+                      panel_url,
+                      country_en
+                    )
+                  )
+                `)
+                .eq('id', finalSubscription.id)
+                .single();
+
+              const plan = fullSubscription?.subscription_plans;
+              const panel = plan?.panel_servers;
+              
               await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_subscription',
@@ -175,6 +237,18 @@ const PaymentSuccess = () => {
                   email: finalSubscription.email,
                   amount: finalSubscription.price_toman,
                   payment_method: 'zarinpal',
+                  subscription_url: finalSubscription.subscription_url,
+                  plan_name: plan?.name_en,
+                  plan_id: plan?.plan_id,
+                  panel_name: panel?.name,
+                  panel_type: panel?.type,
+                  panel_url: panel?.panel_url,
+                  panel_country: panel?.country_en,
+                  data_limit_gb: finalSubscription.data_limit_gb,
+                  duration_days: finalSubscription.duration_days,
+                  expire_at: finalSubscription.expire_at,
+                  protocol: finalSubscription.protocol,
+                  status: finalSubscription.status,
                   created_at: new Date().toISOString()
                 }
               });
@@ -221,9 +295,34 @@ const PaymentSuccess = () => {
             
             await createVpnUserAutomatically(decodedData);
             
-            // Send new subscription webhook notification
+            // Send new subscription webhook notification with complete data
             try {
               console.log('PAYMENT_SUCCESS: Sending new subscription webhook notification for other payment method');
+              
+              // Get full subscription with plan and panel details
+              const { data: fullSubscription } = await supabase
+                .from('subscriptions')
+                .select(`
+                  *,
+                  subscription_plans (
+                    name_en,
+                    name_fa,
+                    plan_id,
+                    assigned_panel_id,
+                    panel_servers (
+                      name,
+                      type,
+                      panel_url,
+                      country_en
+                    )
+                  )
+                `)
+                .eq('id', decodedData.id)
+                .single();
+
+              const plan = fullSubscription?.subscription_plans;
+              const panel = plan?.panel_servers;
+              
               await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_subscription',
@@ -234,6 +333,18 @@ const PaymentSuccess = () => {
                   email: decodedData.email,
                   amount: decodedData.price_toman,
                   payment_method: 'other',
+                  subscription_url: decodedData.subscription_url,
+                  plan_name: plan?.name_en,
+                  plan_id: plan?.plan_id,
+                  panel_name: panel?.name,
+                  panel_type: panel?.type,
+                  panel_url: panel?.panel_url,
+                  panel_country: panel?.country_en,
+                  data_limit_gb: decodedData.data_limit_gb,
+                  duration_days: decodedData.duration_days,
+                  expire_at: decodedData.expire_at,
+                  protocol: decodedData.protocol,
+                  status: decodedData.status,
                   created_at: new Date().toISOString()
                 }
               });
