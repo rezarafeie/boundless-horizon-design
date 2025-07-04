@@ -358,9 +358,11 @@ export class PanelUserCreationService {
     username: string, 
     planIdOrUuid: string,  // Can be UUID or plan_id text
     dataLimitGB: number = 1,
-    durationDays: number = 1
+    durationDays: number = 7,
+    email?: string,
+    phoneNumber?: string
   ): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { username, planIdOrUuid, dataLimitGB, durationDays });
+    console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { username, planIdOrUuid, dataLimitGB, durationDays, email: email ? 'provided' : 'not provided', phoneNumber: phoneNumber ? 'provided' : 'not provided' });
     
     try {
       // Resolve to actual UUID if needed
