@@ -347,13 +347,36 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
             }
           });
 
-          const deleteResponse = await fetch(deleteEndpoint, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,  // Bearer instead of Basic
-              'Content-Type': 'application/json',
+          // Add timeout and retry logic for Marzban delete issues
+          const deleteWithTimeout = async (attempt = 1): Promise<Response> => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+            
+            try {
+              const response = await fetch(deleteEndpoint, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json',
+                },
+                signal: controller.signal
+              });
+              clearTimeout(timeoutId);
+              return response;
+            } catch (error) {
+              clearTimeout(timeoutId);
+              
+              // Retry logic for network failures (max 2 retries)
+              if (attempt < 2 && (error instanceof Error && (error.name === 'AbortError' || error.message.includes('fetch')))) {
+                console.log(`🔄 DELETE_SUBSCRIPTION: Retry attempt ${attempt + 1} after error:`, error.message);
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+                return deleteWithTimeout(attempt + 1);
+              }
+              throw error;
             }
-          });
+          };
+
+          const deleteResponse = await deleteWithTimeout();
 
           const deleteEndTime = Date.now();
           const deleteDuration = deleteEndTime - deleteStartTime;
@@ -741,12 +764,15 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
     }
   };
 
+  // Check if subscription is cancelled or deleted
+  const isDeleted = subscription.status === 'cancelled' || subscription.notes?.includes('- Deleted on');
+
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
       {/* Check Details Button */}
       <Dialog>
         <DialogTrigger asChild>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" className="min-h-[44px] flex-1 sm:flex-none">
             <Eye className="w-4 h-4 mr-1" />
             Details
           </Button>
@@ -856,7 +882,7 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
         variant="outline"
         onClick={handleSendToAdmin}
         disabled={isSendingToAdmin}
-        className="border-blue-200 text-blue-700 hover:bg-blue-50"
+        className="border-blue-200 text-blue-700 hover:bg-blue-50 min-h-[44px] flex-1 sm:flex-none"
       >
         {isSendingToAdmin ? (
           <Loader className="w-4 h-4 mr-1 animate-spin" />
@@ -873,7 +899,7 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
           variant="outline"
           onClick={createVpnUser}
           disabled={isCreatingVpn}
-          className="border-blue-200 text-blue-700 hover:bg-blue-50"
+          className="border-blue-200 text-blue-700 hover:bg-blue-50 min-h-[44px] flex-1 sm:flex-none"
         >
           {isCreatingVpn ? (
             <Loader className="w-4 h-4 mr-1 animate-spin" />
@@ -891,7 +917,7 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
             size="sm" 
             variant="outline"
             disabled={isProcessing}
-            className="border-green-200 text-green-700 hover:bg-green-50"
+            className="border-green-200 text-green-700 hover:bg-green-50 min-h-[44px] flex-1 sm:flex-none"
           >
             {isProcessing ? (
               <Loader className="w-4 h-4 mr-1 animate-spin" />
@@ -925,14 +951,15 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Subscription Button */}
-      <AlertDialog>
+      {/* Delete Subscription Button - Hide for cancelled/deleted subscriptions */}
+      {!isDeleted && (
+        <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button 
             size="sm" 
             variant="destructive"
             disabled={isDeleting}
-            className="bg-red-600 hover:bg-red-700"
+            className="bg-red-600 hover:bg-red-700 min-h-[44px] flex-1 sm:flex-none"
           >
             {isDeleting ? (
               <Loader className="w-4 h-4 mr-1 animate-spin" />
@@ -970,7 +997,8 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+        </AlertDialog>
+      )}
     </div>
   );
 };
