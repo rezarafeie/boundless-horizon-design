@@ -47,76 +47,67 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
     try {
       logInfo('Starting Telegram bot data load', { timestamp: new Date().toISOString() });
 
-      // Try to fetch from bot API with better error handling
-      const botData = await logApiCall('Fetch Telegram bot statistics', async () => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      // Fetch user statistics from external API
+      const userStats = await logApiCall('Fetch Telegram user statistics', async () => {
+        const response = await fetch('http://b.bnets.co/api/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            token: '6169452dd5a55778f35fcedaa1fbd7b9'
+          })
+        });
 
-        try {
-          const response = await fetch('https://api.telegram.org/bot6747476347:AAEUHPOQqLr7L-kK3nCOOzMKkmOvRlN24zE/getMe', {
-            method: 'GET',
-            signal: controller.signal,
-            headers: {
-              'Content-Type': 'application/json',
-            }
-          });
-
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          
-          if (!data.ok) {
-            throw new Error(`Telegram API Error: ${data.description || 'Unknown error'}`);
-          }
-
-          return data.result;
-        } catch (error: any) {
-          clearTimeout(timeoutId);
-          
-          if (error.name === 'AbortError') {
-            throw new Error('Request timeout - API took too long to respond');
-          }
-          
-          if (error instanceof TypeError && error.message.includes('fetch')) {
-            throw new Error('Network error - Check internet connection and API availability');
-          }
-          
-          throw error;
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
+
+        const data = await response.json();
+        logInfo('User statistics API response', data);
+        return data;
       });
 
-      logInfo('Bot info retrieved successfully', botData);
+      // Fetch invoice/revenue statistics from external API
+      const invoiceStats = await logApiCall('Fetch Telegram invoice statistics', async () => {
+        const response = await fetch('http://b.bnets.co/api/invoice', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            token: '6169452dd5a55778f35fcedaa1fbd7b9'
+          })
+        });
 
-      // Try to get user statistics (mock data for now since we need webhook setup)
-      const userStats = await logApiCall('Generate user statistics', async () => {
-        // Simulate some realistic data since we can't get real stats without webhook setup
-        return {
-          totalUsers: Math.floor(Math.random() * 1000) + 500,
-          activeUsers: Math.floor(Math.random() * 200) + 100,
-          totalMessages: Math.floor(Math.random() * 10000) + 5000,
-          revenue: Math.floor(Math.random() * 50000000) + 25000000, // in Toman
-          recentUsers: Array.from({ length: 5 }, (_, i) => ({
-            id: Math.floor(Math.random() * 1000000),
-            first_name: `User ${i + 1}`,
-            username: Math.random() > 0.5 ? `user${i + 1}` : undefined,
-            last_seen: new Date(Date.now() - Math.random() * 86400000).toISOString()
-          }))
-        };
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        logInfo('Invoice statistics API response', data);
+        return data;
       });
+
+      // Process the API responses and create stats
+      const processedStats = {
+        totalUsers: userStats.total_users || 0,
+        activeUsers: userStats.active_users || 0,
+        totalMessages: userStats.total_messages || 0,
+        revenue: invoiceStats.total_revenue || 0,
+        recentUsers: userStats.recent_users || []
+      };
 
       setStats({
         botStatus: 'online',
-        ...userStats,
+        ...processedStats,
         lastUpdate: new Date().toISOString()
       });
 
       logInfo('Telegram data load completed successfully', {
         botStatus: 'online',
-        userCount: userStats.totalUsers
+        userCount: processedStats.totalUsers,
+        revenue: processedStats.revenue
       });
 
     } catch (error: any) {
@@ -248,30 +239,32 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
               </div>
 
               {/* Recent Users */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Recent Users</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {stats.recentUsers.map((user) => (
-                      <div key={user.id} className="flex items-center justify-between p-2 border rounded">
-                        <div>
-                          <p className="font-medium">{user.first_name}</p>
-                          {user.username && (
-                            <p className="text-sm text-muted-foreground">@{user.username}</p>
-                          )}
+              {stats.recentUsers.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Recent Users</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {stats.recentUsers.map((user) => (
+                        <div key={user.id} className="flex items-center justify-between p-2 border rounded">
+                          <div>
+                            <p className="font-medium">{user.first_name}</p>
+                            {user.username && (
+                              <p className="text-sm text-muted-foreground">@{user.username}</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(user.last_seen).toLocaleString()}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(user.last_seen).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
           

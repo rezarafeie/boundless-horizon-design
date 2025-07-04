@@ -22,8 +22,17 @@ export const useDebugLogger = () => {
     
     setLogs(prev => [log, ...prev].slice(0, 100)); // Keep only last 100 logs
     
-    // Also log to console for development
-    console.log(`[DEBUG ${type.toUpperCase()}] ${title}:`, details);
+    // Enhanced console logging for development
+    const logPrefix = `[DEBUG ${type.toUpperCase()}]`;
+    const logMessage = `${logPrefix} ${title}`;
+    
+    if (type === 'error') {
+      console.error(logMessage, details);
+    } else if (type === 'api') {
+      console.log(`${logMessage} - API Call`, details);
+    } else {
+      console.log(logMessage, details);
+    }
   }, []);
 
   const logApiCall = useCallback(async <T>(
@@ -33,30 +42,56 @@ export const useDebugLogger = () => {
     const startTime = Date.now();
     
     try {
-      addLog('api', `${title} - Starting`, { startTime: new Date().toISOString() });
+      addLog('api', `${title} - Starting`, { 
+        startTime: new Date().toISOString(),
+        requestDetails: 'API call initiated'
+      });
       
       const result = await apiCall();
       const duration = Date.now() - startTime;
       
-      addLog('success', `${title} - Success`, result, duration);
+      addLog('success', `${title} - Success`, {
+        result,
+        responseTime: `${duration}ms`,
+        completedAt: new Date().toISOString()
+      }, duration);
+      
       return result;
-    } catch (error) {
+    } catch (error: any) {
       const duration = Date.now() - startTime;
-      addLog('error', `${title} - Failed`, error, duration);
+      const errorDetails = {
+        error: error.message || 'Unknown error',
+        stack: error.stack,
+        name: error.name,
+        responseTime: `${duration}ms`,
+        failedAt: new Date().toISOString()
+      };
+      
+      addLog('error', `${title} - Failed`, errorDetails, duration);
       throw error;
     }
   }, [addLog]);
 
   const logInfo = useCallback((title: string, details: any) => {
-    addLog('info', title, details);
+    addLog('info', title, {
+      ...details,
+      timestamp: new Date().toISOString()
+    });
   }, [addLog]);
 
   const logError = useCallback((title: string, error: any) => {
-    addLog('error', title, error);
+    const errorDetails = {
+      error: error.message || error,
+      stack: error.stack,
+      name: error.name,
+      timestamp: new Date().toISOString()
+    };
+    addLog('error', title, errorDetails);
   }, [addLog]);
 
   const clearLogs = useCallback(() => {
     setLogs([]);
+    console.log('[DEBUG] Logs cleared');
   }, []);
 
   return {

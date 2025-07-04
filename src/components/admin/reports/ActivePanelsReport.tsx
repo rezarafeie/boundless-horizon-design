@@ -42,7 +42,10 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
           .select('*')
           .eq('is_active', true);
         
-        if (error) throw error;
+        if (error) {
+          logError('Database query failed', error);
+          throw error;
+        }
         return data || [];
       });
 
@@ -51,43 +54,79 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
       // Fetch system info for each panel
       const panelsWithInfo = await Promise.all(
         panelsData.map(async (panel) => {
-          logInfo(`Processing panel: ${panel.name}`, { panelId: panel.id, type: panel.type });
+          logInfo(`Processing panel: ${panel.name}`, { 
+            panelId: panel.id, 
+            type: panel.type,
+            url: panel.panel_url,
+            country: panel.country_en
+          });
           
           try {
             let systemInfo;
             
             if (panel.type === 'marzban') {
               systemInfo = await logApiCall(`Get Marzban system info for ${panel.name}`, async () => {
+                logInfo(`Calling marzban-get-system-info edge function`, { panelId: panel.id });
+                
                 const { data, error } = await supabase.functions.invoke('marzban-get-system-info', {
                   body: { panelId: panel.id }
                 });
                 
-                if (error) throw error;
-                if (!data?.success) throw new Error(data?.error || 'Failed to get system info');
+                if (error) {
+                  logError(`Edge function invocation failed for ${panel.name}`, error);
+                  throw error;
+                }
                 
+                if (!data?.success) {
+                  const errorMsg = data?.error || 'Failed to get system info';
+                  logError(`Edge function returned error for ${panel.name}`, { error: errorMsg, data });
+                  throw new Error(errorMsg);
+                }
+                
+                logInfo(`System info received for ${panel.name}`, data.systemInfo);
                 return data.systemInfo;
               });
             } else if (panel.type === 'marzneshin') {
               systemInfo = await logApiCall(`Get Marzneshin system info for ${panel.name}`, async () => {
+                logInfo(`Calling marzneshin-get-system-info edge function`, { panelId: panel.id });
+                
                 const { data, error } = await supabase.functions.invoke('marzneshin-get-system-info', {
                   body: { panelId: panel.id }
                 });
                 
-                if (error) throw error;
-                if (!data?.success) throw new Error(data?.error || 'Failed to get system info');
+                if (error) {
+                  logError(`Edge function invocation failed for ${panel.name}`, error);
+                  throw error;
+                }
                 
+                if (!data?.success) {
+                  const errorMsg = data?.error || 'Failed to get system info';
+                  logError(`Edge function returned error for ${panel.name}`, { error: errorMsg, data });
+                  throw new Error(errorMsg);
+                }
+                
+                logInfo(`System info received for ${panel.name}`, data.systemInfo);
                 return data.systemInfo;
               });
+            } else {
+              logError(`Unknown panel type for ${panel.name}`, { type: panel.type });
+              throw new Error(`Unknown panel type: ${panel.type}`);
             }
             
-            logInfo(`System info loaded for ${panel.name}`, systemInfo);
+            logInfo(`System info loaded successfully for ${panel.name}`, systemInfo);
             
             return {
               ...panel,
               systemInfo
             };
           } catch (error: any) {
-            logError(`Failed to load system info for ${panel.name}`, error);
+            logError(`Failed to load system info for ${panel.name}`, {
+              error: error.message,
+              stack: error.stack,
+              panelId: panel.id,
+              panelType: panel.type
+            });
+            
             return {
               ...panel,
               error: error.message
@@ -97,10 +136,19 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
       );
 
       setPanels(panelsWithInfo);
-      logInfo('Panel data loading completed', { totalPanels: panelsWithInfo.length });
+      logInfo('Panel data loading completed', { 
+        totalPanels: panelsWithInfo.length,
+        successfulPanels: panelsWithInfo.filter(p => !p.error).length,
+        failedPanels: panelsWithInfo.filter(p => p.error).length
+      });
 
     } catch (error: any) {
-      logError('Failed to load panel data', error);
+      logError('Failed to load panel data', {
+        error: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
       toast({
         title: "Error",
         description: "Failed to load panel data: " + error.message,

@@ -52,8 +52,8 @@ export const AdminLogin = () => {
         return;
       }
 
-      // Use email format for backend authentication
-      const adminEmail = 'bnets@admin.local';
+      // Use valid email format for backend authentication
+      const adminEmail = 'bnets@boundless-admin.com';
       
       // Try to sign in first
       let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
