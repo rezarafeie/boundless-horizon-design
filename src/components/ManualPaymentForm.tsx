@@ -240,10 +240,14 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
           created_at: fullSubscription?.created_at || new Date().toISOString()
         };
 
-        const webhookResult = await WebhookService.sendWithRetry(webhookPayload);
+        console.log('MANUAL_PAYMENT: Sending webhook notification directly');
         
-        if (!webhookResult.success) {
-          console.error('MANUAL_PAYMENT: Webhook notification failed after retries:', webhookResult.error);
+        const { data: webhookData, error: webhookError } = await supabase.functions.invoke('send-webhook-notification', {
+          body: webhookPayload
+        });
+        
+        if (webhookError || !webhookData?.success) {
+          console.error('MANUAL_PAYMENT: Webhook notification failed:', webhookError);
           // Don't fail the payment for webhook issues, but show warning
           toast({
             title: language === 'fa' ? 'هشدار' : 'Warning',
@@ -252,7 +256,7 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
               'Payment recorded but admin notification may be delayed',
           });
         } else {
-          console.log('MANUAL_PAYMENT: Webhook notification sent successfully');
+          console.log('MANUAL_PAYMENT: Webhook notification sent successfully:', webhookData);
         }
       } catch (webhookError) {
         console.error('MANUAL_PAYMENT: Webhook notification error:', webhookError);
