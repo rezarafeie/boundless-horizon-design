@@ -37,8 +37,8 @@ export const ManualPaymentActions = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-  // Don't show actions if already decided or not a manual payment
-  if (status !== 'pending' || (adminDecision && adminDecision !== 'pending')) {
+  // Show actions only if status is pending and admin_decision is pending
+  if (status !== 'pending' || adminDecision !== 'pending') {
     return null;
   }
 
@@ -81,7 +81,7 @@ export const ManualPaymentActions = ({
       };
 
       if (decision === 'approved') {
-        updateData.status = 'active';
+        updateData.status = 'paid';
         
         // Get subscription details
         const { data: subscription, error: fetchError } = await supabase
@@ -97,7 +97,7 @@ export const ManualPaymentActions = ({
         try {
           console.log('🔵 MANUAL_PAYMENT: Creating VPN user automatically after approval');
           
-          // ✅ NEW: Use the PanelUserCreationService for automatic VPN creation
+          // ✅ Use the PanelUserCreationService for automatic VPN creation
           const vpnResult = await PanelUserCreationService.createUserFromPanel({
             planId: subscription.plan_id,
             username: subscription.username,
@@ -111,6 +111,7 @@ export const ManualPaymentActions = ({
             updateData.subscription_url = vpnResult.data.subscription_url;
             updateData.marzban_user_created = true;
             updateData.expire_at = new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString();
+            updateData.status = 'active'; // Change status to active when VPN is created
             
             // Update notes to include success
             const existingNotes = subscription.notes || '';
@@ -162,6 +163,9 @@ export const ManualPaymentActions = ({
           
           console.log('🟡 MANUAL_PAYMENT: Continuing with approval despite VPN creation failure');
         }
+      } else {
+        // For rejected payments
+        updateData.status = 'cancelled';
       }
 
       const { error } = await supabase

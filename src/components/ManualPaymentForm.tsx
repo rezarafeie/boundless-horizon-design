@@ -145,19 +145,21 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
       return; // Upload failed, error already shown
     }
 
-    // Update subscription with receipt URL
+    // Update subscription with receipt URL and admin decision
     try {
       console.log('MANUAL_PAYMENT: Updating subscription in database:', {
         subscriptionId,
         receiptUrl,
-        status: 'pending_approval'
+        status: 'pending',
+        admin_decision: 'pending'
       });
 
       const { data: updateData, error: updateError } = await supabase
         .from('subscriptions')
         .update({ 
           receipt_image_url: receiptUrl,
-          status: 'pending_approval'
+          status: 'pending',
+          admin_decision: 'pending'
         })
         .eq('id', subscriptionId)
         .select();

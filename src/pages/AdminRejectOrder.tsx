@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -39,7 +40,7 @@ const AdminRejectOrder = () => {
       const { error: updateError } = await supabase
         .from('subscriptions')
         .update({
-          status: 'rejected',
+          status: 'cancelled',
           admin_decision: 'rejected',
           admin_decided_at: new Date().toISOString()
         })
