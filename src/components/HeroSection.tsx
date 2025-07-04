@@ -4,7 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Shield, Zap, Globe, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import FreeTrialButton from './FreeTrialButton';
+import FreeTrialWrapper from './FreeTrialWrapper';
 
 const HeroSection = () => {
   const { language, t } = useLanguage();
@@ -79,7 +79,7 @@ const HeroSection = () => {
             </Button>
 
             <div className="w-full sm:w-auto">
-              <FreeTrialButton />
+              <FreeTrialWrapper />
             </div>
 
             <Button asChild variant="hero-accent" size="xl" className="w-full sm:w-auto group">

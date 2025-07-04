@@ -11,7 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon, Menu, X, Globe, ChevronDown, Send, ShoppingCart, Gift, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import FreeTrialButton from './FreeTrialButton';
+import FreeTrialWrapper from './FreeTrialWrapper';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
@@ -86,7 +86,7 @@ const Navigation = () => {
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
                   <div className="w-full p-2">
-                    <FreeTrialButton />
+                    <FreeTrialWrapper />
                   </div>
                 </DropdownMenuItem>
                 
@@ -136,7 +136,7 @@ const Navigation = () => {
             </Link>
             
             <div className="px-2">
-              <FreeTrialButton />
+              <FreeTrialWrapper />
             </div>
             
             <Link to="/renewal">

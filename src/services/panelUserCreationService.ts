@@ -359,9 +359,9 @@ export class PanelUserCreationService {
     dataLimitGB: number = 1,
     durationDays: number = 7,
     email?: string,
-    phoneNumber?: string
+    phone?: string
   ): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { username, planIdOrUuid, dataLimitGB, durationDays, email: email ? 'provided' : 'not provided', phoneNumber: phoneNumber ? 'provided' : 'not provided' });
+    console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { username, planIdOrUuid, dataLimitGB, durationDays, email: email ? 'provided' : 'not provided', phone: phone ? 'provided' : 'not provided' });
     
     try {
       // Resolve to actual UUID if needed
@@ -401,7 +401,7 @@ export class PanelUserCreationService {
       });
 
       // Store test user data in the database if email and phone are provided
-      if (result.success && result.data && email && phoneNumber) {
+      if (result.success && result.data && email && phone) {
         try {
           const expireDate = new Date();
           expireDate.setDate(expireDate.getDate() + durationDays);
@@ -415,7 +415,7 @@ export class PanelUserCreationService {
           
           const testUserData = {
             email: email,
-            phone_number: phoneNumber,
+            phone_number: phone,
             username: result.data.username,
             panel_id: actualPlanId,
             panel_name: result.data.panel_name || planData?.panel_servers?.name || 'Unknown Panel',
