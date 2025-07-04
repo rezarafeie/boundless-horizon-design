@@ -68,6 +68,22 @@ export const AdminLogin = () => {
         username: 'bnets',
         loginTime: new Date().toISOString()
       }));
+
+      // Try to establish Supabase auth session for admin
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: 'admin@boundless.network',
+          password: 'admin_temp_password_12345'
+        });
+        
+        if (authData?.session) {
+          console.log('Admin Supabase auth session established');
+        } else {
+          console.log('Could not establish Supabase auth session, but admin login successful');
+        }
+      } catch (authErr) {
+        console.log('Auth session setup failed, but admin login successful');
+      }
       
       toast.success('Login successful');
       

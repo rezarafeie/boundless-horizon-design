@@ -13,6 +13,8 @@ export const useAdminAuth = () => {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [session, setSession] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
 
   const checkAdminStatus = async () => {
     try {
@@ -37,6 +39,25 @@ export const useAdminAuth = () => {
         setIsAuthenticated(false);
         setLoading(false);
         return;
+      }
+
+      // Sign in the admin user with Supabase auth using the specific admin user ID
+      console.log('ADMIN AUTH: Setting up Supabase auth session for admin');
+      
+      // Use signInWithPassword with the admin credentials to establish proper auth session
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: 'admin@boundless.network',
+        password: 'admin_temp_password_12345'
+      });
+
+      if (signInError && signInError.message !== 'Invalid login credentials') {
+        console.log('ADMIN AUTH: Auth sign in failed, trying alternate approach');
+        // If normal sign in fails, we'll work with the current session approach
+        // but make sure we have the right auth context
+      } else if (authData?.session) {
+        console.log('ADMIN AUTH: Supabase auth session established');
+        setUser(authData.user);
+        setSession(authData.session);
       }
       
       // Verify admin user exists in database
@@ -86,8 +107,14 @@ export const useAdminAuth = () => {
   const signOut = async () => {
     console.log('ADMIN AUTH: Signing out');
     localStorage.removeItem('admin_session');
+    
+    // Sign out from Supabase auth as well
+    await supabase.auth.signOut();
+    
     setAdminUser(null);
     setIsAuthenticated(false);
+    setUser(null);
+    setSession(null);
     window.location.href = '/admin/login';
     return { error: null };
   };
@@ -98,8 +125,8 @@ export const useAdminAuth = () => {
   console.log('ADMIN AUTH: Current state - isAdmin:', isAdmin, 'isSuperAdmin:', isSuperAdmin, 'isAuthenticated:', isAuthenticated, 'loading:', loading);
 
   return {
-    user: null,
-    session: null,
+    user,
+    session,
     adminUser,
     loading,
     isAdmin,
