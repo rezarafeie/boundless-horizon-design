@@ -56,7 +56,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         .from('subscription_plans')
         .select(`
           *,
-          panel_servers!assigned_panel_id(
+          panel_servers!inner(
             id,
             name,
             type,
@@ -67,7 +67,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         `)
         .eq('is_active', true)
         .eq('is_visible', true)
-        .not('assigned_panel_id', 'is', null); // STRICT: Only plans with assigned panels
+        .not('assigned_panel_id', 'is', null)
 
       console.log('FREE_TRIAL: STRICT query result:', { 
         error: error?.message, 
