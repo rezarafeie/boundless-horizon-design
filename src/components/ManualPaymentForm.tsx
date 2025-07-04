@@ -240,14 +240,29 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
           created_at: fullSubscription?.created_at || new Date().toISOString()
         };
 
-        console.log('MANUAL_PAYMENT: Sending webhook notification directly');
+        console.log('MANUAL_PAYMENT: Sending webhook notification directly', {
+          payload: webhookPayload,
+          subscriptionId,
+          webhookUrl: 'send-webhook-notification'
+        });
         
         const { data: webhookData, error: webhookError } = await supabase.functions.invoke('send-webhook-notification', {
           body: webhookPayload
         });
         
+        console.log('MANUAL_PAYMENT: Webhook response:', { 
+          success: webhookData?.success, 
+          webhookData, 
+          webhookError,
+          errorDetails: webhookError?.message || webhookError
+        });
+        
         if (webhookError || !webhookData?.success) {
-          console.error('MANUAL_PAYMENT: Webhook notification failed:', webhookError);
+          console.error('MANUAL_PAYMENT: Webhook notification failed:', {
+            error: webhookError,
+            data: webhookData,
+            payload: webhookPayload
+          });
           // Don't fail the payment for webhook issues, but show warning
           toast({
             title: language === 'fa' ? 'هشدار' : 'Warning',
