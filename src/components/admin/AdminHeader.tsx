@@ -1,9 +1,10 @@
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { OfflineStatus } from './OfflineStatus';
+import { NotificationDropdown } from './NotificationDropdown';
 
 export const AdminHeader = () => {
   const { theme } = useTheme();
@@ -27,15 +28,7 @@ export const AdminHeader = () => {
         <div className="flex items-center gap-2">
           <OfflineStatus />
           
-          <Button variant="ghost" size="sm" className="relative">
-            <Bell className="w-4 h-4" />
-            <Badge 
-              variant="destructive" 
-              className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-            >
-              3
-            </Badge>
-          </Button>
+          <NotificationDropdown />
           
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             <LogOut className="w-4 h-4" />

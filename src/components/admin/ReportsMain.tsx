@@ -10,10 +10,18 @@ import { ActivePanelsReport } from './reports/ActivePanelsReport';
 import { DatabaseStatsReport } from './reports/DatabaseStatsReport';
 import { TelegramBotReport } from './reports/TelegramBotReport';
 import { UserSearchReport } from './reports/UserSearchReport';
+import { DateRangeSelector, DateRange } from './DateRangeSelector';
 
 export const ReportsMain = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // Initialize with last 7 days
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+    to: new Date(),
+    preset: '7d'
+  });
 
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -34,10 +42,16 @@ export const ReportsMain = () => {
             Comprehensive system monitoring and analytics
           </p>
         </div>
-        <Button onClick={handleRefresh} size="sm">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh All
-        </Button>
+        <div className="flex items-center gap-2">
+          <DateRangeSelector 
+            dateRange={dateRange} 
+            onDateRangeChange={setDateRange} 
+          />
+          <Button onClick={handleRefresh} size="sm">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh All
+          </Button>
+        </div>
       </div>
 
       {/* Global Search */}
@@ -69,7 +83,7 @@ export const ReportsMain = () => {
       </Card>
 
       {/* Global Summary */}
-      <GlobalSummary refreshTrigger={refreshTrigger} />
+      <GlobalSummary refreshTrigger={refreshTrigger} dateRange={dateRange} />
 
       {/* Main Tabs - Improved Mobile Layout */}
       <Tabs defaultValue="panels" className="space-y-4">
@@ -95,19 +109,19 @@ export const ReportsMain = () => {
         </div>
 
         <TabsContent value="panels" className="space-y-4">
-          <ActivePanelsReport refreshTrigger={refreshTrigger} />
+          <ActivePanelsReport refreshTrigger={refreshTrigger} dateRange={dateRange} />
         </TabsContent>
 
         <TabsContent value="database" className="space-y-4">
-          <DatabaseStatsReport refreshTrigger={refreshTrigger} />
+          <DatabaseStatsReport refreshTrigger={refreshTrigger} dateRange={dateRange} />
         </TabsContent>
 
         <TabsContent value="telegram" className="space-y-4">
-          <TelegramBotReport refreshTrigger={refreshTrigger} />
+          <TelegramBotReport refreshTrigger={refreshTrigger} dateRange={dateRange} />
         </TabsContent>
 
         <TabsContent value="search" className="space-y-4">
-          <UserSearchReport searchQuery={searchQuery} />
+          <UserSearchReport searchQuery={searchQuery} dateRange={dateRange} />
         </TabsContent>
       </Tabs>
     </div>

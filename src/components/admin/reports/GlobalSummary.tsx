@@ -1,20 +1,19 @@
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, Database, DollarSign, Activity, Calendar, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { DateRange } from '../DateRangeSelector';
 
 interface GlobalSummaryProps {
   refreshTrigger: number;
+  dateRange: DateRange;
 }
 
-export const GlobalSummary = ({ refreshTrigger }: GlobalSummaryProps) => {
+export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState('today');
   const [summary, setSummary] = useState({
     totalUsers: 0,
     totalBandwidth: 0,
@@ -26,7 +25,7 @@ export const GlobalSummary = ({ refreshTrigger }: GlobalSummaryProps) => {
   const loadGlobalSummary = async () => {
     setLoading(true);
     try {
-      // This would aggregate data from all sources
+      // This would aggregate data from all sources based on dateRange
       // For now, we'll simulate the data
       await new Promise(resolve => setTimeout(resolve, 1000));
       
@@ -69,18 +68,12 @@ export const GlobalSummary = ({ refreshTrigger }: GlobalSummaryProps) => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h2 className="text-xl font-semibold">Global Summary</h2>
         <div className="flex items-center gap-2">
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="yesterday">Yesterday</SelectItem>
-              <SelectItem value="week">Last 7 Days</SelectItem>
-              <SelectItem value="month">Last 30 Days</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
-            </SelectContent>
-          </Select>
+          <span className="text-sm text-muted-foreground">
+            {dateRange.preset === 'custom' 
+              ? `${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`
+              : dateRange.preset.toUpperCase()
+            }
+          </span>
           <Button onClick={loadGlobalSummary} disabled={loading} size="sm">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>

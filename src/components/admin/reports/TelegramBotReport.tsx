@@ -7,9 +7,11 @@ import { RefreshCw, MessageSquare, Users, CreditCard, AlertTriangle } from 'luci
 import { useToast } from '@/hooks/use-toast';
 import { DebugLogger } from './DebugLogger';
 import { useDebugLogger } from '@/hooks/useDebugLogger';
+import { DateRange } from '../DateRangeSelector';
 
 interface TelegramBotReportProps {
   refreshTrigger: number;
+  dateRange: DateRange;
 }
 
 interface TelegramStats {
@@ -27,7 +29,7 @@ interface TelegramStats {
   lastUpdate: string;
 }
 
-export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) => {
+export const TelegramBotReport = ({ refreshTrigger, dateRange }: TelegramBotReportProps) => {
   const { toast } = useToast();
   const { logs, logApiCall, logInfo, logError, clearLogs } = useDebugLogger();
   const [loading, setLoading] = useState(false);
@@ -45,9 +47,13 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
     setLoading(true);
     
     try {
-      logInfo('Starting Telegram bot data load', { timestamp: new Date().toISOString() });
+      logInfo('Starting Telegram bot data load with date range', { 
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+        preset: dateRange.preset
+      });
 
-      // Fetch user statistics from external API
+      // Fetch user statistics from external API with date filtering
       const userStats = await logApiCall('Fetch Telegram user statistics', async () => {
         const response = await fetch('http://b.bnets.co/api/users', {
           method: 'POST',
@@ -55,7 +61,9 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            token: '6169452dd5a55778f35fcedaa1fbd7b9'
+            token: '6169452dd5a55778f35fcedaa1fbd7b9',
+            date_from: dateRange.from.toISOString(),
+            date_to: dateRange.to.toISOString()
           })
         });
 
@@ -68,7 +76,7 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
         return data;
       });
 
-      // Fetch invoice/revenue statistics from external API
+      // Fetch invoice/revenue statistics from external API with date filtering
       const invoiceStats = await logApiCall('Fetch Telegram invoice statistics', async () => {
         const response = await fetch('http://b.bnets.co/api/invoice', {
           method: 'POST',
@@ -76,7 +84,9 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            token: '6169452dd5a55778f35fcedaa1fbd7b9'
+            token: '6169452dd5a55778f35fcedaa1fbd7b9',
+            date_from: dateRange.from.toISOString(),
+            date_to: dateRange.to.toISOString()
           })
         });
 
@@ -107,14 +117,16 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
       logInfo('Telegram data load completed successfully', {
         botStatus: 'online',
         userCount: processedStats.totalUsers,
-        revenue: processedStats.revenue
+        revenue: processedStats.revenue,
+        dateRange: dateRange.preset
       });
 
     } catch (error: any) {
       logError('Failed to load Telegram data', {
         error: error.message,
         stack: error.stack,
-        name: error.name
+        name: error.name,
+        dateRange: dateRange.preset
       });
 
       // Set fallback data to show the error state
@@ -136,7 +148,7 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
 
   useEffect(() => {
     loadTelegramData();
-  }, [refreshTrigger]);
+  }, [refreshTrigger, dateRange]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('fa-IR').format(amount) + ' تومان';
@@ -157,7 +169,15 @@ export const TelegramBotReport = ({ refreshTrigger }: TelegramBotReportProps) =>
       <DebugLogger logs={logs} onClear={clearLogs} />
       
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold">Telegram Bot Report</h2>
+        <div>
+          <h2 className="text-xl font-semibold">Telegram Bot Report</h2>
+          <p className="text-sm text-muted-foreground">
+            Data from {dateRange.preset === 'custom' 
+              ? `${dateRange.from.toLocaleDateString()} to ${dateRange.to.toLocaleDateString()}`
+              : dateRange.preset.toUpperCase()
+            }
+          </p>
+        </div>
         <Button onClick={loadTelegramData} disabled={loading} size="sm">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>

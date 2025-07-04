@@ -17,11 +17,11 @@ export const useAdminAuth = () => {
     try {
       console.log('=== ADMIN AUTH: Checking admin status ===');
       
-      // Check if we have the admin user in database
+      // Use the correct existing admin user UUID
       const { data: adminData, error } = await supabase
         .from('admin_users')
         .select('*')
-        .eq('user_id', 'admin-user-id-bnets')
+        .eq('user_id', 'a4148578-bcbd-4512-906e-4832f94bdb46')
         .eq('is_active', true)
         .single();
       

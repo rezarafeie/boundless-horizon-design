@@ -2,13 +2,14 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RefreshCw, Database, Users, Calendar, TrendingUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { DateRange } from '../DateRangeSelector';
 
 interface DatabaseStatsReportProps {
   refreshTrigger: number;
+  dateRange: DateRange;
 }
 
 interface DatabaseStats {
@@ -30,10 +31,9 @@ interface DatabaseStats {
   }>;
 }
 
-export const DatabaseStatsReport = ({ refreshTrigger }: DatabaseStatsReportProps) => {
+export const DatabaseStatsReport = ({ refreshTrigger, dateRange }: DatabaseStatsReportProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState('week');
   const [stats, setStats] = useState<DatabaseStats>({
     totalUsers: 0,
     activeSubscriptions: 0,
@@ -43,40 +43,18 @@ export const DatabaseStatsReport = ({ refreshTrigger }: DatabaseStatsReportProps
     recentSubscriptions: []
   });
 
-  const getDateFilter = (range: string) => {
-    const now = new Date();
-    let startDate: Date;
-    
-    switch (range) {
-      case 'today':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'month':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case 'year':
-        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    }
-    
-    return startDate.toISOString();
-  };
-
   const loadDatabaseStats = async () => {
     setLoading(true);
     try {
-      const startDate = getDateFilter(dateRange);
+      const startDate = dateRange.from.toISOString();
+      const endDate = dateRange.to.toISOString();
       
       // Get all subscriptions with date filter
       const { data: subscriptions, error: subsError } = await supabase
         .from('subscriptions')
         .select('status, price_toman, plan_id, created_at, username, id, expire_at')
-        .gte('created_at', startDate);
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
 
       if (subsError) throw subsError;
 
@@ -160,23 +138,18 @@ export const DatabaseStatsReport = ({ refreshTrigger }: DatabaseStatsReportProps
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold">Database Statistics</h2>
-        <div className="flex items-center gap-2">
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="week">Last 7 Days</SelectItem>
-              <SelectItem value="month">Last 30 Days</SelectItem>
-              <SelectItem value="year">Last Year</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button onClick={loadDatabaseStats} disabled={loading} size="sm">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
+        <div>
+          <h2 className="text-xl font-semibold">Database Statistics</h2>
+          <p className="text-sm text-muted-foreground">
+            Data from {dateRange.preset === 'custom' 
+              ? `${dateRange.from.toLocaleDateString()} to ${dateRange.to.toLocaleDateString()}`
+              : dateRange.preset.toUpperCase()
+            }
+          </p>
         </div>
+        <Button onClick={loadDatabaseStats} disabled={loading} size="sm">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
       {/* Summary Cards */}

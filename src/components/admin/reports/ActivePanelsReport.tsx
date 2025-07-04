@@ -7,9 +7,11 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DebugLogger } from './DebugLogger';
 import { useDebugLogger } from '@/hooks/useDebugLogger';
+import { DateRange } from '../DateRangeSelector';
 
 interface ActivePanelsReportProps {
   refreshTrigger: number;
+  dateRange: DateRange;
 }
 
 interface PanelInfo {
@@ -20,10 +22,10 @@ interface PanelInfo {
   health_status: string;
   last_health_check: string | null;
   systemInfo?: any;
-  error?: string; // Add optional error property
+  error?: string;
 }
 
-export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) => {
+export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsReportProps) => {
   const { toast } = useToast();
   const { logs, logApiCall, logInfo, logError, clearLogs } = useDebugLogger();
   const [loading, setLoading] = useState(false);
@@ -32,7 +34,11 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
   const loadPanelData = async () => {
     setLoading(true);
     try {
-      logInfo('Starting panel data load', { timestamp: new Date().toISOString() });
+      logInfo('Starting panel data load with date range', { 
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+        preset: dateRange.preset
+      });
 
       // Fetch panels from database
       const panelsData = await logApiCall('Fetch panels from database', async () => {
@@ -50,14 +56,15 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
 
       logInfo('Panels fetched from database', { count: panelsData.length, panels: panelsData });
 
-      // Fetch system info for each panel
+      // Fetch system info for each panel with date filtering
       const panelsWithInfo: PanelInfo[] = await Promise.all(
         panelsData.map(async (panel): Promise<PanelInfo> => {
           logInfo(`Processing panel: ${panel.name}`, { 
             panelId: panel.id, 
             type: panel.type,
             url: panel.panel_url,
-            country: panel.country_en
+            country: panel.country_en,
+            dateRange: dateRange.preset
           });
           
           try {
@@ -65,10 +72,17 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
             
             if (panel.type === 'marzban') {
               systemInfo = await logApiCall(`Get Marzban system info for ${panel.name}`, async () => {
-                logInfo(`Calling marzban-get-system-info edge function`, { panelId: panel.id });
+                logInfo(`Calling marzban-get-system-info edge function`, { 
+                  panelId: panel.id,
+                  dateRange: dateRange.preset
+                });
                 
                 const { data, error } = await supabase.functions.invoke('marzban-get-system-info', {
-                  body: { panelId: panel.id }
+                  body: { 
+                    panelId: panel.id,
+                    dateFrom: dateRange.from.toISOString(),
+                    dateTo: dateRange.to.toISOString()
+                  }
                 });
                 
                 if (error) {
@@ -87,10 +101,17 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
               });
             } else if (panel.type === 'marzneshin') {
               systemInfo = await logApiCall(`Get Marzneshin system info for ${panel.name}`, async () => {
-                logInfo(`Calling marzneshin-get-system-info edge function`, { panelId: panel.id });
+                logInfo(`Calling marzneshin-get-system-info edge function`, { 
+                  panelId: panel.id,
+                  dateRange: dateRange.preset
+                });
                 
                 const { data, error } = await supabase.functions.invoke('marzneshin-get-system-info', {
-                  body: { panelId: panel.id }
+                  body: { 
+                    panelId: panel.id,
+                    dateFrom: dateRange.from.toISOString(),
+                    dateTo: dateRange.to.toISOString()
+                  }
                 });
                 
                 if (error) {
@@ -148,7 +169,8 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
       logInfo('Panel data loading completed', { 
         totalPanels: panelsWithInfo.length,
         successfulPanels: panelsWithInfo.filter(p => !p.error).length,
-        failedPanels: panelsWithInfo.filter(p => p.error).length
+        failedPanels: panelsWithInfo.filter(p => p.error).length,
+        dateRange: dateRange.preset
       });
 
     } catch (error: any) {
@@ -170,7 +192,7 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
 
   useEffect(() => {
     loadPanelData();
-  }, [refreshTrigger]);
+  }, [refreshTrigger, dateRange]);
 
   const getStatusBadge = (status: string) => {
     const variants = {
@@ -191,7 +213,15 @@ export const ActivePanelsReport = ({ refreshTrigger }: ActivePanelsReportProps) 
       <DebugLogger logs={logs} onClear={clearLogs} />
       
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold">Active Panels Report</h2>
+        <div>
+          <h2 className="text-xl font-semibold">Active Panels Report</h2>
+          <p className="text-sm text-muted-foreground">
+            Data from {dateRange.preset === 'custom' 
+              ? `${dateRange.from.toLocaleDateString()} to ${dateRange.to.toLocaleDateString()}`
+              : dateRange.preset.toUpperCase()
+            }
+          </p>
+        </div>
         <Button onClick={loadPanelData} disabled={loading} size="sm">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>

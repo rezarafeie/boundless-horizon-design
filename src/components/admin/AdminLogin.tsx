@@ -46,21 +46,18 @@ export const AdminLogin = () => {
         return;
       }
 
-      // Create a simple admin session by adding to admin_users table
-      // First, create a dummy user if it doesn't exist
-      const adminUserId = 'admin-user-id-bnets';
-      
-      const { error: adminError } = await supabase
+      // Verify the existing admin user
+      const { data: existingAdmin, error: adminError } = await supabase
         .from('admin_users')
-        .upsert({
-          user_id: adminUserId,
-          role: 'superadmin',
-          is_active: true
-        });
+        .select('*')
+        .eq('user_id', 'a4148578-bcbd-4512-906e-4832f94bdb46')
+        .single();
 
-      if (adminError) {
-        console.error('Error creating admin user:', adminError);
-        throw adminError;
+      if (adminError || !existingAdmin) {
+        console.error('Admin user not found:', adminError);
+        setError('Admin user not found');
+        setLoading(false);
+        return;
       }
 
       console.log('Admin login successful');
