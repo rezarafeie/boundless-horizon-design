@@ -86,8 +86,8 @@ const FreeTrialResult = ({ result }: FreeTrialResultProps) => {
   };
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8">
-      <Card className="bg-gradient-to-br from-green-50 via-emerald-50 to-cyan-50 dark:from-green-900/20 dark:via-emerald-900/20 dark:to-cyan-900/20 border-green-200 dark:border-green-800 shadow-xl">
+    <div className="min-h-screen w-full p-4 sm:p-6 lg:p-8">
+      <Card className="w-full max-w-none bg-gradient-to-br from-green-50 via-emerald-50 to-cyan-50 dark:from-green-900/20 dark:via-emerald-900/20 dark:to-cyan-900/20 border-green-200 dark:border-green-800 shadow-xl">
         <CardHeader className="text-center pb-6">
           <div className="mx-auto w-20 h-20 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/50 dark:to-emerald-900/50 rounded-full flex items-center justify-center mb-4 shadow-lg">
             <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400" />
