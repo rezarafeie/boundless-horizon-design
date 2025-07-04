@@ -28,7 +28,12 @@ export const ReportsMain = () => {
     <div className="space-y-6 p-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">Reports Dashboard</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Reports Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Comprehensive system monitoring and analytics
+          </p>
+        </div>
         <Button onClick={handleRefresh} size="sm">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh All
@@ -46,31 +51,48 @@ export const ReportsMain = () => {
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
-              placeholder="Search by username, chat_id, or mobile..."
+              placeholder="Search by username, chat_id, mobile, or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1"
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
             />
-            <Button onClick={handleSearch}>
+            <Button onClick={handleSearch} className="w-full sm:w-auto">
               <Search className="w-4 h-4 mr-2" />
               Search
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Searches across database, all panels, and Telegram bot
+          </p>
         </CardContent>
       </Card>
 
       {/* Global Summary */}
       <GlobalSummary refreshTrigger={refreshTrigger} />
 
-      {/* Main Tabs */}
+      {/* Main Tabs - Improved Mobile Layout */}
       <Tabs defaultValue="panels" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 gap-1">
-          <TabsTrigger value="panels" className="text-xs sm:text-sm">Active Panels</TabsTrigger>
-          <TabsTrigger value="database" className="text-xs sm:text-sm">Database Stats</TabsTrigger>
-          <TabsTrigger value="telegram" className="text-xs sm:text-sm">Telegram Bot</TabsTrigger>
-          <TabsTrigger value="search" className="text-xs sm:text-sm">Search Results</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 min-w-full gap-1">
+            <TabsTrigger value="panels" className="text-xs sm:text-sm px-2 sm:px-4">
+              <span className="hidden sm:inline">Active Panels</span>
+              <span className="sm:hidden">Panels</span>
+            </TabsTrigger>
+            <TabsTrigger value="database" className="text-xs sm:text-sm px-2 sm:px-4">
+              <span className="hidden sm:inline">Database Stats</span>
+              <span className="sm:hidden">Database</span>
+            </TabsTrigger>
+            <TabsTrigger value="telegram" className="text-xs sm:text-sm px-2 sm:px-4">
+              <span className="hidden sm:inline">Telegram Bot</span>
+              <span className="sm:hidden">Telegram</span>
+            </TabsTrigger>
+            <TabsTrigger value="search" className="text-xs sm:text-sm px-2 sm:px-4">
+              <span className="hidden sm:inline">Search Results</span>
+              <span className="sm:hidden">Search</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="panels" className="space-y-4">
           <ActivePanelsReport refreshTrigger={refreshTrigger} />

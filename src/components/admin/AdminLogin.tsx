@@ -12,12 +12,12 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 export const AdminLogin = () => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const { isAdmin, signIn, loading: authLoading } = useAdminAuth();
+  const { isAdmin, loading: authLoading } = useAdminAuth();
 
   if (authLoading) {
     return (
@@ -28,7 +28,7 @@ export const AdminLogin = () => {
   }
 
   if (isAdmin) {
-    return <Navigate to="/admin" replace />;
+    return <Navigate to="/admin/dashboard" replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,76 +37,89 @@ export const AdminLogin = () => {
     setError('');
 
     try {
-      // Check for hardcoded admin credentials
-      if (email === 'bnets' && password === 'reza1234') {
-        // Create or get the admin user
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: 'bnets@admin.local',
-          password: 'reza1234',
+      console.log('Admin login attempt for username:', username);
+      
+      // Only allow bnets login
+      if (username !== 'bnets') {
+        setError('Invalid username');
+        setLoading(false);
+        return;
+      }
+
+      if (password !== 'reza1234') {
+        setError('Invalid password');
+        setLoading(false);
+        return;
+      }
+
+      // Use email format for backend authentication
+      const adminEmail = 'bnets@admin.local';
+      
+      // Try to sign in first
+      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: adminEmail,
+        password: password,
+      });
+
+      // If login fails because user doesn't exist, create the user
+      if (authError && authError.message.includes('Invalid login credentials')) {
+        console.log('Admin user not found, creating...');
+        
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: adminEmail,
+          password: password,
         });
 
-        if (authError && authError.message.includes('Invalid login credentials')) {
-          // User doesn't exist, create it
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: 'bnets@admin.local',
-            password: 'reza1234',
-          });
-
-          if (signUpError) {
-            throw signUpError;
-          }
-
-          if (signUpData.user) {
-            // Add to admin_users table
-            const { error: adminError } = await supabase
-              .from('admin_users')
-              .upsert({
-                user_id: signUpData.user.id,
-                role: 'superadmin',
-                is_active: true
-              });
-
-            if (adminError) {
-              console.error('Error creating admin user:', adminError);
-            }
-
-            toast.success('Admin account created and logged in successfully');
-          }
-        } else if (authError) {
-          throw authError;
-        } else {
-          // User exists and logged in successfully
-          if (authData.user) {
-            // Ensure user is in admin_users table
-            const { error: adminError } = await supabase
-              .from('admin_users')
-              .upsert({
-                user_id: authData.user.id,
-                role: 'superadmin',
-                is_active: true
-              });
-
-            if (adminError) {
-              console.error('Error updating admin user:', adminError);
-            }
-
-            toast.success('Login successful');
-          }
+        if (signUpError) {
+          console.error('Sign up error:', signUpError);
+          throw signUpError;
         }
+
+        if (signUpData.user) {
+          // Add to admin_users table
+          const { error: adminError } = await supabase
+            .from('admin_users')
+            .upsert({
+              user_id: signUpData.user.id,
+              role: 'superadmin',
+              is_active: true
+            });
+
+          if (adminError) {
+            console.error('Error creating admin user:', adminError);
+          } else {
+            console.log('Admin user created successfully');
+          }
+
+          toast.success('Admin account created and logged in successfully');
+        }
+      } else if (authError) {
+        console.error('Auth error:', authError);
+        throw authError;
       } else {
-        // Regular email/password login
-        const { error } = await signIn(email, password);
-        
-        if (error) {
-          setError(error.message);
-          toast.error('Login failed: ' + error.message);
-        } else {
+        // User exists and logged in successfully
+        if (authData.user) {
+          // Ensure user is in admin_users table
+          const { error: adminError } = await supabase
+            .from('admin_users')
+            .upsert({
+              user_id: authData.user.id,
+              role: 'superadmin',
+              is_active: true
+            });
+
+          if (adminError) {
+            console.error('Error updating admin user:', adminError);
+          }
+
+          console.log('Admin login successful');
           toast.success('Login successful');
         }
       }
-    } catch (err) {
-      setError('An unexpected error occurred');
-      toast.error('An unexpected error occurred');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err.message || 'Login failed');
+      toast.error('Login failed: ' + (err.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -121,7 +134,7 @@ export const AdminLogin = () => {
           </div>
           <CardTitle className="text-2xl">Admin Login</CardTitle>
           <CardDescription>
-            Enter your credentials to access the admin panel
+            Enter your admin credentials to access the admin panel
           </CardDescription>
         </CardHeader>
         
@@ -134,14 +147,15 @@ export const AdminLogin = () => {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email">Email or Username</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="email"
+                id="username"
                 type="text"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@example.com or bnets"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter username"
                 required
+                autoComplete="username"
               />
             </div>
             
@@ -152,8 +166,9 @@ export const AdminLogin = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Enter password"
                 required
+                autoComplete="current-password"
               />
             </div>
             
@@ -162,14 +177,6 @@ export const AdminLogin = () => {
               Sign In
             </Button>
           </form>
-          
-          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <p className="text-sm text-blue-600 dark:text-blue-400">
-              <strong>Quick Admin Access:</strong><br />
-              Username: bnets<br />
-              Password: reza1234
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
