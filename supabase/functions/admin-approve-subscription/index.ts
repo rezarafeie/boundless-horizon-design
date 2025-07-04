@@ -56,12 +56,24 @@ const handler = async (req: Request): Promise<Response> => {
         console.log('ADMIN_APPROVE: Creating VPN user for approved subscription:', subscriptionId);
         
         if (subscription.plan_id) {
+          // Get plan details to determine panel type
+          const { data: plan, error: planError } = await supabase
+            .from('subscription_plans')
+            .select('api_type')
+            .eq('id', subscription.plan_id)
+            .single();
+
+          if (planError || !plan) {
+            console.error('ADMIN_APPROVE: Failed to get plan details:', planError);
+            throw new Error('Failed to get plan details');
+          }
+
           const { data: vpnResult, error: vpnError } = await supabase.functions.invoke('create-user-direct', {
             body: {
-              planId: subscription.plan_id,
               username: subscription.username,
               dataLimitGB: subscription.data_limit_gb,
               durationDays: subscription.duration_days,
+              panelType: plan.api_type,
               notes: `Admin approved subscription - Manual payment verified`,
               subscriptionId: subscription.id
             }
