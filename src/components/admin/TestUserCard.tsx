@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,12 +72,12 @@ export const TestUserCard = ({ user, onUpdate }: TestUserCardProps) => {
 
   const getStatusBadge = () => {
     if (isDeleted) {
-      return <Badge variant="destructive">Deleted</Badge>;
+      return <Badge variant="destructive" className="text-xs">Deleted</Badge>;
     }
     if (isExpired) {
-      return <Badge variant="secondary">Expired</Badge>;
+      return <Badge variant="secondary" className="text-xs">Expired</Badge>;
     }
-    return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Active</Badge>;
+    return <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs">Active</Badge>;
   };
 
   const formatBytes = (bytes: number): string => {
@@ -198,74 +199,74 @@ export const TestUserCard = ({ user, onUpdate }: TestUserCardProps) => {
   };
 
   return (
-    <Card className={`${isDeleted ? 'opacity-60' : ''}`}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <User className="w-5 h-5" />
-            {user.username}
+    <Card className={`${isDeleted ? 'opacity-60' : ''} overflow-hidden`}>
+      <CardHeader className="pb-3">
+        <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <User className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+            <span className="truncate">{user.username}</span>
             {getStatusBadge()}
           </CardTitle>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-xs sm:text-sm text-muted-foreground">
             Created: {formatDate(user.created_at)}
           </div>
         </div>
       </CardHeader>
       
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 text-sm">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <Mail className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              <Mail className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
               <span className="font-medium">Email:</span>
-              <span>{user.email}</span>
+              <span className="truncate text-xs sm:text-sm">{user.email}</span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Phone className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              <Phone className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
               <span className="font-medium">Phone:</span>
-              <span>{user.phone_number}</span>
+              <span className="text-xs sm:text-sm">{user.phone_number}</span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Server className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              <Server className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
               <span className="font-medium">Panel:</span>
-              <span>{user.panel_name}</span>
+              <span className="truncate text-xs sm:text-sm">{user.panel_name}</span>
             </div>
           </div>
           
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <Calendar className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              <Calendar className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
               <span className="font-medium">Expires:</span>
-              <span className={isExpired ? 'text-red-600' : 'text-green-600'}>
+              <span className={`text-xs sm:text-sm ${isExpired ? 'text-red-600' : 'text-green-600'}`}>
                 {formatDate(user.expire_date)}
               </span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Database className="w-4 h-4" />
-              <span className="font-medium">Data Limit:</span>
-              <span>{formatBytes(user.data_limit_bytes)}</span>
+            <div className="flex items-center gap-2">
+              <Database className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="font-medium">Data:</span>
+              <span className="text-xs sm:text-sm">{formatBytes(user.data_limit_bytes)}</span>
             </div>
             {user.subscription_url && (
-              <div className="flex items-center gap-2 text-sm">
-                <Globe className="w-4 h-4" />
-                <span className="font-medium">Subscription:</span>
-                <span className="text-blue-600 truncate max-w-32">Available</span>
+              <div className="flex items-center gap-2">
+                <Globe className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="font-medium">Config:</span>
+                <span className="text-blue-600 text-xs sm:text-sm">Available</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        {/* Action Buttons - Mobile optimized */}
+        <div className="grid grid-cols-2 sm:flex gap-2 pt-2 border-t">
           {/* Details Button */}
           <Dialog>
             <DialogTrigger asChild>
-              <Button size="sm" variant="outline" className="min-h-[44px] flex-1 sm:flex-none">
-                <Eye className="w-4 h-4 mr-1" />
+              <Button size="sm" variant="outline" className="text-xs sm:text-sm h-8 sm:h-9">
+                <Eye className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                 Details
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Test User Details</DialogTitle>
                 <DialogDescription>
@@ -321,12 +322,12 @@ export const TestUserCard = ({ user, onUpdate }: TestUserCardProps) => {
               variant="outline"
               onClick={handleRenew}
               disabled={isRenewing}
-              className="border-green-200 text-green-700 hover:bg-green-50 min-h-[44px] flex-1 sm:flex-none"
+              className="border-green-200 text-green-700 hover:bg-green-50 text-xs sm:text-sm h-8 sm:h-9"
             >
               {isRenewing ? (
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 animate-spin" />
               ) : (
-                <RotateCcw className="w-4 h-4 mr-1" />
+                <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
               )}
               Renew
             </Button>
@@ -339,12 +340,12 @@ export const TestUserCard = ({ user, onUpdate }: TestUserCardProps) => {
               variant="outline"
               onClick={handleSend}
               disabled={isSending}
-              className="border-blue-200 text-blue-700 hover:bg-blue-50 min-h-[44px] flex-1 sm:flex-none"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50 text-xs sm:text-sm h-8 sm:h-9 col-span-2 sm:col-span-1"
             >
               {isSending ? (
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 animate-spin" />
               ) : (
-                <Send className="w-4 h-4 mr-1" />
+                <Send className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
               )}
               Send
             </Button>
@@ -358,12 +359,12 @@ export const TestUserCard = ({ user, onUpdate }: TestUserCardProps) => {
                   size="sm"
                   variant="destructive"
                   disabled={isDeleting}
-                  className="min-h-[44px] flex-1 sm:flex-none"
+                  className="text-xs sm:text-sm h-8 sm:h-9"
                 >
                   {isDeleting ? (
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 animate-spin" />
                   ) : (
-                    <Trash2 className="w-4 h-4 mr-1" />
+                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                   )}
                   Delete
                 </Button>

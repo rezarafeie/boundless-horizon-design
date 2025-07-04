@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -9,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Copy, CheckCircle, AlertCircle, Loader, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { WebhookService } from '@/utils/webhookUtils';
 
 interface ManualPaymentFormProps {
   amount: number;
@@ -80,7 +82,7 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
         throw new Error(`Upload failed: ${error.message}`);
       }
 
-      // Get public URL
+      // Get public URL (now that bucket is public)
       const { data: urlData } = supabase.storage
         .from('manual-payment-receipts')
         .getPublicUrl(filePath);
@@ -184,25 +186,38 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
 
       console.log('MANUAL_PAYMENT: Database update successful:', updateData);
 
-      // Send webhook notification with approve/reject links for manual payment
+      // Send webhook notification with enhanced retry logic
       try {
-        await supabase.functions.invoke('send-webhook-notification', {
-          body: {
-            type: 'new_subscription',
-            subscription_id: subscriptionId,
-            username: `user_${mobile}`,
-            mobile: mobile,
-            amount: amount,
-            payment_method: 'manual',
-            receipt_url: receiptUrl,
-            approve_link: `https://bnets.co/admin/approve-order/${subscriptionId}`,
-            reject_link: `https://bnets.co/admin/reject-order/${subscriptionId}`,
-            created_at: new Date().toISOString()
-          }
-        });
+        const webhookPayload = {
+          type: 'new_subscription' as const,
+          subscription_id: subscriptionId,
+          username: `user_${mobile}`,
+          mobile: mobile,
+          amount: amount,
+          payment_method: 'manual',
+          receipt_url: receiptUrl,
+          approve_link: `https://bnets.co/admin/approve-order/${subscriptionId}`,
+          reject_link: `https://bnets.co/admin/reject-order/${subscriptionId}`,
+          created_at: new Date().toISOString()
+        };
+
+        const webhookResult = await WebhookService.sendWithRetry(webhookPayload);
+        
+        if (!webhookResult.success) {
+          console.error('MANUAL_PAYMENT: Webhook notification failed after retries:', webhookResult.error);
+          // Don't fail the payment for webhook issues, but show warning
+          toast({
+            title: language === 'fa' ? 'هشدار' : 'Warning',
+            description: language === 'fa' ? 
+              'پرداخت ثبت شد اما اطلاع‌رسانی به ادمین ممکن است با تأخیر باشد' : 
+              'Payment recorded but admin notification may be delayed',
+          });
+        } else {
+          console.log('MANUAL_PAYMENT: Webhook notification sent successfully');
+        }
       } catch (webhookError) {
-        console.error('MANUAL_PAYMENT: Webhook notification failed:', webhookError);
-        // Don't fail the payment for webhook issues
+        console.error('MANUAL_PAYMENT: Webhook notification error:', webhookError);
+        // Continue with success message even if webhook fails
       }
 
       toast({
