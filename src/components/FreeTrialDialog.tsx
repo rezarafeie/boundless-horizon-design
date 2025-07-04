@@ -202,16 +202,16 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
     loadAvailablePlans();
   };
 
-  // Handle step 2 submission (username/plan)
+  // Handle step 2 submission (plan selection only)
   const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.username.trim() || !selectedPlan) {
+    if (!selectedPlan) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
-          'لطفاً نام کاربری و پلن را انتخاب کنید' : 
-          'Please enter username and select a plan',
+          'لطفاً پلن را انتخاب کنید' : 
+          'Please select a plan',
         variant: 'destructive',
       });
       return;
@@ -234,9 +234,10 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       console.log('FREE_TRIAL: Starting STRICT plan-to-panel free trial creation');
       console.log('FREE_TRIAL: Selected plan UUID for STRICT binding:', selectedPlan);
       
-      // Generate unique username
+      // Auto-generate unique username from email
+      const emailPrefix = formData.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
       const timestamp = Date.now();
-      const uniqueUsername = `${formData.username}_trial_${timestamp}`;
+      const uniqueUsername = `${emailPrefix}_trial_${timestamp}`;
       
       // Use STRICT plan-to-panel binding with email and phone
       const result = await PanelUserCreationService.createFreeTrial(
@@ -370,69 +371,77 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
             </div>
           </form>
         ) : (
-          // Step 2: Username and Plan Selection
-          <form onSubmit={handleStep2Submit} className="space-y-4">
-          <div>
-            <Label htmlFor="plan">
-              {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
-            </Label>
-            <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-              <SelectTrigger>
-                <SelectValue placeholder={language === 'fa' ? 'انتخاب پلن' : 'Select Plan'} />
-              </SelectTrigger>
-              <SelectContent>
+          // Step 2: Plan Selection Only
+          <form onSubmit={handleStep2Submit} className="space-y-6">
+            <div>
+              <Label className="text-base font-semibold">
+                {language === 'fa' ? 'انتخاب پلن' : 'Select Plan'}
+              </Label>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                {language === 'fa' ? 'پلن مورد نظر خود را انتخاب کنید' : 'Choose your preferred plan'}
+              </p>
+              
+              {/* Card-based Plan Selection */}
+              <div className="grid gap-3">
                 {availablePlans.map((plan) => (
-                  <SelectItem key={plan.id} value={plan.id}>
-                    <div className="flex items-center gap-2">
-                      <span>{language === 'fa' ? plan.name_fa : plan.name_en}</span>
-                      <span className="text-xs text-gray-500">
-                        → {plan.panel_servers.name}
-                      </span>
-                      <span className={`w-2 h-2 rounded-full ${
-                        plan.panel_servers.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
-                      }`} />
+                  <button
+                    key={plan.id}
+                    type="button"
+                    onClick={() => setSelectedPlan(plan.id)}
+                    className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                      selectedPlan === plan.id
+                        ? 'border-primary bg-primary/5 shadow-md'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold text-lg">
+                            {language === 'fa' ? plan.name_fa : plan.name_en}
+                          </h3>
+                          <div className={`w-3 h-3 rounded-full ${
+                            plan.panel_servers.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
+                          }`} />
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                          <span>🌍 {plan.panel_servers.name}</span>
+                          <span>•</span>
+                          <span className={`font-medium ${
+                            plan.panel_servers.health_status === 'online' 
+                              ? 'text-green-600 dark:text-green-400' 
+                              : 'text-red-600 dark:text-red-400'
+                          }`}>
+                            {plan.panel_servers.health_status === 'online' 
+                              ? (language === 'fa' ? 'آنلاین' : 'Online')
+                              : (language === 'fa' ? 'آفلاین' : 'Offline')
+                            }
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 transition-all ${
+                        selectedPlan === plan.id
+                          ? 'border-primary bg-primary'
+                          : 'border-gray-300 dark:border-gray-600'
+                      }`}>
+                        {selectedPlan === plan.id && (
+                          <div className="w-full h-full rounded-full bg-white scale-50" />
+                        )}
+                      </div>
                     </div>
-                  </SelectItem>
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
-            {availablePlans.length === 0 && (
-              <div className="flex items-center gap-2 text-sm text-red-600 mt-1">
-                <AlertTriangle className="w-4 h-4" />
-                <span>
-                  {language === 'fa' ? 'هیچ پلن فعالی با پنل اختصاصی یافت نشد' : 'No active plans with assigned panels found'}
-                </span>
               </div>
-            )}
-          </div>
-          
-          <div>
-            <Label htmlFor="username">
-              {language === 'fa' ? 'نام کاربری' : 'Username'}
-            </Label>
-            <Input
-              id="username"
-              type="text"
-              placeholder={language === 'fa' ? 'نام کاربری خود را وارد کنید' : 'Enter your username'}
-              value={formData.username}
-              onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-              required
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="mobile">
-              {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
-            </Label>
-            <Input
-              id="mobile"
-              type="tel"
-              placeholder={language === 'fa' ? '09123456789' : '09123456789'}
-              value={formData.mobile}
-              onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
-              required
-            />
-          </div>
+              
+              {availablePlans.length === 0 && (
+                <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mt-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>
+                    {language === 'fa' ? 'هیچ پلن فعالی با پنل اختصاصی یافت نشد' : 'No active plans with assigned panels found'}
+                  </span>
+                </div>
+              )}
+            </div>
 
             <div className="bg-green-50 p-3 rounded-lg text-sm">
               <p className="text-green-800">

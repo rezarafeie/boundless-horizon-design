@@ -417,7 +417,7 @@ export class PanelUserCreationService {
             email: email,
             phone_number: phone,
             username: result.data.username,
-            panel_id: actualPlanId,
+            panel_id: result.data.panel_id, // Use the actual panel server ID from the result
             panel_name: result.data.panel_name || planData?.panel_servers?.name || 'Unknown Panel',
             subscription_url: result.data.subscription_url,
             expire_date: expireDate.toISOString(),
