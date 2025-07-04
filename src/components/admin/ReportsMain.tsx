@@ -1,19 +1,15 @@
 
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { GlobalSummary } from './reports/GlobalSummary';
 import { ActivePanelsReport } from './reports/ActivePanelsReport';
 import { DatabaseStatsReport } from './reports/DatabaseStatsReport';
 import { TelegramBotReport } from './reports/TelegramBotReport';
-import { UserSearchReport } from './reports/UserSearchReport';
 import { DateRangeSelector, DateRange } from './DateRangeSelector';
 
 export const ReportsMain = () => {
-  const [searchQuery, setSearchQuery] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   
   // Initialize with last 7 days
@@ -25,11 +21,6 @@ export const ReportsMain = () => {
 
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
-  };
-
-  const handleSearch = () => {
-    // Search is handled automatically by UserSearchReport component
-    console.log('Searching for:', searchQuery);
   };
 
   return (
@@ -57,10 +48,10 @@ export const ReportsMain = () => {
       {/* Global Summary */}
       <GlobalSummary refreshTrigger={refreshTrigger} dateRange={dateRange} />
 
-      {/* Main Tabs - Restructured with dedicated search */}
+      {/* Main Tabs */}
       <Tabs defaultValue="panels" className="space-y-4">
         <div className="overflow-x-auto">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 min-w-full gap-1">
+          <TabsList className="grid w-full grid-cols-3 min-w-full gap-1">
             <TabsTrigger value="panels" className="text-xs sm:text-sm px-2 sm:px-4">
               <span className="hidden sm:inline">Active Panels</span>
               <span className="sm:hidden">Panels</span>
@@ -72,10 +63,6 @@ export const ReportsMain = () => {
             <TabsTrigger value="telegram" className="text-xs sm:text-sm px-2 sm:px-4">
               <span className="hidden sm:inline">Telegram Bot</span>
               <span className="sm:hidden">Telegram</span>
-            </TabsTrigger>
-            <TabsTrigger value="search" className="text-xs sm:text-sm px-2 sm:px-4">
-              <span className="hidden sm:inline">Universal Search</span>
-              <span className="sm:hidden">Search</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -90,37 +77,6 @@ export const ReportsMain = () => {
 
         <TabsContent value="telegram" className="space-y-4">
           <TelegramBotReport refreshTrigger={refreshTrigger} dateRange={dateRange} />
-        </TabsContent>
-
-        <TabsContent value="search" className="space-y-4">
-          {/* Dedicated Search Tab with its own search input */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Search className="w-5 h-5" />
-                Universal User Search
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                <Input
-                  placeholder="Search by username, chat_id, mobile, or email..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1"
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                />
-                <Button onClick={handleSearch} className="w-full sm:w-auto">
-                  <Search className="w-4 h-4 mr-2" />
-                  Search
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Searches across database, active panels, and Telegram bot
-              </p>
-            </CardContent>
-          </Card>
-          <UserSearchReport searchQuery={searchQuery} dateRange={dateRange} />
         </TabsContent>
       </Tabs>
     </div>
