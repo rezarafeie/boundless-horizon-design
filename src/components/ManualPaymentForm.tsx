@@ -51,19 +51,33 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
   const uploadReceipt = async (file: File): Promise<string | null> => {
     try {
       setUploading(true);
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${subscriptionId}_${Date.now()}.${fileExt}`;
-      const filePath = `${subscriptionId}_${Date.now()}.${fileExt}`;
+      
+      // Validate file
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        throw new Error('File size too large (max 10MB)');
+      }
 
-      console.log('MANUAL_PAYMENT: Uploading receipt:', { fileName: filePath, subscriptionId });
+      const fileExt = file.name.split('.').pop();
+      const timestamp = Date.now();
+      const filePath = `${subscriptionId}_${timestamp}.${fileExt}`;
+
+      console.log('MANUAL_PAYMENT: Starting upload:', { 
+        fileName: file.name, 
+        filePath, 
+        fileSize: file.size,
+        subscriptionId 
+      });
 
       const { data, error } = await supabase.storage
         .from('manual-payment-receipts')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (error) {
-        console.error('MANUAL_PAYMENT: Upload error:', error);
-        throw error;
+        console.error('MANUAL_PAYMENT: Storage upload error:', error);
+        throw new Error(`Upload failed: ${error.message}`);
       }
 
       // Get public URL
@@ -71,13 +85,20 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
         .from('manual-payment-receipts')
         .getPublicUrl(filePath);
 
-      console.log('MANUAL_PAYMENT: Receipt uploaded successfully:', urlData.publicUrl);
+      console.log('MANUAL_PAYMENT: Upload successful:', {
+        filePath: data.path,
+        publicUrl: urlData.publicUrl
+      });
+      
       return urlData.publicUrl;
     } catch (error) {
       console.error('MANUAL_PAYMENT: Upload failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       toast({
-        title: language === 'fa' ? 'خطا' : 'Error',
-        description: language === 'fa' ? 'خطا در بارگذاری رسید' : 'Failed to upload receipt',
+        title: language === 'fa' ? 'خطا در بارگذاری' : 'Upload Error',
+        description: language === 'fa' ? 
+          `خطا در بارگذاری رسید: ${errorMessage}` : 
+          `Failed to upload receipt: ${errorMessage}`,
         variant: 'destructive'
       });
       return null;
@@ -126,23 +147,40 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
 
     // Update subscription with receipt URL
     try {
-      const { error: updateError } = await supabase
+      console.log('MANUAL_PAYMENT: Updating subscription in database:', {
+        subscriptionId,
+        receiptUrl,
+        status: 'pending_approval'
+      });
+
+      const { data: updateData, error: updateError } = await supabase
         .from('subscriptions')
         .update({ 
           receipt_image_url: receiptUrl,
           status: 'pending_approval'
         })
-        .eq('id', subscriptionId);
+        .eq('id', subscriptionId)
+        .select();
 
       if (updateError) {
-        console.error('MANUAL_PAYMENT: Failed to update subscription:', updateError);
+        console.error('MANUAL_PAYMENT: Database update error:', {
+          error: updateError,
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details
+        });
+        
         toast({
-          title: language === 'fa' ? 'خطا' : 'Error',
-          description: language === 'fa' ? 'خطا در ثبت اطلاعات پرداخت' : 'Failed to record payment information',
+          title: language === 'fa' ? 'خطا در پایگاه داده' : 'Database Error',
+          description: language === 'fa' ? 
+            `خطا در ثبت اطلاعات پرداخت: ${updateError.message}` : 
+            `Failed to record payment: ${updateError.message}`,
           variant: 'destructive'
         });
         return;
       }
+
+      console.log('MANUAL_PAYMENT: Database update successful:', updateData);
 
       // Send webhook notification with approve/reject links for manual payment
       try {
