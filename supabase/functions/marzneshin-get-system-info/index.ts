@@ -39,40 +39,66 @@ serve(async (req) => {
     // Verify panel has credentials
     if (!panel.username || !panel.password) {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Panel missing credentials:`, { 
+        panelId: panel.id,
+        panelName: panel.name,
         hasUsername: !!panel.username, 
-        hasPassword: !!panel.password 
+        hasPassword: !!panel.password,
+        panelUrl: panel.panel_url
       });
       throw new Error(`Panel ${panel.name} is missing username or password credentials`);
     }
 
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Panel credentials check passed for: ${panel.name}`);
+
     // Authenticate with Marzneshin
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Authenticating with: ${panel.panel_url}`);
-    const authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        username: panel.username,
-        password: panel.password
-      })
-    });
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Attempting authentication with: ${panel.panel_url}/api/admins/token`);
+    
+    let authResponse;
+    try {
+      authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          username: panel.username,
+          password: panel.password
+        })
+      });
+    } catch (fetchError: any) {
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Network error during authentication:`, fetchError);
+      throw new Error(`Network error connecting to panel ${panel.name}: ${fetchError.message}`);
+    }
 
     if (!authResponse.ok) {
       const errorText = await authResponse.text();
-      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Auth failed: ${authResponse.status} - ${errorText}`);
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Auth failed:`, {
+        status: authResponse.status,
+        statusText: authResponse.statusText,
+        panelUrl: panel.panel_url,
+        errorResponse: errorText,
+        requestBody: { username: panel.username, password: '[REDACTED]' }
+      });
       throw new Error(`Authentication failed for panel ${panel.name}: ${authResponse.status} ${authResponse.statusText}. Response: ${errorText}`);
     }
 
-    const authData = await authResponse.json();
+    let authData;
+    try {
+      authData = await authResponse.json();
+    } catch (parseError: any) {
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Failed to parse auth response:`, parseError);
+      throw new Error(`Invalid response format from panel ${panel.name} authentication`);
+    }
+
     const token = authData.access_token;
 
     if (!token) {
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] No access token in response:`, authData);
       throw new Error('No access token received from authentication');
     }
 
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Authentication successful`);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Authentication successful for panel: ${panel.name}`);
 
     // Set date range (default to last 7 days if not provided)
     const endDate = dateTo ? new Date(dateTo) : new Date();
@@ -80,40 +106,68 @@ serve(async (req) => {
 
     // Get traffic analytics
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching traffic stats from ${startDate.toISOString()} to ${endDate.toISOString()}`);
-    const trafficResponse = await fetch(`${panel.panel_url}/api/system/stats/traffic?start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      }
-    });
-
     let trafficData = null;
-    if (trafficResponse.ok) {
-      trafficData = await trafficResponse.json();
-      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic data received:`, trafficData);
-    } else {
-      const errorText = await trafficResponse.text();
-      console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic API failed: ${trafficResponse.status} - ${errorText}`);
+    try {
+      const trafficResponse = await fetch(`${panel.panel_url}/api/system/stats/traffic?start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        }
+      });
+
+      if (trafficResponse.ok) {
+        trafficData = await trafficResponse.json();
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic data received successfully:`, {
+          dataType: typeof trafficData,
+          isArray: Array.isArray(trafficData),
+          length: Array.isArray(trafficData) ? trafficData.length : 'N/A'
+        });
+      } else {
+        const errorText = await trafficResponse.text();
+        console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic API failed:`, {
+          status: trafficResponse.status,
+          statusText: trafficResponse.statusText,
+          url: `${panel.panel_url}/api/system/stats/traffic`,
+          errorResponse: errorText
+        });
+      }
+    } catch (trafficError: any) {
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic API network error:`, trafficError);
     }
 
     // Get user status overview
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats`);
-    const userStatsResponse = await fetch(`${panel.panel_url}/api/system/stats/users`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      }
-    });
-
     let userStatsData = null;
-    if (userStatsResponse.ok) {
-      userStatsData = await userStatsResponse.json();
-      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats received:`, userStatsData);
-    } else {
-      const errorText = await userStatsResponse.text();
-      console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed: ${userStatsResponse.status} - ${errorText}`);
+    try {
+      const userStatsResponse = await fetch(`${panel.panel_url}/api/system/stats/users`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        }
+      });
+
+      if (userStatsResponse.ok) {
+        userStatsData = await userStatsResponse.json();
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats received successfully:`, {
+          dataType: typeof userStatsData,
+          keys: Object.keys(userStatsData || {}),
+          userStatsData
+        });
+      } else {
+        const errorText = await userStatsResponse.text();
+        console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed:`, {
+          status: userStatsResponse.status,
+          statusText: userStatsResponse.statusText,
+          url: `${panel.panel_url}/api/system/stats/users`,
+          errorResponse: errorText
+        });
+      }
+    } catch (userStatsError: any) {
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API network error:`, userStatsError);
     }
 
     // Format response data
@@ -152,12 +206,19 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
-  } catch (error) {
-    console.error('[MARZNESHIN-GET-SYSTEM-INFO] Error:', error);
+  } catch (error: any) {
+    console.error('[MARZNESHIN-GET-SYSTEM-INFO] Error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      timestamp: new Date().toISOString()
+    });
     
     return new Response(JSON.stringify({
       success: false,
-      error: error.message
+      error: error.message || 'Unknown error occurred',
+      timestamp: new Date().toISOString(),
+      function: 'marzneshin-get-system-info'
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
