@@ -19,6 +19,7 @@ export interface VpnService {
 
 export interface CreateVpnServiceData {
   name: string;
+  name_en?: string;
   duration_days: number;
   data_limit_gb: number;
   price_toman: number;

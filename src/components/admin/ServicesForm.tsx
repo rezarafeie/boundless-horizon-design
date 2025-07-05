@@ -29,6 +29,7 @@ export const ServicesForm = ({ isOpen, onClose, service, onSuccess }: ServicesFo
   const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<CreateVpnServiceData>({
     defaultValues: {
       name: '',
+      name_en: '',
       duration_days: 30,
       data_limit_gb: 10,
       price_toman: 0,
@@ -45,6 +46,7 @@ export const ServicesForm = ({ isOpen, onClose, service, onSuccess }: ServicesFo
       if (service) {
         reset({
           name: service.name,
+          name_en: service.name_en || '',
           duration_days: service.duration_days,
           data_limit_gb: service.data_limit_gb,
           price_toman: service.price_toman,
@@ -54,6 +56,7 @@ export const ServicesForm = ({ isOpen, onClose, service, onSuccess }: ServicesFo
       } else {
         reset({
           name: '',
+          name_en: '',
           duration_days: 30,
           data_limit_gb: 10,
           price_toman: 0,
@@ -124,18 +127,31 @@ export const ServicesForm = ({ isOpen, onClose, service, onSuccess }: ServicesFo
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">
-              {language === 'fa' ? 'نام سرویس' : 'Service Name'}
-            </Label>
-            <Input
-              id="name"
-              {...register('name', { required: 'Service name is required' })}
-              placeholder={language === 'fa' ? 'نام سرویس را وارد کنید' : 'Enter service name'}
-            />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
-            )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">
+                {language === 'fa' ? 'نام سرویس (فارسی)' : 'Service Name (Persian)'}
+              </Label>
+              <Input
+                id="name"
+                {...register('name', { required: 'Service name is required' })}
+                placeholder={language === 'fa' ? 'نام سرویس را وارد کنید' : 'Enter service name in Persian'}
+              />
+              {errors.name && (
+                <p className="text-sm text-destructive">{errors.name.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="name_en">
+                {language === 'fa' ? 'نام سرویس (انگلیسی)' : 'Service Name (English)'}
+              </Label>
+              <Input
+                id="name_en"
+                {...register('name_en')}
+                placeholder={language === 'fa' ? 'نام انگلیسی سرویس' : 'Enter service name in English'}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

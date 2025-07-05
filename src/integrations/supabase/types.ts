@@ -707,6 +707,7 @@ export type Database = {
           duration_days: number
           id: string
           name: string
+          name_en: string | null
           plan_id: string | null
           price_toman: number
           status: string
@@ -718,6 +719,7 @@ export type Database = {
           duration_days: number
           id?: string
           name: string
+          name_en?: string | null
           plan_id?: string | null
           price_toman: number
           status?: string
@@ -729,6 +731,7 @@ export type Database = {
           duration_days?: number
           id?: string
           name?: string
+          name_en?: string | null
           plan_id?: string | null
           price_toman?: number
           status?: string
