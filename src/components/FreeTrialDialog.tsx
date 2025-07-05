@@ -262,29 +262,47 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           console.log('FREE_TRIAL: Sending webhook notification for test user:', result.data.username);
           
           // Get the actual test user record to send proper webhook data
-          const { data: testUser } = await supabase
+          const { data: testUser, error: testUserError } = await supabase
             .from('test_users')
             .select('*')
             .eq('username', result.data.username)
             .single();
 
-          await supabase.functions.invoke('send-webhook-notification', {
-            body: {
-              type: 'new_test_user',
-              webhook_type: 'test_account_creation',
-              test_user_id: testUser?.id || result.data.panel_id,
-              username: result.data.username,
-              mobile: formData.phone,
-              email: formData.email,
-              panel_name: result.data.panel_name,
-              panel_type: result.data.panel_type,
-              subscription_url: result.data.subscription_url,
-              data_limit_gb: result.data.data_limit ? Math.round(result.data.data_limit / (1024 * 1024 * 1024)) : 1,
-              duration_days: 7,
-              expire_at: result.data.expire,
-              created_at: new Date().toISOString()
-            }
+          if (testUserError) {
+            console.error('FREE_TRIAL: Failed to fetch test user for webhook:', testUserError);
+            console.log('FREE_TRIAL: Attempting webhook without full test user data');
+          }
+
+          const webhookPayload = {
+            type: 'new_test_user',
+            webhook_type: 'test_account_creation',
+            test_user_id: testUser?.id,
+            username: result.data.username,
+            mobile: formData.phone,
+            email: formData.email,
+            panel_name: result.data.panel_name,
+            panel_type: result.data.panel_type,
+            panel_id: result.data.panel_id,
+            subscription_url: result.data.subscription_url,
+            data_limit_gb: result.data.data_limit ? Math.round(result.data.data_limit / (1024 * 1024 * 1024)) : 1,
+            duration_days: 7,
+            expire_at: result.data.expire,
+            created_at: new Date().toISOString()
+          };
+
+          console.log('FREE_TRIAL: Sending webhook payload:', webhookPayload);
+
+          const { data: webhookResponse, error: webhookError } = await supabase.functions.invoke('send-webhook-notification', {
+            body: webhookPayload
           });
+
+          if (webhookError) {
+            console.error('FREE_TRIAL: Webhook error:', webhookError);
+          } else if (webhookResponse?.success) {
+            console.log('FREE_TRIAL: Webhook sent successfully:', webhookResponse);
+          } else {
+            console.warn('FREE_TRIAL: Webhook response indicates failure:', webhookResponse);
+          }
         } catch (webhookError) {
           console.error('FREE_TRIAL: Failed to send webhook notification:', webhookError);
           // Don't fail the trial creation for webhook issues
