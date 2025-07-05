@@ -37,7 +37,12 @@ export const ServiceSelection = ({ planId, selectedService, onServiceSelect }: S
   };
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('fa-IR').format(price) + ' ' + (language === 'fa' ? 'تومان' : 'Toman');
+    if (language === 'fa') {
+      return new Intl.NumberFormat('fa-IR').format(price) + ' تومان';
+    } else {
+      const usdPrice = (price / 40000).toFixed(2);
+      return '$' + usdPrice;
+    }
   };
 
   const handleServiceSelect = (service: VpnService) => {
@@ -94,7 +99,9 @@ export const ServiceSelection = ({ planId, selectedService, onServiceSelect }: S
           >
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{service.name}</CardTitle>
+                <CardTitle className="text-lg">
+                  {language === 'fa' ? service.name : (service.name_en || service.name)}
+                </CardTitle>
                 {selectedService?.id === service.id && (
                   <CheckCircle className="h-5 w-5 text-primary" />
                 )}

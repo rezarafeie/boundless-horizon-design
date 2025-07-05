@@ -1,10 +1,11 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import UserInfoStep from '@/components/UserInfoStep';
 import { ServiceSelection } from './ServiceSelection';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FormData } from './types';
 import { VpnService } from '@/services/vpnServicesService';
+import { Button } from '@/components/ui/button';
 
 interface UserDetailsFormProps {
   formData: FormData;
@@ -13,6 +14,7 @@ interface UserDetailsFormProps {
 
 const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) => {
   const { language } = useLanguage();
+  const [showCustomForm, setShowCustomForm] = useState(false);
 
   // Create adapter for UserInfoStep which expects different FormData type
   const adaptedFormData = {
@@ -62,13 +64,40 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
         />
       )}
 
-      {/* Show user info form only if no service is selected or custom mode */}
-      {!formData.selectedService && (
-        <UserInfoStep
-          formData={adaptedFormData as any}
-          onUpdate={onUpdateFormData}
-          appliedDiscount={null}
-        />
+      {/* Show custom plan button and form */}
+      {!formData.selectedService && !showCustomForm && (
+        <div className="text-center py-4">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowCustomForm(true)}
+            className="text-primary"
+          >
+            {language === 'fa' ? 'استفاده از پلن سفارشی' : 'Use Custom Plan'}
+          </Button>
+        </div>
+      )}
+
+      {/* Show user info form only if custom form is requested */}
+      {!formData.selectedService && showCustomForm && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">
+              {language === 'fa' ? 'پلن سفارشی' : 'Custom Plan'}
+            </h3>
+            <Button 
+              variant="ghost" 
+              onClick={() => setShowCustomForm(false)}
+              className="text-muted-foreground"
+            >
+              {language === 'fa' ? 'بستن' : 'Close'}
+            </Button>
+          </div>
+          <UserInfoStep
+            formData={adaptedFormData as any}
+            onUpdate={onUpdateFormData}
+            appliedDiscount={null}
+          />
+        </div>
       )}
 
       {/* Show simplified form when service is selected */}
