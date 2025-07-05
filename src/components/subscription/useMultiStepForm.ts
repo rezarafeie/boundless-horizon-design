@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { FormData, SubscriptionResponse, StepNumber } from './types';
 import { DiscountCode } from '@/types/subscription';
 import { PlanService, PlanWithPanels } from '@/services/planService';
+import { VpnService } from '@/services/vpnServicesService';
 import { PanelUserCreationService } from '@/services/panelUserCreationService';
 
 export const useMultiStepForm = () => {
@@ -21,6 +22,7 @@ export const useMultiStepForm = () => {
     mobile: '',
     email: '', // Add email field
     selectedPlan: null,
+    selectedService: null,
     paymentMethod: 'zarinpal'
   });
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
@@ -87,6 +89,22 @@ export const useMultiStepForm = () => {
         });
         return;
       }
+    }
+    
+    // Auto-generate username when service is selected
+    if (field === 'selectedService' && value) {
+      const service = value as VpnService;
+      const timestamp = Math.floor(Math.random() * 10000);
+      const autoUsername = `bnets_${formData.selectedPlan?.plan_id || 'default'}_${timestamp}`;
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        [field]: value,
+        username: autoUsername,
+        dataLimit: service.data_limit_gb,
+        duration: service.duration_days
+      }));
+      return;
     }
     
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -191,7 +209,9 @@ export const useMultiStepForm = () => {
         assignedPanelId: formData.selectedPlan.assigned_panel_id
       });
       
-      const totalPrice = calculateTotalPrice();
+      const totalPrice = formData.selectedService 
+        ? formData.selectedService.price_toman 
+        : calculateTotalPrice();
       
       // Generate unique username if needed
       const timestamp = Date.now();
@@ -206,7 +226,7 @@ export const useMultiStepForm = () => {
         duration_days: formData.duration,
         price_toman: totalPrice,
         plan_id: formData.selectedPlan.id, // Use the CORRECT plan ID
-        notes: formData.notes?.trim() || `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id}) - Panel: ${formData.selectedPlan.assigned_panel_id}`,
+        notes: formData.notes?.trim() || `${formData.selectedService ? `Service: ${formData.selectedService.name}` : `Plan: ${formData.selectedPlan.name_en} (${formData.selectedPlan.plan_id})`} - Panel: ${formData.selectedPlan.assigned_panel_id}`,
         status: 'pending' as const
       };
 
@@ -425,6 +445,11 @@ export const useMultiStepForm = () => {
   };
 
   const calculateTotalPrice = (): number => {
+    // Use the selected service price if available, otherwise calculate from plan
+    if (formData.selectedService) {
+      return formData.selectedService.price_toman;
+    }
+    
     if (!formData.selectedPlan) {
       console.warn('MULTI STEP FORM: No plan selected for price calculation');
       return 0;

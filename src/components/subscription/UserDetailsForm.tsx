@@ -1,8 +1,10 @@
 
 import React from 'react';
 import UserInfoStep from '@/components/UserInfoStep';
+import { ServiceSelection } from './ServiceSelection';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FormData } from './types';
+import { VpnService } from '@/services/vpnServicesService';
 
 interface UserDetailsFormProps {
   formData: FormData;
@@ -51,11 +53,84 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
         </p>
       </div>
 
-      <UserInfoStep
-        formData={adaptedFormData as any}
-        onUpdate={onUpdateFormData}
-        appliedDiscount={null}
-      />
+      {/* Service Selection */}
+      {formData.selectedPlan && (
+        <ServiceSelection
+          planId={formData.selectedPlan.id}
+          selectedService={formData.selectedService}
+          onServiceSelect={(service: VpnService | null) => onUpdateFormData('selectedService', service)}
+        />
+      )}
+
+      {/* Show user info form only if no service is selected or custom mode */}
+      {!formData.selectedService && (
+        <UserInfoStep
+          formData={adaptedFormData as any}
+          onUpdate={onUpdateFormData}
+          appliedDiscount={null}
+        />
+      )}
+
+      {/* Show simplified form when service is selected */}
+      {formData.selectedService && (
+        <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+          <h3 className="text-lg font-semibold">
+            {language === 'fa' ? 'تأیید اطلاعات' : 'Confirm Details'}
+          </h3>
+          <div className="grid gap-4">
+            <div>
+              <label className="text-sm font-medium">
+                {language === 'fa' ? 'نام کاربری:' : 'Username:'}
+              </label>
+              <p className="text-sm text-muted-foreground">{formData.username}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">
+                  {language === 'fa' ? 'حجم:' : 'Data Limit:'}
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  {formData.dataLimit} {language === 'fa' ? 'گیگابایت' : 'GB'}
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium">
+                  {language === 'fa' ? 'مدت:' : 'Duration:'}
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  {formData.duration} {language === 'fa' ? 'روز' : 'days'}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">
+                  {language === 'fa' ? 'شماره موبایل:' : 'Mobile:'}
+                </label>
+                <input
+                  type="tel"
+                  className="w-full mt-1 px-3 py-2 border rounded-md"
+                  value={formData.mobile}
+                  onChange={(e) => onUpdateFormData('mobile', e.target.value)}
+                  placeholder={language === 'fa' ? 'شماره موبایل' : 'Mobile number'}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">
+                  {language === 'fa' ? 'ایمیل:' : 'Email:'}
+                </label>
+                <input
+                  type="email"
+                  className="w-full mt-1 px-3 py-2 border rounded-md"
+                  value={formData.email}
+                  onChange={(e) => onUpdateFormData('email', e.target.value)}
+                  placeholder={language === 'fa' ? 'آدرس ایمیل' : 'Email address'}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -66,6 +66,11 @@ export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
       icon: Webhook,
     },
     {
+      title: 'Services',
+      href: '/admin/services',
+      icon: Settings,
+    },
+    {
       title: 'Discounts',
       href: '/admin/discounts',
       icon: Settings,

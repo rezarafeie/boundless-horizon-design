@@ -1,5 +1,6 @@
 import { DiscountCode } from '@/types/subscription';
 import { PlanWithPanels } from '@/services/planService';
+import { VpnService } from '@/services/vpnServicesService';
 import { PaymentMethod } from '@/components/PaymentMethodSelector';
 
 export interface FormData {
@@ -10,6 +11,7 @@ export interface FormData {
   mobile: string;
   email: string; // Add email field
   selectedPlan: PlanWithPanels | null;
+  selectedService: VpnService | null;
   paymentMethod: 'zarinpal' | 'stripe' | 'crypto' | 'manual';
 }
 

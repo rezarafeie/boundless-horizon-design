@@ -700,6 +700,50 @@ export type Database = {
           },
         ]
       }
+      vpn_services: {
+        Row: {
+          created_at: string
+          data_limit_gb: number
+          duration_days: number
+          id: string
+          name: string
+          plan_id: string | null
+          price_toman: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          data_limit_gb: number
+          duration_days: number
+          id?: string
+          name: string
+          plan_id?: string | null
+          price_toman: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          data_limit_gb?: number
+          duration_days?: number
+          id?: string
+          name?: string
+          plan_id?: string | null
+          price_toman?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vpn_services_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_config: {
         Row: {
           created_at: string
