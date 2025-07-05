@@ -39,31 +39,49 @@ const handler = async (req: Request): Promise<Response> => {
       return new Response('Missing parameters', { status: 400, headers: corsHeaders });
     }
 
+    console.log('ADMIN_APPROVE: Verifying token for subscription:', subscriptionId);
+    
     // Verify token by checking if it exists for this subscription
     const { data: tokenCheck, error: tokenError } = await supabase
       .from('subscriptions')
-      .select('id')
+      .select('id, status, admin_decision')
       .eq('id', subscriptionId)
       .eq('admin_decision_token', token)
       .eq('admin_decision', 'pending')
-      .single();
+      .maybeSingle();
     
-    if (tokenError || !tokenCheck) {
+    if (tokenError) {
+      console.error('ADMIN_APPROVE: Token verification error:', tokenError);
+      return new Response(`Database error: ${tokenError.message}`, { status: 500, headers: corsHeaders });
+    }
+    
+    if (!tokenCheck) {
+      console.error('ADMIN_APPROVE: Invalid token or subscription not found');
       return new Response('Invalid or expired token', { status: 401, headers: corsHeaders });
     }
 
     if (action === 'approve') {
+      console.log('ADMIN_APPROVE: Fetching subscription data for:', subscriptionId);
+      
       // First, get the full subscription data
       const { data: subscription, error: fetchError } = await supabase
         .from('subscriptions')
         .select('*')
         .eq('id', subscriptionId)
-        .single();
+        .maybeSingle();
 
-      if (fetchError || !subscription) {
+      if (fetchError) {
+        console.error('ADMIN_APPROVE: Error fetching subscription:', fetchError);
+        throw new Error(`Failed to fetch subscription: ${fetchError.message}`);
+      }
+      
+      if (!subscription) {
+        console.error('ADMIN_APPROVE: Subscription not found:', subscriptionId);
         throw new Error('Subscription not found');
       }
 
+      console.log('ADMIN_APPROVE: Updating subscription status to active for:', subscriptionId);
+      
       // Update subscription status
       const { error: updateError } = await supabase
         .from('subscriptions')
@@ -76,7 +94,8 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('id', subscriptionId);
 
       if (updateError) {
-        throw updateError;
+        console.error('ADMIN_APPROVE: Error updating subscription status:', updateError);
+        throw new Error(`Failed to update subscription: ${updateError.message}`);
       }
 
       // Create VPN user after approval
