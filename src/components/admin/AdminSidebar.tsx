@@ -12,7 +12,8 @@ import {
   X,
   Moon,
   Sun,
-  MessageSquare
+  MessageSquare,
+  Webhook
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -58,6 +59,11 @@ export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
       title: 'Telegram Bot',
       href: '/admin/telegrambot',
       icon: MessageSquare,
+    },
+    {
+      title: 'Webhooks',
+      href: '/admin/webhook',
+      icon: Webhook,
     },
     {
       title: 'Discounts',

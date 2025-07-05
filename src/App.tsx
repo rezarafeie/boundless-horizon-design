@@ -18,6 +18,7 @@ import AdminDiscounts from "./pages/AdminDiscounts";
 import AdminTests from "./pages/AdminTests";
 import AdminReports from "./pages/AdminReports";
 import AdminTelegramBot from "./pages/AdminTelegramBot";
+import AdminWebhook from "./pages/AdminWebhook";
 import AdminApproveOrder from "./pages/AdminApproveOrder";
 import AdminRejectOrder from "./pages/AdminRejectOrder";
 import DeliveryPage from "./pages/DeliveryPage";
@@ -48,6 +49,7 @@ const App = () => (
               <Route path="/admin/tests" element={<AdminTests />} />
               <Route path="/admin/reports" element={<AdminReports />} />
               <Route path="/admin/telegrambot" element={<AdminTelegramBot />} />
+              <Route path="/admin/webhook" element={<AdminWebhook />} />
               <Route path="/admin/approve-order/:id" element={<AdminApproveOrder />} />
               <Route path="/admin/reject-order/:id" element={<AdminRejectOrder />} />
               <Route path="/delivery" element={<DeliveryPage />} />

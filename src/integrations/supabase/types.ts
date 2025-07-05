@@ -700,6 +700,153 @@ export type Database = {
           },
         ]
       }
+      webhook_config: {
+        Row: {
+          created_at: string
+          headers: Json
+          id: string
+          is_enabled: boolean
+          method: string
+          updated_at: string
+          webhook_url: string
+        }
+        Insert: {
+          created_at?: string
+          headers?: Json
+          id?: string
+          is_enabled?: boolean
+          method?: string
+          updated_at?: string
+          webhook_url: string
+        }
+        Update: {
+          created_at?: string
+          headers?: Json
+          id?: string
+          is_enabled?: boolean
+          method?: string
+          updated_at?: string
+          webhook_url?: string
+        }
+        Relationships: []
+      }
+      webhook_logs: {
+        Row: {
+          error_message: string | null
+          id: string
+          payload: Json
+          response_body: string | null
+          response_status: number | null
+          sent_at: string
+          success: boolean
+          trigger_type: string
+          webhook_config_id: string | null
+        }
+        Insert: {
+          error_message?: string | null
+          id?: string
+          payload: Json
+          response_body?: string | null
+          response_status?: number | null
+          sent_at?: string
+          success?: boolean
+          trigger_type: string
+          webhook_config_id?: string | null
+        }
+        Update: {
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+          sent_at?: string
+          success?: boolean
+          trigger_type?: string
+          webhook_config_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_logs_webhook_config_id_fkey"
+            columns: ["webhook_config_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_payload_config: {
+        Row: {
+          created_at: string
+          custom_value: string | null
+          id: string
+          is_enabled: boolean
+          parameter_name: string
+          parameter_source: string | null
+          parameter_type: string
+          webhook_config_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_value?: string | null
+          id?: string
+          is_enabled?: boolean
+          parameter_name: string
+          parameter_source?: string | null
+          parameter_type: string
+          webhook_config_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_value?: string | null
+          id?: string
+          is_enabled?: boolean
+          parameter_name?: string
+          parameter_source?: string | null
+          parameter_type?: string
+          webhook_config_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_payload_config_webhook_config_id_fkey"
+            columns: ["webhook_config_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_triggers: {
+        Row: {
+          created_at: string
+          id: string
+          is_enabled: boolean
+          trigger_name: string
+          webhook_config_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          trigger_name: string
+          webhook_config_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          trigger_name?: string
+          webhook_config_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_triggers_webhook_config_id_fkey"
+            columns: ["webhook_config_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       zarinpal_contracts: {
         Row: {
           bank_code: string | null
