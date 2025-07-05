@@ -154,15 +154,6 @@ export const ServiceSelection = ({ planId, selectedService, onServiceSelect }: S
         ))}
       </div>
 
-      <div className="text-center pt-4 border-t">
-        <Button 
-          variant="ghost" 
-          onClick={handleCustomPlan}
-          className="text-primary"
-        >
-          {language === 'fa' ? 'استفاده از پلن سفارشی' : 'Use Custom Plan'}
-        </Button>
-      </div>
     </div>
   );
 };
