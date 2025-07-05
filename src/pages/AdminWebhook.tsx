@@ -154,7 +154,7 @@ const AdminWebhook = () => {
           
         if (newConfig) {
           setConfig(newConfig);
-          await createInitialWebhookSetup(serviceClient, newConfig.id);
+          await createInitialWebhookSetup(newConfig.id);
           await loadData(); // Reload with new data
           return;
         }
@@ -206,54 +206,6 @@ const AdminWebhook = () => {
       defaultTriggers.map(trigger => ({
         webhook_config_id: configId,
         trigger_name: trigger,
-        is_enabled: true
-      }))
-    );
-  };
-    // Create default triggers
-    const defaultTriggers = [
-      'manual_payment_approval',
-      'test_account_creation', 
-      'subscription_creation',
-      'stripe_payment_success',
-      'zarinpal_payment_success',
-      'subscription_update',
-      'manual_admin_trigger'
-    ];
-
-    await client.from('webhook_triggers').insert(
-      defaultTriggers.map(trigger => ({
-        webhook_config_id: configId,
-        trigger_name: trigger,
-        is_enabled: true
-      }))
-    );
-
-    // Create default payload parameters
-    const defaultParams = [
-      { name: 'type', source: 'type', type: 'system' },
-      { name: 'webhook_type', source: 'webhook_type', type: 'system' },
-      { name: 'subscription_id', source: 'subscription_id', type: 'system' },
-      { name: 'username', source: 'username', type: 'system' },
-      { name: 'mobile', source: 'mobile', type: 'system' },
-      { name: 'email', source: 'email', type: 'system' },
-      { name: 'amount', source: 'amount', type: 'system' },
-      { name: 'payment_method', source: 'payment_method', type: 'system' },
-      { name: 'receipt_url', source: 'receipt_url', type: 'system' },
-      { name: 'approve_link', source: 'approve_link', type: 'system' },
-      { name: 'reject_link', source: 'reject_link', type: 'system' },
-      { name: 'subscription_url', source: 'subscription_url', type: 'system' },
-      { name: 'plan_name', source: 'plan_name', type: 'system' },
-      { name: 'panel_name', source: 'panel_name', type: 'system' },
-      { name: 'created_at', source: 'created_at', type: 'system' }
-    ];
-
-    await client.from('webhook_payload_config').insert(
-      defaultParams.map(param => ({
-        webhook_config_id: configId,
-        parameter_name: param.name,
-        parameter_source: param.source,
-        parameter_type: param.type,
         is_enabled: true
       }))
     );
