@@ -66,19 +66,20 @@ serve(async (req) => {
     const standardizedTrigger = triggerNameMap[payload.webhook_type] || payload.webhook_type;
     console.log('WEBHOOK: Mapping webhook_type from', payload.webhook_type, 'to', standardizedTrigger);
     
-    // Get webhook configuration from database (handle multiple configs)
-    const { data: webhookConfigs, error: configError } = await supabase
+    // Get webhook configuration from database
+    const { data: webhookConfig, error: configError } = await supabase
       .from('webhook_config')
       .select('*')
       .eq('is_enabled', true)
-      .order('created_at', { ascending: false });
+      .limit(1)
+      .maybeSingle();
 
     if (configError) {
       console.error('WEBHOOK: Error fetching config:', configError);
       throw new Error(`Failed to fetch webhook config: ${configError.message}`);
     }
 
-    if (!webhookConfigs || webhookConfigs.length === 0) {
+    if (!webhookConfig) {
       console.log('WEBHOOK: No active webhook configuration found');
       return new Response(JSON.stringify({ 
         success: false, 
@@ -87,14 +88,6 @@ serve(async (req) => {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
-    }
-
-    // Use the most recent webhook configuration
-    const webhookConfig = webhookConfigs[0];
-    console.log('WEBHOOK: Using config:', { id: webhookConfig.id, url: webhookConfig.webhook_url, method: webhookConfig.method });
-    
-    if (webhookConfigs.length > 1) {
-      console.warn(`WEBHOOK: Found ${webhookConfigs.length} active webhook configs, using the most recent one`);
     }
 
     // Check if this trigger is enabled
@@ -111,19 +104,7 @@ serve(async (req) => {
     }
 
     if (!triggerConfig) {
-      console.log(`WEBHOOK: Trigger ${standardizedTrigger} is not enabled or doesn't exist for config ${webhookConfig.id}`);
-      
-      // Log this as a failed attempt for debugging
-      await supabase.from('webhook_logs').insert({
-        webhook_config_id: webhookConfig.id,
-        trigger_type: standardizedTrigger,
-        payload: payload,
-        success: false,
-        response_status: null,
-        response_body: null,
-        error_message: `Trigger ${standardizedTrigger} is not enabled or doesn't exist`
-      });
-
+      console.log(`WEBHOOK: Trigger ${standardizedTrigger} is not enabled or doesn't exist`);
       return new Response(JSON.stringify({ 
         success: false, 
         error: `Trigger ${standardizedTrigger} is not enabled` 
@@ -132,8 +113,6 @@ serve(async (req) => {
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
     }
-    
-    console.log(`WEBHOOK: Trigger ${standardizedTrigger} is enabled for config ${webhookConfig.id}`);
 
     // Get payload configuration to build dynamic payload  
     const { data: payloadConfig, error: payloadError } = await supabase
@@ -274,63 +253,28 @@ serve(async (req) => {
     }
     
     // Add test user data for test account creation webhooks
-    if (payload.webhook_type === 'test_account_creation') {
-      console.log('WEBHOOK: Processing test_account_creation webhook');
-      
-      if (payload.test_user_id) {
-        console.log('WEBHOOK: Looking up test user by ID:', payload.test_user_id);
-        const { data: testUser } = await supabase
-          .from('test_users')
-          .select('*')
-          .eq('id', payload.test_user_id)
-          .maybeSingle();
-          
-        if (testUser) {
-          console.log('WEBHOOK: Found test user by ID:', testUser);
-          finalPayload.test_user_data = {
-            id: testUser.id,
-            username: testUser.username,
-            email: testUser.email,
-            phone_number: testUser.phone_number,
-            panel_name: testUser.panel_name,
-            expire_date: testUser.expire_date,
-            subscription_url: testUser.subscription_url,
-            data_limit_gb: Math.round(testUser.data_limit_bytes / (1024 * 1024 * 1024))
-          };
-        } else {
-          console.log('WEBHOOK: Test user not found by ID, trying username:', payload.username);
-        }
-      }
-      
-      // If no test user found by ID, try by username
-      if (!finalPayload.test_user_data && payload.username) {
-        const { data: testUser } = await supabase
-          .from('test_users')
-          .select('*')
-          .eq('username', payload.username)
-          .maybeSingle();
-          
-        if (testUser) {
-          console.log('WEBHOOK: Found test user by username:', testUser);
-          finalPayload.test_user_data = {
-            id: testUser.id,
-            username: testUser.username,
-            email: testUser.email,
-            phone_number: testUser.phone_number,
-            panel_name: testUser.panel_name,
-            expire_date: testUser.expire_date,
-            subscription_url: testUser.subscription_url,
-            data_limit_gb: Math.round(testUser.data_limit_bytes / (1024 * 1024 * 1024))
-          };
-        } else {
-          console.warn('WEBHOOK: Test user not found by username either');
-        }
+    if (payload.webhook_type === 'test_account_creation' && payload.test_user_id) {
+      const { data: testUser } = await supabase
+        .from('test_users')
+        .select('*')
+        .eq('id', payload.test_user_id)
+        .maybeSingle();
+        
+      if (testUser) {
+        finalPayload.test_user_data = {
+          id: testUser.id,
+          username: testUser.username,
+          email: testUser.email,
+          phone_number: testUser.phone_number,
+          panel_name: testUser.panel_name,
+          expire_date: testUser.expire_date,
+          subscription_url: testUser.subscription_url,
+          data_limit_gb: Math.round(testUser.data_limit_bytes / (1024 * 1024 * 1024))
+        };
       }
     }
 
-    console.log('WEBHOOK: Sending final payload to:', webhookConfig.webhook_url);
-    console.log('WEBHOOK: Payload size:', JSON.stringify(finalPayload).length, 'bytes');
-    console.log('WEBHOOK: Full payload:', finalPayload);
+    console.log('WEBHOOK: Sending final payload:', finalPayload);
 
     // Send webhook with configured method and headers
     const webhookHeaders = {
@@ -338,56 +282,25 @@ serve(async (req) => {
       ...webhookConfig.headers
     };
 
-    console.log('WEBHOOK: Request headers:', webhookHeaders);
-    console.log('WEBHOOK: Request method:', webhookConfig.method);
+    const response = await fetch(webhookConfig.webhook_url, {
+      method: webhookConfig.method,
+      headers: webhookHeaders,
+      body: JSON.stringify(finalPayload),
+    });
 
-    let response: Response;
-    let responseText: string;
-    let success: boolean;
+    const responseText = await response.text();
+    const success = response.ok;
 
-    try {
-      response = await fetch(webhookConfig.webhook_url, {
-        method: webhookConfig.method,
-        headers: webhookHeaders,
-        body: JSON.stringify(finalPayload),
-      });
-
-      responseText = await response.text();
-      success = response.ok;
-      
-      console.log('WEBHOOK: Response status:', response.status);
-      console.log('WEBHOOK: Response headers:', Object.fromEntries(response.headers.entries()));
-      console.log('WEBHOOK: Response body:', responseText);
-      
-    } catch (fetchError) {
-      console.error('WEBHOOK: Fetch error:', fetchError);
-      responseText = `Fetch error: ${fetchError.message}`;
-      success = false;
-      response = new Response('', { status: 0 });
-    }
-
-    // Log the webhook attempt with enhanced details
-    const logEntry = {
+    // Log the webhook attempt
+    await supabase.from('webhook_logs').insert({
       webhook_config_id: webhookConfig.id,
       trigger_type: standardizedTrigger,
       payload: finalPayload,
       success: success,
-      response_status: response.status || null,
+      response_status: response.status,
       response_body: responseText.substring(0, 1000), // Limit response body length
-      error_message: success ? null : (response.status ? `HTTP ${response.status}: ${response.statusText}` : responseText)
-    };
-    
-    console.log('WEBHOOK: Logging attempt:', { 
-      success, 
-      status: response.status, 
-      trigger: standardizedTrigger,
-      config_id: webhookConfig.id 
+      error_message: success ? null : `HTTP ${response.status}: ${response.statusText}`
     });
-    
-    const { error: logError } = await supabase.from('webhook_logs').insert(logEntry);
-    if (logError) {
-      console.error('WEBHOOK: Failed to log webhook attempt:', logError);
-    }
 
     if (!success) {
       throw new Error(`Webhook failed: ${response.status} ${response.statusText}`);
