@@ -14,6 +14,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Trash2, Plus, TestTube, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { WebhookDebugPanel } from '@/components/admin/WebhookDebugPanel';
+import { WebhookParameterBuilder } from '@/components/admin/WebhookParameterBuilder';
+import { WebhookPayloadPreview } from '@/components/admin/WebhookPayloadPreview';
 
 interface WebhookConfig {
   id: string;
@@ -673,140 +675,26 @@ const AdminWebhook = () => {
                 <CardHeader>
                   <CardTitle>Payload Configuration</CardTitle>
                   <CardDescription>
-                    Configure the data sent in webhook payloads
+                    Configure webhook parameters with database detection and smart suggestions
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-medium">Parameters</h4>
-                      <Button onClick={() => setShowAddParam(true)} size="sm">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Parameter
-                      </Button>
-                    </div>
-                    
-                    {showAddParam && (
-                      <Card className="p-4 border-dashed">
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <Label htmlFor="param-name">Parameter Name</Label>
-                              <Input
-                                id="param-name"
-                                value={newParamName}
-                                onChange={(e) => setNewParamName(e.target.value)}
-                                placeholder="custom_field"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="param-type">Type</Label>
-                              <Select value={newParamType} onValueChange={setNewParamType}>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="string">String</SelectItem>
-                                  <SelectItem value="number">Number</SelectItem>
-                                  <SelectItem value="boolean">Boolean</SelectItem>
-                                  <SelectItem value="system">System</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <Label htmlFor="param-source">Source Field (optional)</Label>
-                              <Input
-                                id="param-source"
-                                value={newParamSource}
-                                onChange={(e) => setNewParamSource(e.target.value)}
-                                placeholder="subscription_id"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="param-custom">Custom Value (optional)</Label>
-                              <Input
-                                id="param-custom"
-                                value={newParamCustomValue}
-                                onChange={(e) => setNewParamCustomValue(e.target.value)}
-                                placeholder="Fixed value"
-                              />
-                            </div>
-                          </div>
-                          
-                          <div className="flex gap-2">
-                            <Button onClick={addCustomParameter} size="sm">
-                              Add Parameter
-                            </Button>
-                            <Button 
-                              onClick={() => setShowAddParam(false)} 
-                              variant="outline" 
-                              size="sm"
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    )}
-                    
-                    <div className="space-y-2">
-                      {payloadConfig.map((param) => (
-                        <div key={param.id} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{param.parameter_name}</span>
-                              <Badge variant="outline">
-                                {param.parameter_type}
-                              </Badge>
-                              {param.parameter_source && (
-                                <Badge variant="secondary" className="text-xs">
-                                  from: {param.parameter_source}
-                                </Badge>
-                              )}
-                              {param.custom_value && (
-                                <Badge variant="secondary" className="text-xs">
-                                  value: {param.custom_value}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              checked={param.is_enabled}
-                              onCheckedChange={(checked) => togglePayloadParam(param.id, checked)}
-                            />
-                            <Button
-                              onClick={() => deleteParameter(param.id)}
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  {config && (
+                    <WebhookParameterBuilder
+                      webhookConfigId={config.id}
+                      payloadConfig={payloadConfig}
+                      onParameterAdded={loadData}
+                      onParameterToggled={togglePayloadParam}
+                      onParameterDeleted={deleteParameter}
+                    />
+                  )}
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Payload Preview</CardTitle>
-                  <CardDescription>
-                    Preview of the JSON payload that will be sent
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <pre className="bg-muted p-4 rounded text-sm overflow-auto max-h-96">
-                    {JSON.stringify(generatePreview(), null, 2)}
-                  </pre>
-                </CardContent>
-              </Card>
+              <WebhookPayloadPreview 
+                payloadConfig={payloadConfig}
+                triggers={triggers}
+              />
             </div>
           </TabsContent>
 
