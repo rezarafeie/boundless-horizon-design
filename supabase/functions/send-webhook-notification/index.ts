@@ -253,24 +253,57 @@ serve(async (req) => {
     }
     
     // Add test user data for test account creation webhooks
-    if (payload.webhook_type === 'test_account_creation' && payload.test_user_id) {
-      const { data: testUser } = await supabase
-        .from('test_users')
-        .select('*')
-        .eq('id', payload.test_user_id)
-        .maybeSingle();
-        
-      if (testUser) {
-        finalPayload.test_user_data = {
-          id: testUser.id,
-          username: testUser.username,
-          email: testUser.email,
-          phone_number: testUser.phone_number,
-          panel_name: testUser.panel_name,
-          expire_date: testUser.expire_date,
-          subscription_url: testUser.subscription_url,
-          data_limit_gb: Math.round(testUser.data_limit_bytes / (1024 * 1024 * 1024))
-        };
+    if (payload.webhook_type === 'test_account_creation') {
+      console.log('WEBHOOK: Processing test_account_creation webhook');
+      
+      if (payload.test_user_id) {
+        console.log('WEBHOOK: Looking up test user by ID:', payload.test_user_id);
+        const { data: testUser } = await supabase
+          .from('test_users')
+          .select('*')
+          .eq('id', payload.test_user_id)
+          .maybeSingle();
+          
+        if (testUser) {
+          console.log('WEBHOOK: Found test user by ID:', testUser);
+          finalPayload.test_user_data = {
+            id: testUser.id,
+            username: testUser.username,
+            email: testUser.email,
+            phone_number: testUser.phone_number,
+            panel_name: testUser.panel_name,
+            expire_date: testUser.expire_date,
+            subscription_url: testUser.subscription_url,
+            data_limit_gb: Math.round(testUser.data_limit_bytes / (1024 * 1024 * 1024))
+          };
+        } else {
+          console.log('WEBHOOK: Test user not found by ID, trying username:', payload.username);
+        }
+      }
+      
+      // If no test user found by ID, try by username
+      if (!finalPayload.test_user_data && payload.username) {
+        const { data: testUser } = await supabase
+          .from('test_users')
+          .select('*')
+          .eq('username', payload.username)
+          .maybeSingle();
+          
+        if (testUser) {
+          console.log('WEBHOOK: Found test user by username:', testUser);
+          finalPayload.test_user_data = {
+            id: testUser.id,
+            username: testUser.username,
+            email: testUser.email,
+            phone_number: testUser.phone_number,
+            panel_name: testUser.panel_name,
+            expire_date: testUser.expire_date,
+            subscription_url: testUser.subscription_url,
+            data_limit_gb: Math.round(testUser.data_limit_bytes / (1024 * 1024 * 1024))
+          };
+        } else {
+          console.warn('WEBHOOK: Test user not found by username either');
+        }
       }
     }
 
