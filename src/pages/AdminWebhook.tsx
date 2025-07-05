@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Trash2, Plus, TestTube, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { WebhookDebugPanel } from '@/components/admin/WebhookDebugPanel';
 
 interface WebhookConfig {
   id: string;
@@ -568,6 +569,7 @@ const AdminWebhook = () => {
             <TabsTrigger value="payload">Payload Builder</TabsTrigger>
             <TabsTrigger value="triggers">Trigger Rules</TabsTrigger>
             <TabsTrigger value="logs">Logs & Testing</TabsTrigger>
+            <TabsTrigger value="debug">Debug Panel</TabsTrigger>
           </TabsList>
 
           <TabsContent value="settings">
@@ -930,6 +932,10 @@ const AdminWebhook = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+          
+          <TabsContent value="debug">
+            <WebhookDebugPanel />
           </TabsContent>
         </Tabs>
       </div>
