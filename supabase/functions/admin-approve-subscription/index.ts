@@ -18,10 +18,17 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    // Verify token (simple verification - in production, use more secure method)
-    const decodedToken = atob(token);
-    if (!decodedToken.startsWith(subscriptionId)) {
-      return new Response('Invalid token', { status: 401 });
+    // Verify token by checking if it exists for this subscription
+    const { data: tokenCheck, error: tokenError } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('id', subscriptionId)
+      .eq('admin_decision_token', token)
+      .eq('admin_decision', 'pending')
+      .single();
+    
+    if (tokenError || !tokenCheck) {
+      return new Response('Invalid or expired token', { status: 401 });
     }
 
     if (action === 'approve') {
@@ -166,7 +173,7 @@ const handler = async (req: Request): Promise<Response> => {
             <h1 style="color: #16a34a;">✅ Subscription Approved!</h1>
             <p>Subscription ${subscriptionId} has been approved successfully.</p>
             <p>The user will be notified automatically and VPN access has been created.</p>
-            <a href="https://main.dpng3e8bkfgqh3s5.lovableproject.com/admin/users" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            <a href="https://e69ef03d-f51d-48e0-ac3f-fd85280ecf09.lovableproject.com/admin/users" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
               Go to Admin Panel
             </a>
           </body>

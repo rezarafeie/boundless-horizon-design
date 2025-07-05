@@ -200,10 +200,28 @@ serve(async (req) => {
         .maybeSingle();
 
       if (subscription) {
+        // Ensure subscription has admin decision token for approval links
+        let token = subscription.admin_decision_token;
+        if (!token) {
+          console.log('Missing admin_decision_token, generating new one for subscription:', subscription.id);
+          token = crypto.randomUUID();
+          
+          // Update subscription with new token
+          await supabase
+            .from('subscriptions')
+            .update({ 
+              admin_decision_token: token,
+              admin_decision: 'pending'
+            })
+            .eq('id', subscription.id);
+            
+          console.log('Generated and saved new token:', token);
+        }
+        
         // Add approve/reject links with proper domain
         const baseUrl = 'https://preview--boundless-horizon-design.lovable.app';
-        finalPayload.approve_link = `${baseUrl}/admin/approve-order/${subscription.id}?token=${subscription.admin_decision_token}`;
-        finalPayload.reject_link = `${baseUrl}/admin/reject-order/${subscription.id}?token=${subscription.admin_decision_token}`;
+        finalPayload.approve_link = `${baseUrl}/admin/approve-order/${subscription.id}?token=${token}`;
+        finalPayload.reject_link = `${baseUrl}/admin/reject-order/${subscription.id}?token=${token}`;
         
         // Add receipt URL if exists - convert to full URL
         if (subscription.receipt_image_url) {
