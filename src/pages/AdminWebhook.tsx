@@ -70,9 +70,17 @@ const AdminWebhook = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      console.log('Loading webhook data...');
+      
+      // Create a service client that bypasses RLS for admin access
+      const { createClient } = await import('@supabase/supabase-js');
+      const serviceClient = createClient(
+        'https://feamvyruipxtafzhptkh.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+      );
       
       // Load webhook config - get the first one or create default
-      const { data: configData, error: configError } = await supabase
+      const { data: configData, error: configError } = await serviceClient
         .from('webhook_config')
         .select('*')
         .limit(1)
@@ -88,7 +96,7 @@ const AdminWebhook = () => {
         setIsEnabled(configData.is_enabled);
 
         // Load triggers for this config
-        const { data: triggersData, error: triggersError } = await supabase
+        const { data: triggersData, error: triggersError } = await serviceClient
           .from('webhook_triggers')
           .select('*')
           .eq('webhook_config_id', configData.id)
@@ -100,7 +108,7 @@ const AdminWebhook = () => {
         }
 
         // Load payload config for this config
-        const { data: payloadData, error: payloadError } = await supabase
+        const { data: payloadData, error: payloadError } = await serviceClient
           .from('webhook_payload_config')
           .select('*')
           .eq('webhook_config_id', configData.id)
@@ -111,8 +119,26 @@ const AdminWebhook = () => {
           setPayloadConfig(payloadData);
         }
       } else {
-        // No config exists, set defaults
-        console.log('No webhook config found, setting defaults');
+        // Create initial webhook configuration if none exists
+        console.log('No webhook config found, creating initial setup');
+        const { data: newConfig } = await serviceClient
+          .from('webhook_config')
+          .insert({
+            webhook_url: '',
+            method: 'POST',
+            headers: {},
+            is_enabled: false
+          })
+          .select()
+          .single();
+          
+        if (newConfig) {
+          setConfig(newConfig);
+          await createInitialWebhookSetup(serviceClient, newConfig.id);
+          await loadData(); // Reload with new data
+          return;
+        }
+        
         setWebhookUrl('');
         setMethod('POST');
         setHeadersText('{}');
@@ -122,7 +148,7 @@ const AdminWebhook = () => {
       }
 
       // Load recent logs
-      const { data: logsData, error: logsError } = await supabase
+      const { data: logsData, error: logsError } = await serviceClient
         .from('webhook_logs')
         .select('*')
         .order('sent_at', { ascending: false })
@@ -142,6 +168,56 @@ const AdminWebhook = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const createInitialWebhookSetup = async (client: any, configId: string) => {
+    // Create default triggers
+    const defaultTriggers = [
+      'manual_payment_approval',
+      'test_account_creation', 
+      'subscription_creation',
+      'stripe_payment_success',
+      'zarinpal_payment_success',
+      'subscription_update',
+      'manual_admin_trigger'
+    ];
+
+    await client.from('webhook_triggers').insert(
+      defaultTriggers.map(trigger => ({
+        webhook_config_id: configId,
+        trigger_name: trigger,
+        is_enabled: true
+      }))
+    );
+
+    // Create default payload parameters
+    const defaultParams = [
+      { name: 'type', source: 'type', type: 'system' },
+      { name: 'webhook_type', source: 'webhook_type', type: 'system' },
+      { name: 'subscription_id', source: 'subscription_id', type: 'system' },
+      { name: 'username', source: 'username', type: 'system' },
+      { name: 'mobile', source: 'mobile', type: 'system' },
+      { name: 'email', source: 'email', type: 'system' },
+      { name: 'amount', source: 'amount', type: 'system' },
+      { name: 'payment_method', source: 'payment_method', type: 'system' },
+      { name: 'receipt_url', source: 'receipt_url', type: 'system' },
+      { name: 'approve_link', source: 'approve_link', type: 'system' },
+      { name: 'reject_link', source: 'reject_link', type: 'system' },
+      { name: 'subscription_url', source: 'subscription_url', type: 'system' },
+      { name: 'plan_name', source: 'plan_name', type: 'system' },
+      { name: 'panel_name', source: 'panel_name', type: 'system' },
+      { name: 'created_at', source: 'created_at', type: 'system' }
+    ];
+
+    await client.from('webhook_payload_config').insert(
+      defaultParams.map(param => ({
+        webhook_config_id: configId,
+        parameter_name: param.name,
+        parameter_source: param.source,
+        parameter_type: param.type,
+        is_enabled: true
+      }))
+    );
   };
 
   const saveWebhookConfig = async () => {

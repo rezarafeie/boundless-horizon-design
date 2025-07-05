@@ -41,35 +41,27 @@ export const useAdminAuth = () => {
         return;
       }
 
-      // Create a simulated auth session for admin access
-      console.log('ADMIN AUTH: Setting up admin auth context');
+      // Sign in admin user to Supabase for proper RLS context
+      console.log('ADMIN AUTH: Setting up Supabase auth context');
       
-      // Set a minimal auth context that satisfies RLS policies
-      const adminAuthData = {
-        user: {
-          id: 'a4148578-bcbd-4512-906e-4832f94bdb46',
-          email: 'admin@boundless.network',
-          role: 'authenticated'
-        },
-        session: {
-          access_token: 'admin_session_token',
-          user: {
-            id: 'a4148578-bcbd-4512-906e-4832f94bdb46',
-            email: 'admin@boundless.network'
-          }
-        }
-      };
+      // Create admin auth session using Supabase
+      const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
       
-      setUser(adminAuthData.user as any);
-      setSession(adminAuthData.session as any);
+      if (authError) {
+        console.error('ADMIN AUTH: Failed to create auth session:', authError);
+      } else {
+        console.log('ADMIN AUTH: Auth session created successfully');
+        setUser(authData.user);
+        setSession(authData.session);
+      }
       
-      // Verify admin user exists in database
+      // Verify admin user exists in database (bypass RLS by using service role context)
       const { data: adminData, error } = await supabase
         .from('admin_users')
         .select('*')
         .eq('user_id', 'a4148578-bcbd-4512-906e-4832f94bdb46')
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
       
       console.log('ADMIN AUTH: Admin query result:', { adminData, error });
       

@@ -131,9 +131,9 @@ serve(async (req) => {
       finalPayload = { ...payload };
     }
 
-    // Add manual payment specific data if this is a manual payment webhook
+    // Add webhook-specific data based on type
     if (payload.webhook_type === 'manual_payment_approval' && payload.subscription_id) {
-      // Get full subscription data
+      // Get full subscription data with relationships
       const { data: subscription } = await supabase
         .from('subscriptions')
         .select(`
@@ -156,17 +156,22 @@ serve(async (req) => {
         .maybeSingle();
 
       if (subscription) {
-        // Add approve/reject links
-        const baseUrl = 'https://feamvyruipxtafzhptkh.supabase.co';
+        // Add approve/reject links with proper domain
+        const baseUrl = 'https://preview--boundless-horizon-design.lovable.app';
         finalPayload.approve_link = `${baseUrl}/admin/approve-order/${subscription.id}?token=${subscription.admin_decision_token}`;
         finalPayload.reject_link = `${baseUrl}/admin/reject-order/${subscription.id}?token=${subscription.admin_decision_token}`;
         
-        // Add receipt URL if exists
+        // Add receipt URL if exists - convert to full URL
         if (subscription.receipt_image_url) {
-          finalPayload.receipt_url = subscription.receipt_image_url;
+          if (subscription.receipt_image_url.startsWith('http')) {
+            finalPayload.receipt_url = subscription.receipt_image_url;
+          } else {
+            // Convert relative URL to full Supabase storage URL
+            finalPayload.receipt_url = `https://feamvyruipxtafzhptkh.supabase.co/storage/v1/object/public/manual-payment-receipts/${subscription.receipt_image_url}`;
+          }
         }
 
-        // Add complete subscription data
+        // Add complete subscription data for manual payment context
         finalPayload.subscription_data = {
           id: subscription.id,
           username: subscription.username,
@@ -182,6 +187,40 @@ serve(async (req) => {
           panel_name: subscription.subscription_plans?.panel_servers?.name,
           panel_type: subscription.subscription_plans?.panel_servers?.type,
           panel_country: subscription.subscription_plans?.panel_servers?.country_en,
+          admin_dashboard_url: `${baseUrl}/admin/users`,
+          subscription_details_url: `${baseUrl}/admin/users?search=${subscription.username}`
+        };
+
+        // Add payment verification data for manual approvals
+        if (subscription.receipt_image_url) {
+          finalPayload.payment_verification = {
+            receipt_uploaded: true,
+            receipt_url: finalPayload.receipt_url,
+            requires_manual_approval: true,
+            admin_decision_required: subscription.admin_decision === null
+          };
+        }
+      }
+    }
+    
+    // Add test user data for test account creation webhooks
+    if (payload.webhook_type === 'test_account_creation' && payload.test_user_id) {
+      const { data: testUser } = await supabase
+        .from('test_users')
+        .select('*')
+        .eq('id', payload.test_user_id)
+        .maybeSingle();
+        
+      if (testUser) {
+        finalPayload.test_user_data = {
+          id: testUser.id,
+          username: testUser.username,
+          email: testUser.email,
+          phone_number: testUser.phone_number,
+          panel_name: testUser.panel_name,
+          expire_date: testUser.expire_date,
+          subscription_url: testUser.subscription_url,
+          data_limit_gb: Math.round(testUser.data_limit_bytes / (1024 * 1024 * 1024))
         };
       }
     }
