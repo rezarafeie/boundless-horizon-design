@@ -33,19 +33,17 @@ const AdminApproveOrder = () => {
         throw new Error('Invalid or missing approval token');
       }
 
-      // Call the edge function with proper URL parameters instead of body
-      const approvalUrl = `https://feamvyruipxtafzhptkh.supabase.co/functions/v1/admin-approve-subscription?id=${subscriptionId}&action=approve&token=${token}`;
-      
-      const response = await fetch(approvalUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
+      // Use Supabase client to invoke the edge function
+      const { data, error } = await supabase.functions.invoke('admin-approve-subscription', {
+        body: {
+          id: subscriptionId,
+          action: 'approve',
+          token: token
         }
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Approval failed: ${errorText}`);
+      if (error) {
+        throw new Error(`Approval failed: ${error.message}`);
       }
 
       console.log('ADMIN_APPROVE: Subscription approval completed successfully');

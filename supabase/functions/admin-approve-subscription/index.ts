@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
@@ -7,17 +6,39 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
-const handler = async (req: Request): Promise<Response> => {
-  const url = new URL(req.url);
-  const subscriptionId = url.searchParams.get('id');
-  const action = url.searchParams.get('action');
-  const token = url.searchParams.get('token');
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
 
-  if (!subscriptionId || !action || !token) {
-    return new Response('Missing parameters', { status: 400 });
+const handler = async (req: Request): Promise<Response> => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    let subscriptionId, action, token;
+
+    if (req.method === 'GET') {
+      // Handle URL parameters for email links
+      const url = new URL(req.url);
+      subscriptionId = url.searchParams.get('id');
+      action = url.searchParams.get('action');
+      token = url.searchParams.get('token');
+    } else if (req.method === 'POST') {
+      // Handle JSON body for frontend calls
+      const body = await req.json();
+      subscriptionId = body.id;
+      action = body.action;
+      token = body.token;
+    }
+
+    if (!subscriptionId || !action || !token) {
+      return new Response('Missing parameters', { status: 400, headers: corsHeaders });
+    }
+
     // Verify token by checking if it exists for this subscription
     const { data: tokenCheck, error: tokenError } = await supabase
       .from('subscriptions')
@@ -28,7 +49,7 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
     
     if (tokenError || !tokenCheck) {
-      return new Response('Invalid or expired token', { status: 401 });
+      return new Response('Invalid or expired token', { status: 401, headers: corsHeaders });
     }
 
     if (action === 'approve') {
@@ -167,26 +188,35 @@ const handler = async (req: Request): Promise<Response> => {
         console.error('ADMIN_APPROVE: Failed to send user confirmation email:', emailError);
       }
 
-      return new Response(`
-        <html>
-          <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-            <h1 style="color: #16a34a;">✅ Subscription Approved!</h1>
-            <p>Subscription ${subscriptionId} has been approved successfully.</p>
-            <p>The user will be notified automatically and VPN access has been created.</p>
-            <a href="https://e69ef03d-f51d-48e0-ac3f-fd85280ecf09.lovableproject.com/admin/users" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-              Go to Admin Panel
-            </a>
-          </body>
-        </html>
-      `, {
-        headers: { 'Content-Type': 'text/html' }
-      });
+      // Return success response with CORS headers
+      if (req.method === 'GET') {
+        // Return HTML for direct browser access (email links)
+        return new Response(`
+          <html>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+              <h1 style="color: #16a34a;">✅ Subscription Approved!</h1>
+              <p>Subscription ${subscriptionId} has been approved successfully.</p>
+              <p>The user will be notified automatically and VPN access has been created.</p>
+              <a href="https://e69ef03d-f51d-48e0-ac3f-fd85280ecf09.lovableproject.com/admin/users" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+                Go to Admin Panel
+              </a>
+            </body>
+          </html>
+        `, {
+          headers: { 'Content-Type': 'text/html', ...corsHeaders }
+        });
+      } else {
+        // Return JSON for frontend calls
+        return new Response(JSON.stringify({ success: true, message: 'Subscription approved successfully' }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
     }
 
-    return new Response('Invalid action', { status: 400 });
+    return new Response('Invalid action', { status: 400, headers: corsHeaders });
   } catch (error) {
     console.error('Approval error:', error);
-    return new Response(`Error: ${error.message}`, { status: 500 });
+    return new Response(`Error: ${error.message}`, { status: 500, headers: corsHeaders });
   }
 };
 
