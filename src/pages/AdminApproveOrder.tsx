@@ -23,51 +23,41 @@ const AdminApproveOrder = () => {
 
   const approveSubscription = async (subscriptionId: string) => {
     try {
-      console.log('ADMIN_APPROVE: Approving subscription:', subscriptionId);
+      console.log('ADMIN_APPROVE: Starting approval process for subscription:', subscriptionId);
 
-      // Get subscription details
-      const { data: subscription, error: fetchError } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('id', subscriptionId)
-        .single();
-
-      if (fetchError || !subscription) {
-        throw new Error('Subscription not found');
+      // Get URL parameters to extract token
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      
+      if (!token || token === 'null') {
+        throw new Error('Invalid or missing approval token');
       }
 
-      // Update subscription status
-      const { error: updateError } = await supabase
-        .from('subscriptions')
-        .update({
-          status: 'paid',
-          admin_decision: 'approved',
-          admin_decided_at: new Date().toISOString()
-        })
-        .eq('id', subscriptionId);
+      // Call the edge function with proper URL parameters instead of body
+      const approvalUrl = `https://feamvyruipxtafzhptkh.supabase.co/functions/v1/admin-approve-subscription?id=${subscriptionId}&action=approve&token=${token}`;
+      
+      const response = await fetch(approvalUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
 
-      if (updateError) {
-        throw new Error('Failed to update subscription status');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Approval failed: ${errorText}`);
       }
 
-      // Send admin approval edge function call
-      try {
-        await supabase.functions.invoke('admin-approve-subscription', {
-          body: { subscriptionId }
-        });
-      } catch (functionError) {
-        console.error('ADMIN_APPROVE: VPN creation failed:', functionError);
-        // Don't fail the approval for VPN creation issues
-      }
-
+      console.log('ADMIN_APPROVE: Subscription approval completed successfully');
+      
       setResult({ 
         success: true, 
-        message: 'Subscription approved successfully! VPN user will be created shortly.' 
+        message: 'Subscription approved successfully! VPN user has been created and user notified.' 
       });
 
       // Redirect to success page after 3 seconds
       setTimeout(() => {
-        navigate('/admin/dashboard');
+        navigate('/admin/users');
       }, 3000);
 
     } catch (error) {
