@@ -62,6 +62,13 @@ const AdminWebhook = () => {
   const [method, setMethod] = useState('POST');
   const [headersText, setHeadersText] = useState('{}');
   const [isEnabled, setIsEnabled] = useState(true);
+  
+  // New parameter form states
+  const [newParamName, setNewParamName] = useState('');
+  const [newParamType, setNewParamType] = useState('string');
+  const [newParamSource, setNewParamSource] = useState('');
+  const [newParamCustomValue, setNewParamCustomValue] = useState('');
+  const [showAddParam, setShowAddParam] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -72,7 +79,20 @@ const AdminWebhook = () => {
       setLoading(true);
       console.log('Loading webhook data...');
       
-      // Create a service client that bypasses RLS for admin access
+      // Check admin session first
+      const adminSession = localStorage.getItem('admin_session');
+      if (!adminSession) {
+        console.error('No admin session found');
+        toast({
+          title: 'Authentication Error',
+          description: 'Please log in as admin first',
+          variant: 'destructive'
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Create service client for admin operations
       const { createClient } = await import('@supabase/supabase-js');
       const serviceClient = createClient(
         'https://feamvyruipxtafzhptkh.supabase.co',
@@ -241,15 +261,26 @@ const AdminWebhook = () => {
         is_enabled: isEnabled
       };
 
+      // Use service client for admin operations
+      const { createClient } = await import('@supabase/supabase-js');
+      const serviceClient = createClient(
+        'https://feamvyruipxtafzhptkh.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+      );
+
       if (config) {
-        await supabase
+        const { error } = await serviceClient
           .from('webhook_config')
           .update(configData)
           .eq('id', config.id);
+        
+        if (error) throw error;
       } else {
-        await supabase
+        const { error } = await serviceClient
           .from('webhook_config')
           .insert(configData);
+        
+        if (error) throw error;
       }
 
       toast({
@@ -262,7 +293,7 @@ const AdminWebhook = () => {
       console.error('Error saving webhook config:', error);
       toast({
         title: 'Error',
-        description: 'Failed to save webhook configuration',
+        description: `Failed to save webhook configuration: ${error.message}`,
         variant: 'destructive'
       });
     }
@@ -270,7 +301,14 @@ const AdminWebhook = () => {
 
   const toggleTrigger = async (triggerId: string, enabled: boolean) => {
     try {
-      const { error } = await supabase
+      // Use service client for admin operations
+      const { createClient } = await import('@supabase/supabase-js');
+      const serviceClient = createClient(
+        'https://feamvyruipxtafzhptkh.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+      );
+
+      const { error } = await serviceClient
         .from('webhook_triggers')
         .update({ is_enabled: enabled })
         .eq('id', triggerId);
@@ -289,7 +327,7 @@ const AdminWebhook = () => {
       console.error('Error updating trigger:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update trigger',
+        description: `Failed to update trigger: ${error.message}`,
         variant: 'destructive'
       });
     }
@@ -297,7 +335,14 @@ const AdminWebhook = () => {
 
   const togglePayloadParam = async (paramId: string, enabled: boolean) => {
     try {
-      const { error } = await supabase
+      // Use service client for admin operations
+      const { createClient } = await import('@supabase/supabase-js');
+      const serviceClient = createClient(
+        'https://feamvyruipxtafzhptkh.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+      );
+
+      const { error } = await serviceClient
         .from('webhook_payload_config')
         .update({ is_enabled: enabled })
         .eq('id', paramId);
@@ -316,7 +361,102 @@ const AdminWebhook = () => {
       console.error('Error updating payload parameter:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update payload parameter',
+        description: `Failed to update payload parameter: ${error.message}`,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const addCustomParameter = async () => {
+    try {
+      if (!newParamName.trim()) {
+        toast({
+          title: 'Error',
+          description: 'Parameter name is required',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      if (!config) {
+        toast({
+          title: 'Error',
+          description: 'Please save webhook configuration first',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Use service client for admin operations
+      const { createClient } = await import('@supabase/supabase-js');
+      const serviceClient = createClient(
+        'https://feamvyruipxtafzhptkh.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+      );
+
+      const { error } = await serviceClient
+        .from('webhook_payload_config')
+        .insert({
+          webhook_config_id: config.id,
+          parameter_name: newParamName,
+          parameter_type: newParamType,
+          parameter_source: newParamSource.trim() || null,
+          custom_value: newParamCustomValue.trim() || null,
+          is_enabled: true
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Custom parameter added'
+      });
+
+      // Reset form
+      setNewParamName('');
+      setNewParamType('string');
+      setNewParamSource('');
+      setNewParamCustomValue('');
+      setShowAddParam(false);
+
+      loadData();
+    } catch (error) {
+      console.error('Error adding custom parameter:', error);
+      toast({
+        title: 'Error',
+        description: `Failed to add parameter: ${error.message}`,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const deleteParameter = async (paramId: string) => {
+    try {
+      // Use service client for admin operations
+      const { createClient } = await import('@supabase/supabase-js');
+      const serviceClient = createClient(
+        'https://feamvyruipxtafzhptkh.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+      );
+
+      const { error } = await serviceClient
+        .from('webhook_payload_config')
+        .delete()
+        .eq('id', paramId);
+
+      if (error) throw error;
+
+      setPayloadConfig(prev => prev.filter(p => p.id !== paramId));
+
+      toast({
+        title: 'Success',
+        description: 'Parameter deleted'
+      });
+    } catch (error) {
+      console.error('Error deleting parameter:', error);
+      toast({
+        title: 'Error',
+        description: `Failed to delete parameter: ${error.message}`,
         variant: 'destructive'
       });
     }
@@ -326,6 +466,15 @@ const AdminWebhook = () => {
     try {
       setTesting(true);
 
+      if (!webhookUrl || webhookUrl.trim() === '') {
+        toast({
+          title: 'Test Failed',
+          description: 'Please configure a webhook URL first',
+          variant: 'destructive'
+        });
+        return;
+      }
+
       const testPayload = {
         type: 'test',
         webhook_type: 'test',
@@ -334,28 +483,38 @@ const AdminWebhook = () => {
         email: 'test@example.com',
         amount: 100000,
         payment_method: 'test',
+        plan_name: 'Test Plan',
+        panel_name: 'Test Panel',
         created_at: new Date().toISOString()
       };
+
+      console.log('Testing webhook with payload:', testPayload);
 
       const { data, error } = await supabase.functions.invoke('send-webhook-notification', {
         body: testPayload
       });
 
+      console.log('Webhook test response:', { data, error });
+
       if (error) {
-        throw error;
+        throw new Error(`Edge function error: ${error.message}`);
       }
 
-      toast({
-        title: 'Test Successful',
-        description: 'Webhook test completed successfully'
-      });
+      if (data?.success) {
+        toast({
+          title: 'Test Successful',
+          description: 'Webhook test completed successfully'
+        });
+      } else {
+        throw new Error(data?.error || 'Unknown webhook error');
+      }
 
       loadData(); // Reload to show new log entry
     } catch (error) {
       console.error('Error testing webhook:', error);
       toast({
         title: 'Test Failed',
-        description: 'Webhook test failed',
+        description: `Webhook test failed: ${error.message}`,
         variant: 'destructive'
       });
     } finally {
@@ -368,16 +527,48 @@ const AdminWebhook = () => {
     const preview: any = {};
     
     enabledParams.forEach(param => {
-      if (param.parameter_type === 'string') {
-        preview[param.parameter_name] = param.custom_value || `sample_${param.parameter_name}`;
-      } else if (param.parameter_type === 'number') {
-        preview[param.parameter_name] = param.custom_value ? Number(param.custom_value) : 123;
-      } else if (param.parameter_type === 'boolean') {
-        preview[param.parameter_name] = param.custom_value === 'true';
+      if (param.parameter_source) {
+        // Use source field name as sample value
+        preview[param.parameter_name] = `sample_${param.parameter_source}`;
+      } else if (param.custom_value) {
+        // Use custom value
+        if (param.parameter_type === 'number') {
+          preview[param.parameter_name] = Number(param.custom_value);
+        } else if (param.parameter_type === 'boolean') {
+          preview[param.parameter_name] = param.custom_value === 'true';
+        } else {
+          preview[param.parameter_name] = param.custom_value;
+        }
       } else {
-        preview[param.parameter_name] = param.custom_value || 'sample_value';
+        // Default sample values based on type
+        if (param.parameter_type === 'string') {
+          preview[param.parameter_name] = `sample_${param.parameter_name}`;
+        } else if (param.parameter_type === 'number') {
+          preview[param.parameter_name] = 123;
+        } else if (param.parameter_type === 'boolean') {
+          preview[param.parameter_name] = true;
+        } else {
+          preview[param.parameter_name] = 'sample_value';
+        }
       }
     });
+
+    // Add sample manual payment data if manual_payment_approval trigger exists
+    if (triggers.some(t => t.trigger_name === 'manual_payment_approval' && t.is_enabled)) {
+      preview.manual_payment_data = {
+        approve_link: "https://your-domain.com/admin/approve-order/12345?token=abc123",
+        reject_link: "https://your-domain.com/admin/reject-order/12345?token=abc123",
+        receipt_url: "https://your-storage.com/receipts/receipt-12345.jpg",
+        subscription_data: {
+          username: "sample_user",
+          mobile: "09123456789",
+          email: "user@example.com",
+          plan_name: "Premium Plan",
+          panel_name: "Server 1",
+          amount: 250000
+        }
+      };
+    }
 
     return preview;
   };
@@ -513,21 +704,119 @@ const AdminWebhook = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {payloadConfig.map((param) => (
-                      <div key={param.id} className="flex items-center justify-between p-2 border rounded">
-                        <div>
-                          <span className="font-medium">{param.parameter_name}</span>
-                          <Badge variant="outline" className="ml-2">
-                            {param.parameter_type}
-                          </Badge>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-medium">Parameters</h4>
+                      <Button onClick={() => setShowAddParam(true)} size="sm">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Parameter
+                      </Button>
+                    </div>
+                    
+                    {showAddParam && (
+                      <Card className="p-4 border-dashed">
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="param-name">Parameter Name</Label>
+                              <Input
+                                id="param-name"
+                                value={newParamName}
+                                onChange={(e) => setNewParamName(e.target.value)}
+                                placeholder="custom_field"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="param-type">Type</Label>
+                              <Select value={newParamType} onValueChange={setNewParamType}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="string">String</SelectItem>
+                                  <SelectItem value="number">Number</SelectItem>
+                                  <SelectItem value="boolean">Boolean</SelectItem>
+                                  <SelectItem value="system">System</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="param-source">Source Field (optional)</Label>
+                              <Input
+                                id="param-source"
+                                value={newParamSource}
+                                onChange={(e) => setNewParamSource(e.target.value)}
+                                placeholder="subscription_id"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="param-custom">Custom Value (optional)</Label>
+                              <Input
+                                id="param-custom"
+                                value={newParamCustomValue}
+                                onChange={(e) => setNewParamCustomValue(e.target.value)}
+                                placeholder="Fixed value"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <Button onClick={addCustomParameter} size="sm">
+                              Add Parameter
+                            </Button>
+                            <Button 
+                              onClick={() => setShowAddParam(false)} 
+                              variant="outline" 
+                              size="sm"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
                         </div>
-                        <Switch
-                          checked={param.is_enabled}
-                          onCheckedChange={(checked) => togglePayloadParam(param.id, checked)}
-                        />
-                      </div>
-                    ))}
+                      </Card>
+                    )}
+                    
+                    <div className="space-y-2">
+                      {payloadConfig.map((param) => (
+                        <div key={param.id} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{param.parameter_name}</span>
+                              <Badge variant="outline">
+                                {param.parameter_type}
+                              </Badge>
+                              {param.parameter_source && (
+                                <Badge variant="secondary" className="text-xs">
+                                  from: {param.parameter_source}
+                                </Badge>
+                              )}
+                              {param.custom_value && (
+                                <Badge variant="secondary" className="text-xs">
+                                  value: {param.custom_value}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={param.is_enabled}
+                              onCheckedChange={(checked) => togglePayloadParam(param.id, checked)}
+                            />
+                            <Button
+                              onClick={() => deleteParameter(param.id)}
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -540,7 +829,7 @@ const AdminWebhook = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <pre className="bg-muted p-4 rounded text-sm overflow-auto">
+                  <pre className="bg-muted p-4 rounded text-sm overflow-auto max-h-96">
                     {JSON.stringify(generatePreview(), null, 2)}
                   </pre>
                 </CardContent>

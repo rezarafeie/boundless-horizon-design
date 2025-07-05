@@ -41,22 +41,17 @@ export const useAdminAuth = () => {
         return;
       }
 
-      // Sign in admin user to Supabase for proper RLS context
-      console.log('ADMIN AUTH: Setting up Supabase auth context');
+      // Create service client for admin operations (bypasses RLS)
+      console.log('ADMIN AUTH: Setting up admin database access');
       
-      // Create admin auth session using Supabase
-      const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+      const { createClient } = await import('@supabase/supabase-js');
+      const adminClient = createClient(
+        'https://feamvyruipxtafzhptkh.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+      );
       
-      if (authError) {
-        console.error('ADMIN AUTH: Failed to create auth session:', authError);
-      } else {
-        console.log('ADMIN AUTH: Auth session created successfully');
-        setUser(authData.user);
-        setSession(authData.session);
-      }
-      
-      // Verify admin user exists in database (bypass RLS by using service role context)
-      const { data: adminData, error } = await supabase
+      // Verify admin user exists in database
+      const { data: adminData, error } = await adminClient
         .from('admin_users')
         .select('*')
         .eq('user_id', 'a4148578-bcbd-4512-906e-4832f94bdb46')
@@ -102,9 +97,6 @@ export const useAdminAuth = () => {
   const signOut = async () => {
     console.log('ADMIN AUTH: Signing out');
     localStorage.removeItem('admin_session');
-    
-    // Sign out from Supabase auth as well
-    await supabase.auth.signOut();
     
     setAdminUser(null);
     setIsAuthenticated(false);

@@ -192,14 +192,14 @@ serve(async (req) => {
         };
 
         // Add payment verification data for manual approvals
-        if (subscription.receipt_image_url) {
-          finalPayload.payment_verification = {
-            receipt_uploaded: true,
-            receipt_url: finalPayload.receipt_url,
-            requires_manual_approval: true,
-            admin_decision_required: subscription.admin_decision === null
-          };
-        }
+        finalPayload.payment_verification = {
+          receipt_uploaded: !!subscription.receipt_image_url,
+          receipt_url: finalPayload.receipt_url || null,
+          requires_manual_approval: true,
+          admin_decision_required: subscription.admin_decision === null,
+          amount_toman: subscription.price_toman,
+          payment_method: 'manual_transfer'
+        };
       }
     }
     
