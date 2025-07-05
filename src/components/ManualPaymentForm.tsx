@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Copy, CheckCircle, AlertCircle, Loader, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { WebhookService } from '@/utils/webhookUtils';
+
 
 interface ManualPaymentFormProps {
   amount: number;
@@ -186,73 +186,39 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
 
       console.log('MANUAL_PAYMENT: Database update successful:', updateData);
 
-      // Send webhook notification with complete subscription data
+      // Send webhook notification using unified admin system
       try {
-        // Fetch complete subscription data from database
-        const { data: fullSubscription, error: fetchError } = await supabase
-          .from('subscriptions')
-          .select(`
-            *,
-            subscription_plans!inner(
-              name_en,
-              plan_id,
-              assigned_panel_id,
-              panel_servers!inner(
-                name,
-                type,
-                panel_url,
-                country_en
-              )
-            )
-          `)
-          .eq('id', subscriptionId)
-          .single();
-
-        if (fetchError || !fullSubscription) {
-          console.error('MANUAL_PAYMENT: Failed to fetch complete subscription data:', fetchError);
-        }
-
-        const webhookPayload = {
-          type: 'new_subscription' as const,
-          webhook_type: 'manual_payment_approval' as const,
-          subscription_id: subscriptionId,
-          username: fullSubscription?.username || `user_${mobile}`,
-          mobile: mobile,
-          email: fullSubscription?.email || null,
-          amount: amount,
-          payment_method: 'manual',
-          receipt_url: receiptUrl,
-          approve_link: `https://bnets.co/admin/approve-order/${subscriptionId}`,
-          reject_link: `https://bnets.co/admin/reject-order/${subscriptionId}`,
-          // Complete subscription data
-          subscription_url: fullSubscription?.subscription_url || null,
-          plan_name: fullSubscription?.subscription_plans?.name_en || 'Unknown Plan',
-          plan_id: fullSubscription?.subscription_plans?.plan_id || 'unknown',
-          panel_name: fullSubscription?.subscription_plans?.panel_servers?.name || 'Unknown Panel',
-          panel_type: fullSubscription?.subscription_plans?.panel_servers?.type || 'unknown',
-          panel_url: fullSubscription?.subscription_plans?.panel_servers?.panel_url || null,
-          panel_country: fullSubscription?.subscription_plans?.panel_servers?.country_en || 'Unknown',
-          data_limit_gb: fullSubscription?.data_limit_gb || 0,
-          duration_days: fullSubscription?.duration_days || 0,
-          expire_at: fullSubscription?.expire_at || null,
-          protocol: fullSubscription?.protocol || null,
-          status: fullSubscription?.status || 'pending',
-          created_at: fullSubscription?.created_at || new Date().toISOString()
-        };
-
-        const webhookResult = await WebhookService.sendWithRetry(webhookPayload);
+        console.log('MANUAL_PAYMENT: Sending webhook notification via unified system');
         
-        if (!webhookResult.success) {
-          console.error('MANUAL_PAYMENT: Webhook notification failed after retries:', webhookResult.error);
-          // Don't fail the payment for webhook issues, but show warning
+        const { data: webhookResponse, error: webhookError } = await supabase.functions.invoke('send-webhook-notification', {
+          body: {
+            type: 'new_subscription',
+            webhook_type: 'manual_payment_approval',
+            subscription_id: subscriptionId,
+            username: updateData[0]?.username || `user_${mobile}`,
+            mobile: mobile,
+            email: updateData[0]?.email || null,
+            amount: amount,
+            payment_method: 'manual',
+            receipt_url: receiptUrl,
+            data_limit_gb: updateData[0]?.data_limit_gb || 0,
+            duration_days: updateData[0]?.duration_days || 0,
+            created_at: updateData[0]?.created_at || new Date().toISOString()
+          }
+        });
+        
+        if (webhookError) {
+          console.error('MANUAL_PAYMENT: Webhook notification failed:', webhookError);
           toast({
             title: language === 'fa' ? 'هشدار' : 'Warning',
             description: language === 'fa' ? 
               'پرداخت ثبت شد اما اطلاع‌رسانی به ادمین ممکن است با تأخیر باشد' : 
               'Payment recorded but admin notification may be delayed',
           });
+        } else if (webhookResponse?.success) {
+          console.log('MANUAL_PAYMENT: Webhook notification sent successfully via unified system');
         } else {
-          console.log('MANUAL_PAYMENT: Webhook notification sent successfully');
+          console.warn('MANUAL_PAYMENT: Webhook response indicates failure:', webhookResponse);
         }
       } catch (webhookError) {
         console.error('MANUAL_PAYMENT: Webhook notification error:', webhookError);

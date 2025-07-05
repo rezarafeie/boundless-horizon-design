@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { WebhookService } from '@/utils/webhookUtils';
+import { supabase } from '@/integrations/supabase/client';
 import { Loader2, CheckCircle, XCircle, Send } from 'lucide-react';
 
 export const WebhookTestTool = () => {
@@ -15,20 +15,35 @@ export const WebhookTestTool = () => {
   const testWebhook = async () => {
     setTesting(true);
     try {
-      console.log('WEBHOOK_TEST: Testing webhook connectivity...');
+      console.log('WEBHOOK_TEST: Testing webhook via unified admin system...');
       
-      const result = await WebhookService.testWebhookEndpoint();
-      setLastTestResult(result.reachable ? { success: true } : { success: false, error: result.error });
-      
-      if (result.reachable) {
+      const { data, error } = await supabase.functions.invoke('send-webhook-notification', {
+        body: {
+          type: 'test',
+          webhook_type: 'manual_admin_trigger',
+          username: 'webhook_test_user',
+          test_message: 'Admin webhook connectivity test',
+          timestamp: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        }
+      });
+
+      if (error) {
+        throw new Error(`Edge function error: ${error.message}`);
+      }
+
+      if (data?.success) {
+        setLastTestResult({ success: true });
         toast({
           title: "Webhook Test Success",
-          description: "Webhook endpoint is reachable and responding correctly",
+          description: "Webhook endpoint is reachable via admin configuration",
         });
       } else {
+        const errorMsg = data?.error || 'Unknown webhook error';
+        setLastTestResult({ success: false, error: errorMsg });
         toast({
           title: "Webhook Test Failed",
-          description: `Webhook endpoint is not reachable: ${result.error}`,
+          description: `Webhook failed: ${errorMsg}`,
           variant: "destructive"
         });
       }
@@ -104,7 +119,7 @@ export const WebhookTestTool = () => {
         </div>
 
         <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-          <strong>Webhook URL:</strong> https://rafeie.app.n8n.cloud/webhook-test/bnetswewbmailnewusernotification
+          <strong>Note:</strong> This test uses the admin webhook configuration. Configure your webhook URL in the Webhook Settings tab.
         </div>
       </CardContent>
     </Card>

@@ -259,15 +259,29 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         
         // Send webhook notification for new test user
         try {
-          console.log('FREE_TRIAL: Sending webhook notification');
+          console.log('FREE_TRIAL: Sending webhook notification for test user:', result.data.username);
+          
+          // Get the actual test user record to send proper webhook data
+          const { data: testUser } = await supabase
+            .from('test_users')
+            .select('*')
+            .eq('username', result.data.username)
+            .single();
+
           await supabase.functions.invoke('send-webhook-notification', {
             body: {
               type: 'new_test_user',
               webhook_type: 'test_account_creation',
-              test_user_id: result.data.username,
+              test_user_id: testUser?.id || result.data.panel_id,
               username: result.data.username,
               mobile: formData.phone,
               email: formData.email,
+              panel_name: result.data.panel_name,
+              panel_type: result.data.panel_type,
+              subscription_url: result.data.subscription_url,
+              data_limit_gb: result.data.data_limit ? Math.round(result.data.data_limit / (1024 * 1024 * 1024)) : 1,
+              duration_days: 7,
+              expire_at: result.data.expire,
               created_at: new Date().toISOString()
             }
           });

@@ -833,42 +833,100 @@ const AdminWebhook = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Trigger</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Response</TableHead>
-                        <TableHead>Sent At</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {logs.map((log) => (
-                        <TableRow key={log.id}>
-                          <TableCell>{log.trigger_type}</TableCell>
-                          <TableCell>
-                            {log.success ? (
-                              <Badge variant="default" className="bg-green-100 text-green-800">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Success
-                              </Badge>
-                            ) : (
-                              <Badge variant="destructive">
-                                <XCircle className="w-3 h-3 mr-1" />
-                                Failed
-                              </Badge>
+                  <div className="space-y-4">
+                    {logs.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No webhook logs found
+                      </div>
+                    ) : (
+                      logs.map((log) => (
+                        <Card key={log.id} className="border-l-4 border-l-primary/20">
+                          <CardContent className="pt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Trigger Type</Label>
+                                <p className="font-medium">{log.trigger_type}</p>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Status</Label>
+                                <div className="flex items-center gap-2">
+                                  {log.success ? (
+                                    <Badge variant="default" className="bg-green-100 text-green-800">
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Success
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="destructive">
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      Failed
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Response Status</Label>
+                                <p className="font-medium">
+                                  {log.response_status ? `HTTP ${log.response_status}` : (log.error_message || 'N/A')}
+                                </p>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Sent At</Label>
+                                <p className="font-medium text-sm">
+                                  {new Date(log.sent_at).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Webhook URL */}
+                            <div className="mb-4">
+                              <Label className="text-xs text-muted-foreground">Webhook URL</Label>
+                              <p className="font-mono text-sm bg-muted p-2 rounded">
+                                {config?.webhook_url || 'Not configured'}
+                              </p>
+                            </div>
+
+                            {/* Request Payload */}
+                            <div className="mb-4">
+                              <Label className="text-xs text-muted-foreground">Request Payload</Label>
+                              <details className="mt-1">
+                                <summary className="cursor-pointer text-sm text-primary hover:underline">
+                                  View payload ({Object.keys(log.payload || {}).length} fields)
+                                </summary>
+                                <pre className="mt-2 bg-muted p-3 rounded text-xs overflow-auto max-h-48">
+                                  {JSON.stringify(log.payload, null, 2)}
+                                </pre>
+                              </details>
+                            </div>
+
+                            {/* Response Body */}
+                            {log.response_body && (
+                              <div className="mb-4">
+                                <Label className="text-xs text-muted-foreground">Response Body</Label>
+                                <details className="mt-1">
+                                  <summary className="cursor-pointer text-sm text-primary hover:underline">
+                                    View response
+                                  </summary>
+                                  <pre className="mt-2 bg-muted p-3 rounded text-xs overflow-auto max-h-32">
+                                    {log.response_body}
+                                  </pre>
+                                </details>
+                              </div>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            {log.response_status ? `${log.response_status}` : log.error_message}
-                          </TableCell>
-                          <TableCell>
-                            {new Date(log.sent_at).toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+
+                            {/* Error Message */}
+                            {log.error_message && (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Error Message</Label>
+                                <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
+                                  {log.error_message}
+                                </p>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </div>
