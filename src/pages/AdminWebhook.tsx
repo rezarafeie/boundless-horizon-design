@@ -102,10 +102,12 @@ const AdminWebhook = () => {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
       );
       
-      // Load webhook config - get the first one or create default
+      // Load webhook config - get the most recent active one
       const { data: configData, error: configError } = await serviceClient
         .from('webhook_config')
         .select('*')
+        .eq('is_enabled', true)
+        .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
@@ -113,55 +115,92 @@ const AdminWebhook = () => {
 
       if (configData) {
         setConfig(configData);
-        setWebhookUrl(configData.webhook_url);
-        setMethod(configData.method);
+        setWebhookUrl(configData.webhook_url || '');
+        setMethod(configData.method || 'POST');
         setHeadersText(JSON.stringify(configData.headers || {}, null, 2));
         setIsEnabled(configData.is_enabled);
 
-        // Load triggers for this config
-        const { data: triggersData, error: triggersError } = await serviceClient
-          .from('webhook_triggers')
-          .select('*')
-          .eq('webhook_config_id', configData.id)
-          .order('trigger_name');
+        // Load triggers for this config with error handling
+        try {
+          const { data: triggersData, error: triggersError } = await serviceClient
+            .from('webhook_triggers')
+            .select('*')
+            .eq('webhook_config_id', configData.id)
+            .order('trigger_name');
 
-        console.log('Triggers data:', triggersData, 'Error:', triggersError);
-        if (triggersData) {
-          setTriggers(triggersData);
+          console.log('Triggers data:', triggersData, 'Error:', triggersError);
+          if (triggersData && Array.isArray(triggersData)) {
+            setTriggers(triggersData);
+          } else {
+            console.warn('No triggers found, creating default triggers');
+            await createInitialTriggers(configData.id);
+            // Retry loading triggers
+            const { data: retryTriggersData } = await serviceClient
+              .from('webhook_triggers')
+              .select('*')
+              .eq('webhook_config_id', configData.id)
+              .order('trigger_name');
+            setTriggers(retryTriggersData || []);
+          }
+        } catch (triggersError) {
+          console.error('Error loading triggers:', triggersError);
+          setTriggers([]);
         }
 
-        // Load payload config for this config
-        const { data: payloadData, error: payloadError } = await serviceClient
-          .from('webhook_payload_config')
-          .select('*')
-          .eq('webhook_config_id', configData.id)
-          .order('parameter_name');
+        // Load payload config for this config with error handling
+        try {
+          const { data: payloadData, error: payloadError } = await serviceClient
+            .from('webhook_payload_config')
+            .select('*')
+            .eq('webhook_config_id', configData.id)
+            .order('parameter_name');
 
-        console.log('Payload config data:', payloadData, 'Error:', payloadError);
-        if (payloadData) {
-          setPayloadConfig(payloadData);
+          console.log('Payload config data:', payloadData, 'Error:', payloadError);
+          if (payloadData && Array.isArray(payloadData)) {
+            setPayloadConfig(payloadData);
+          } else {
+            console.warn('No payload parameters found, creating defaults');
+            await createInitialPayloadConfig(configData.id);
+            // Retry loading payload config 
+            const { data: retryPayloadData } = await serviceClient
+              .from('webhook_payload_config')
+              .select('*')
+              .eq('webhook_config_id', configData.id)
+              .order('parameter_name');
+            setPayloadConfig(retryPayloadData || []);
+          }
+        } catch (payloadError) {
+          console.error('Error loading payload config:', payloadError);
+          setPayloadConfig([]);
         }
       } else {
         // Create initial webhook configuration if none exists
         console.log('No webhook config found, creating initial setup');
-        const { data: newConfig } = await serviceClient
-          .from('webhook_config')
-          .insert({
-            webhook_url: '',
-            method: 'POST',
-            headers: {},
-            is_enabled: false
-          })
-          .select()
-          .single();
-          
-        if (newConfig) {
-          setConfig(newConfig);
-          await createInitialWebhookSetup(newConfig.id);
-          await loadData(); // Reload with new data
-          return;
+        try {
+          const { data: newConfig, error: createError } = await serviceClient
+            .from('webhook_config')
+            .insert({
+              webhook_url: '',
+              method: 'POST',
+              headers: {},
+              is_enabled: false
+            })
+            .select()
+            .single();
+            
+          if (createError) throw createError;
+            
+          if (newConfig) {
+            setConfig(newConfig);
+            await createInitialWebhookSetup(newConfig.id);
+            await loadData(); // Reload with new data
+            return;
+          }
+        } catch (createError) {
+          console.error('Error creating initial webhook config:', createError);
         }
         
+        // Fallback to empty state
         setWebhookUrl('');
         setMethod('POST');
         setHeadersText('{}');
@@ -170,16 +209,23 @@ const AdminWebhook = () => {
         setPayloadConfig([]);
       }
 
-      // Load recent logs
-      const { data: logsData, error: logsError } = await serviceClient
-        .from('webhook_logs')
-        .select('*')
-        .order('sent_at', { ascending: false })
-        .limit(50);
+      // Load recent logs with error handling
+      try {
+        const { data: logsData, error: logsError } = await serviceClient
+          .from('webhook_logs')
+          .select('*')
+          .order('sent_at', { ascending: false })
+          .limit(50);
 
-      console.log('Logs data:', logsData, 'Error:', logsError);
-      if (logsData) {
-        setLogs(logsData);
+        console.log('Logs data:', logsData, 'Error:', logsError);
+        if (logsData && Array.isArray(logsData)) {
+          setLogs(logsData);
+        } else {
+          setLogs([]);
+        }
+      } catch (logsError) {
+        console.error('Error loading logs:', logsError);
+        setLogs([]);
       }
     } catch (error) {
       console.error('Error loading webhook data:', error);
@@ -188,12 +234,22 @@ const AdminWebhook = () => {
         description: `Failed to load webhook configuration: ${error.message}`,
         variant: 'destructive'
       });
+      
+      // Set safe defaults on error
+      setTriggers([]);
+      setPayloadConfig([]);
+      setLogs([]);
     } finally {
       setLoading(false);
     }
   };
 
   const createInitialWebhookSetup = async (configId: string) => {
+    await createInitialTriggers(configId);
+    await createInitialPayloadConfig(configId);
+  };
+
+  const createInitialTriggers = async (configId: string) => {
     // Create default triggers
     const defaultTriggers = [
       'manual_payment_approval',
@@ -201,14 +257,54 @@ const AdminWebhook = () => {
       'subscription_creation',
       'stripe_payment_success',
       'zarinpal_payment_success',
-      'subscription_update',
-      'manual_admin_trigger'
+      'subscription_update'
     ];
 
-    await supabase.from('webhook_triggers').insert(
+    const { createClient } = await import('@supabase/supabase-js');
+    const serviceClient = createClient(
+      'https://feamvyruipxtafzhptkh.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+    );
+
+    await serviceClient.from('webhook_triggers').insert(
       defaultTriggers.map(trigger => ({
         webhook_config_id: configId,
         trigger_name: trigger,
+        is_enabled: true
+      }))
+    );
+  };
+
+  const createInitialPayloadConfig = async (configId: string) => {
+    // Create default payload parameters
+    const defaultParams = [
+      { name: 'webhook_type', source: 'webhook_type' },
+      { name: 'trigger_type', source: 'type' },
+      { name: 'timestamp', source: 'created_at' },
+      { name: 'subscription_id', source: 'subscription_id' },
+      { name: 'username', source: 'username' },
+      { name: 'mobile', source: 'mobile' },
+      { name: 'email', source: 'email' },
+      { name: 'amount', source: 'price_toman' },
+      { name: 'plan_name', source: 'plan_name' },
+      { name: 'panel_name', source: 'panel_name' },
+      { name: 'data_limit_gb', source: 'data_limit_gb' },
+      { name: 'duration_days', source: 'duration_days' },
+      { name: 'status', source: 'status' }
+    ];
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const serviceClient = createClient(
+      'https://feamvyruipxtafzhptkh.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
+    );
+
+    await serviceClient.from('webhook_payload_config').insert(
+      defaultParams.map(param => ({
+        webhook_config_id: configId,
+        parameter_name: param.name,
+        parameter_type: 'system',
+        parameter_source: param.source,
         is_enabled: true
       }))
     );

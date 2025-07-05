@@ -27,7 +27,7 @@ interface WebhookTrigger {
   is_enabled: boolean;
 }
 
-export const WebhookPayloadPreview = ({ payloadConfig, triggers }: WebhookPayloadPreviewProps) => {
+export const WebhookPayloadPreview = ({ payloadConfig = [], triggers = [] }: WebhookPayloadPreviewProps) => {
   const { toast } = useToast();
   const [selectedTrigger, setSelectedTrigger] = useState<string>('');
   const [previewPayload, setPreviewPayload] = useState<any>({});
@@ -38,57 +38,65 @@ export const WebhookPayloadPreview = ({ payloadConfig, triggers }: WebhookPayloa
   }, [payloadConfig, selectedTrigger, refreshKey]);
 
   const generatePreview = () => {
-    const enabledParams = payloadConfig.filter(p => p.is_enabled);
-    const preview: any = {};
+    try {
+      const enabledParams = (payloadConfig || []).filter(p => p.is_enabled);
+      const preview: any = {};
 
-    // Add basic webhook metadata
-    preview.webhook_type = selectedTrigger || 'subscription_creation';
-    preview.trigger_type = selectedTrigger || 'subscription_creation';
-    preview.timestamp = new Date().toISOString();
+      // Add basic webhook metadata
+      preview.webhook_type = selectedTrigger || 'subscription_creation';
+      preview.trigger_type = selectedTrigger || 'subscription_creation';
+      preview.timestamp = new Date().toISOString();
 
-    // Add configured parameters
-    enabledParams.forEach(param => {
-      let value: any;
+      // Add configured parameters
+      enabledParams.forEach(param => {
+        let value: any;
 
-      if (param.parameter_source) {
-        // Generate sample data based on parameter source
-        value = generateSampleData(param.parameter_source, getDataTypeFromSource(param.parameter_source));
-      } else if (param.custom_value) {
-        // Use custom value - try to parse as JSON, fall back to string
-        try {
-          value = JSON.parse(param.custom_value);
-        } catch {
-          value = param.custom_value;
-        }
-      } else {
-        // Generate default sample based on parameter name
-        value = generateSampleData(param.parameter_name, 'text');
-      }
-
-      // Handle nested parameter names (e.g., "subscription.username")
-      if (param.parameter_name.includes('.')) {
-        const parts = param.parameter_name.split('.');
-        let current = preview;
-        
-        for (let i = 0; i < parts.length - 1; i++) {
-          if (!current[parts[i]]) {
-            current[parts[i]] = {};
+        if (param.parameter_source) {
+          // Generate sample data based on parameter source
+          value = generateSampleData(param.parameter_source, getDataTypeFromSource(param.parameter_source));
+        } else if (param.custom_value) {
+          // Use custom value - try to parse as JSON, fall back to string
+          try {
+            value = JSON.parse(param.custom_value);
+          } catch {
+            value = param.custom_value;
           }
-          current = current[parts[i]];
+        } else {
+          // Generate default sample based on parameter name
+          value = generateSampleData(param.parameter_name, 'text');
         }
-        
-        current[parts[parts.length - 1]] = value;
-      } else {
-        preview[param.parameter_name] = value;
+
+        // Handle nested parameter names (e.g., "subscription.username")
+        if (param.parameter_name.includes('.')) {
+          const parts = param.parameter_name.split('.');
+          let current = preview;
+          
+          for (let i = 0; i < parts.length - 1; i++) {
+            if (!current[parts[i]]) {
+              current[parts[i]] = {};
+            }
+            current = current[parts[i]];
+          }
+          
+          current[parts[parts.length - 1]] = value;
+        } else {
+          preview[param.parameter_name] = value;
+        }
+      });
+
+      // Add trigger-specific sample data
+      if (selectedTrigger) {
+        addTriggerSpecificData(preview, selectedTrigger);
       }
-    });
 
-    // Add trigger-specific sample data
-    if (selectedTrigger) {
-      addTriggerSpecificData(preview, selectedTrigger);
+      setPreviewPayload(preview);
+    } catch (error) {
+      console.error('Error generating preview:', error);
+      setPreviewPayload({
+        error: 'Failed to generate preview',
+        timestamp: new Date().toISOString()
+      });
     }
-
-    setPreviewPayload(preview);
   };
 
   const addTriggerSpecificData = (preview: any, triggerType: string) => {
@@ -227,8 +235,8 @@ export const WebhookPayloadPreview = ({ payloadConfig, triggers }: WebhookPayloa
     });
   };
 
-  const enabledTriggers = triggers.filter(t => t.is_enabled);
-  const enabledParams = payloadConfig.filter(p => p.is_enabled);
+  const enabledTriggers = (triggers || []).filter(t => t.is_enabled);
+  const enabledParams = (payloadConfig || []).filter(p => p.is_enabled);
 
   return (
     <Card>

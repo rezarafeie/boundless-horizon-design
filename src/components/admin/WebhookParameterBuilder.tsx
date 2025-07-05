@@ -38,7 +38,7 @@ interface WebhookPayloadConfig {
 
 export const WebhookParameterBuilder = ({ 
   webhookConfigId, 
-  payloadConfig, 
+  payloadConfig = [], 
   onParameterAdded, 
   onParameterToggled, 
   onParameterDeleted 
@@ -70,10 +70,10 @@ export const WebhookParameterBuilder = ({
   const loadDatabaseInfo = async () => {
     try {
       const tables = await getDatabaseTables();
-      setDatabaseTables(tables);
+      setDatabaseTables(tables || []);
       
       const paramSuggestions = getParameterSuggestions();
-      setSuggestions(paramSuggestions);
+      setSuggestions(paramSuggestions || []);
     } catch (error) {
       console.error('Error loading database info:', error);
       toast({
@@ -81,6 +81,8 @@ export const WebhookParameterBuilder = ({
         description: 'Failed to load database information. Using defaults.',
         variant: 'destructive'
       });
+      setDatabaseTables([]);
+      setSuggestions([]);
     }
   };
 
@@ -191,7 +193,7 @@ export const WebhookParameterBuilder = ({
       console.error('Error adding parameter:', error);
       toast({
         title: 'Error',
-        description: `Failed to add parameter: ${error.message}`,
+        description: `Failed to add parameter: ${error?.message || 'Unknown error'}`,
         variant: 'destructive'
       });
     } finally {
@@ -199,13 +201,13 @@ export const WebhookParameterBuilder = ({
     }
   };
 
-  const filteredSuggestions = suggestions.filter(s => 
-    s.parameter_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.table_name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredSuggestions = (suggestions || []).filter(s => 
+    s.parameter_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.table_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const existingParamNames = payloadConfig.map(p => p.parameter_name);
+  const existingParamNames = (payloadConfig || []).map(p => p.parameter_name);
 
   return (
     <div className="space-y-4">
@@ -443,42 +445,49 @@ export const WebhookParameterBuilder = ({
               </p>
             </Card>
           ) : (
-            payloadConfig.map((param) => (
-              <div key={param.id} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{param.parameter_name}</span>
-                    <Badge variant="outline">
-                      {param.parameter_type}
-                    </Badge>
-                    {param.parameter_source && (
-                      <Badge variant="secondary" className="text-xs">
-                        from: {param.parameter_source}
-                      </Badge>
-                    )}
-                    {param.custom_value && (
-                      <Badge variant="secondary" className="text-xs">
-                        value: {param.custom_value}
-                      </Badge>
-                    )}
+            <div className="space-y-2">
+              {payloadConfig.map((param) => (
+                <Card key={param.id} className={`p-3 ${param.is_enabled ? 'bg-background' : 'bg-muted/50'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-sm">{param.parameter_name}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {param.parameter_type}
+                        </Badge>
+                        {!param.is_enabled && (
+                          <Badge variant="secondary" className="text-xs">
+                            Disabled
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {param.parameter_source && (
+                          <span>Source: <code className="bg-muted px-1 rounded">{param.parameter_source}</code></span>
+                        )}
+                        {param.custom_value && (
+                          <span>Value: <code className="bg-muted px-1 rounded">{param.custom_value}</code></span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={param.is_enabled}
+                        onCheckedChange={(checked) => onParameterToggled(param.id, checked)}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onParameterDeleted(param.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={param.is_enabled}
-                    onCheckedChange={(checked) => onParameterToggled(param.id, checked)}
-                  />
-                  <Button
-                    onClick={() => onParameterDeleted(param.id)}
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))
+                </Card>
+              ))}
+            </div>
           )}
         </div>
       </div>
