@@ -143,6 +143,7 @@ serve(async (req) => {
             name_fa,
             description_en,
             description_fa,
+            assigned_panel_id,
             panel_servers (
               name,
               type,
@@ -199,6 +200,38 @@ serve(async (req) => {
           admin_decision_required: subscription.admin_decision === null,
           amount_toman: subscription.price_toman,
           payment_method: 'manual_transfer'
+        };
+
+        // Add manual payment specific data
+        finalPayload.manual_payment_data = {
+          subscription_id: subscription.id,
+          customer_name: subscription.username,
+          customer_mobile: subscription.mobile,
+          customer_email: subscription.email || '',
+          amount_paid: subscription.price_toman,
+          currency: 'IRR',
+          plan_details: {
+            plan_name: subscription.subscription_plans?.name_en || 'Unknown Plan',
+            plan_name_fa: subscription.subscription_plans?.name_fa || 'نامشخص',
+            data_limit_gb: subscription.data_limit_gb,
+            duration_days: subscription.duration_days,
+            panel_name: subscription.subscription_plans?.panel_servers?.name || 'Unknown Panel',
+            panel_country: subscription.subscription_plans?.panel_servers?.country_en || 'Unknown'
+          },
+          admin_actions: {
+            approve_url: finalPayload.approve_link,
+            reject_url: finalPayload.reject_link,
+            admin_dashboard_url: `${baseUrl}/admin/users`,
+            subscription_management_url: `${baseUrl}/admin/users?search=${subscription.username}`
+          },
+          receipt_details: {
+            receipt_uploaded: !!subscription.receipt_image_url,
+            receipt_url: finalPayload.receipt_url || null,
+            receipt_filename: subscription.receipt_image_url ? subscription.receipt_image_url.split('/').pop() : null
+          },
+          created_at: subscription.created_at,
+          status: subscription.status,
+          admin_decision_pending: subscription.admin_decision === null
         };
       }
     }
