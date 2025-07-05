@@ -71,47 +71,64 @@ const AdminWebhook = () => {
     try {
       setLoading(true);
       
-      // Load webhook config
-      const { data: configData } = await supabase
+      // Load webhook config - get the first one or create default
+      const { data: configData, error: configError } = await supabase
         .from('webhook_config')
         .select('*')
+        .limit(1)
         .maybeSingle();
+
+      console.log('Webhook config data:', configData, 'Error:', configError);
 
       if (configData) {
         setConfig(configData);
         setWebhookUrl(configData.webhook_url);
         setMethod(configData.method);
-        setHeadersText(JSON.stringify(configData.headers, null, 2));
+        setHeadersText(JSON.stringify(configData.headers || {}, null, 2));
         setIsEnabled(configData.is_enabled);
-      }
 
-      // Load triggers
-      const { data: triggersData } = await supabase
-        .from('webhook_triggers')
-        .select('*')
-        .order('trigger_name');
+        // Load triggers for this config
+        const { data: triggersData, error: triggersError } = await supabase
+          .from('webhook_triggers')
+          .select('*')
+          .eq('webhook_config_id', configData.id)
+          .order('trigger_name');
 
-      if (triggersData) {
-        setTriggers(triggersData);
-      }
+        console.log('Triggers data:', triggersData, 'Error:', triggersError);
+        if (triggersData) {
+          setTriggers(triggersData);
+        }
 
-      // Load payload config
-      const { data: payloadData } = await supabase
-        .from('webhook_payload_config')
-        .select('*')
-        .order('parameter_name');
+        // Load payload config for this config
+        const { data: payloadData, error: payloadError } = await supabase
+          .from('webhook_payload_config')
+          .select('*')
+          .eq('webhook_config_id', configData.id)
+          .order('parameter_name');
 
-      if (payloadData) {
-        setPayloadConfig(payloadData);
+        console.log('Payload config data:', payloadData, 'Error:', payloadError);
+        if (payloadData) {
+          setPayloadConfig(payloadData);
+        }
+      } else {
+        // No config exists, set defaults
+        console.log('No webhook config found, setting defaults');
+        setWebhookUrl('');
+        setMethod('POST');
+        setHeadersText('{}');
+        setIsEnabled(true);
+        setTriggers([]);
+        setPayloadConfig([]);
       }
 
       // Load recent logs
-      const { data: logsData } = await supabase
+      const { data: logsData, error: logsError } = await supabase
         .from('webhook_logs')
         .select('*')
         .order('sent_at', { ascending: false })
         .limit(50);
 
+      console.log('Logs data:', logsData, 'Error:', logsError);
       if (logsData) {
         setLogs(logsData);
       }
@@ -119,7 +136,7 @@ const AdminWebhook = () => {
       console.error('Error loading webhook data:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load webhook configuration',
+        description: `Failed to load webhook configuration: ${error.message}`,
         variant: 'destructive'
       });
     } finally {
@@ -177,10 +194,12 @@ const AdminWebhook = () => {
 
   const toggleTrigger = async (triggerId: string, enabled: boolean) => {
     try {
-      await supabase
+      const { error } = await supabase
         .from('webhook_triggers')
         .update({ is_enabled: enabled })
         .eq('id', triggerId);
+
+      if (error) throw error;
 
       setTriggers(prev => prev.map(t => 
         t.id === triggerId ? { ...t, is_enabled: enabled } : t
@@ -195,6 +214,33 @@ const AdminWebhook = () => {
       toast({
         title: 'Error',
         description: 'Failed to update trigger',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const togglePayloadParam = async (paramId: string, enabled: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('webhook_payload_config')
+        .update({ is_enabled: enabled })
+        .eq('id', paramId);
+
+      if (error) throw error;
+
+      setPayloadConfig(prev => prev.map(p => 
+        p.id === paramId ? { ...p, is_enabled: enabled } : p
+      ));
+
+      toast({
+        title: 'Success',
+        description: `Parameter ${enabled ? 'enabled' : 'disabled'}`
+      });
+    } catch (error) {
+      console.error('Error updating payload parameter:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update payload parameter',
         variant: 'destructive'
       });
     }
@@ -358,14 +404,18 @@ const AdminWebhook = () => {
                 <div className="space-y-4">
                   {triggers.map((trigger) => (
                     <div key={trigger.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div>
-                        <h4 className="font-medium">{trigger.trigger_name}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {trigger.trigger_name === 'new_subscription' && 'Triggered when a new subscription is created'}
-                          {trigger.trigger_name === 'new_test_user' && 'Triggered when a new test user is created'}
-                          {trigger.trigger_name === 'payment_pending' && 'Triggered when manual payment needs approval'}
-                        </p>
-                      </div>
+                        <div>
+                          <h4 className="font-medium">{trigger.trigger_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {trigger.trigger_name === 'manual_payment_approval' && 'Triggered when manual payment needs admin approval'}
+                            {trigger.trigger_name === 'test_account_creation' && 'Triggered when a new test user account is created'}
+                            {trigger.trigger_name === 'subscription_creation' && 'Triggered when a new subscription is created'}
+                            {trigger.trigger_name === 'stripe_payment_success' && 'Triggered when Stripe payment succeeds'}
+                            {trigger.trigger_name === 'zarinpal_payment_success' && 'Triggered when ZarinPal payment succeeds'}
+                            {trigger.trigger_name === 'subscription_update' && 'Triggered when subscription is updated'}
+                            {trigger.trigger_name === 'manual_admin_trigger' && 'Manually triggered by admin'}
+                          </p>
+                        </div>
                       <Switch
                         checked={trigger.is_enabled}
                         onCheckedChange={(checked) => toggleTrigger(trigger.id, checked)}
@@ -398,12 +448,7 @@ const AdminWebhook = () => {
                         </div>
                         <Switch
                           checked={param.is_enabled}
-                          onCheckedChange={(checked) => {
-                            // Update payload config - simplified for demo
-                            setPayloadConfig(prev => prev.map(p => 
-                              p.id === param.id ? { ...p, is_enabled: checked } : p
-                            ));
-                          }}
+                          onCheckedChange={(checked) => togglePayloadParam(param.id, checked)}
                         />
                       </div>
                     ))}
