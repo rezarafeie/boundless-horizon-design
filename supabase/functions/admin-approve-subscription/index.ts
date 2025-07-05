@@ -103,18 +103,50 @@ const handler = async (req: Request): Promise<Response> => {
         console.log('ADMIN_APPROVE: Creating VPN user for approved subscription:', subscriptionId);
         
         if (subscription.plan_id) {
+          // First get the plan data to determine panel type
+          console.log('ADMIN_APPROVE: Fetching plan data for plan_id:', subscription.plan_id);
+          
+          const { data: plan, error: planError } = await supabase
+            .from('subscription_plans')
+            .select('api_type')
+            .eq('id', subscription.plan_id)
+            .maybeSingle();
+
+          if (planError) {
+            console.error('ADMIN_APPROVE: Error fetching plan data:', planError);
+            throw new Error(`Failed to fetch plan data: ${planError.message}`);
+          }
+
+          if (!plan) {
+            console.error('ADMIN_APPROVE: Plan not found for id:', subscription.plan_id);
+            throw new Error('Subscription plan not found');
+          }
+
+          if (!plan.api_type) {
+            console.error('ADMIN_APPROVE: Plan missing api_type:', plan);
+            throw new Error('Plan api_type not configured');
+          }
+
+          console.log('ADMIN_APPROVE: Plan api_type:', plan.api_type);
+          
           const { data: vpnResult, error: vpnError } = await supabase.functions.invoke('create-user-direct', {
             body: {
-              planId: subscription.plan_id,
               username: subscription.username,
               dataLimitGB: subscription.data_limit_gb,
               durationDays: subscription.duration_days,
               notes: `Admin approved subscription - Manual payment verified`,
-              subscriptionId: subscription.id
+              panelType: plan.api_type, // This is the key fix - use api_type as panelType
+              subscriptionId: subscription.id,
+              isFreeTriaL: false
             }
           });
 
           console.log('ADMIN_APPROVE: VPN creation result:', vpnResult);
+
+          if (vpnError) {
+            console.error('ADMIN_APPROVE: VPN creation function error:', vpnError);
+            throw new Error(`VPN creation failed: ${vpnError.message}`);
+          }
 
           if (vpnResult?.success && vpnResult?.data?.subscription_url) {
             // Update subscription with VPN details
@@ -130,11 +162,17 @@ const handler = async (req: Request): Promise<Response> => {
 
             subscription.subscription_url = vpnResult.data.subscription_url;
             subscription.marzban_user_created = true;
+            
+            console.log('ADMIN_APPROVE: VPN user created successfully, subscription URL:', vpnResult.data.subscription_url);
+          } else {
+            console.error('ADMIN_APPROVE: VPN creation did not return expected data:', vpnResult);
+            throw new Error('VPN creation succeeded but no subscription URL returned');
           }
         }
       } catch (vpnError) {
         console.error('ADMIN_APPROVE: VPN creation failed:', vpnError);
-        // Don't fail the approval for VPN issues
+        // Don't fail the approval for VPN issues - but log the error clearly
+        console.error('ADMIN_APPROVE: Subscription approved but VPN creation failed for subscription:', subscriptionId);
       }
 
       // Send webhook notification for approved subscription
