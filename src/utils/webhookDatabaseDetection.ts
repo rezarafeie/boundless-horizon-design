@@ -26,13 +26,151 @@ export interface ParameterSuggestion {
 // Get all available database tables and their columns
 export const getDatabaseTables = async (): Promise<DatabaseTable[]> => {
   try {
-    // For now, return predefined tables. In future, this could be enhanced
-    // to dynamically fetch from information_schema if needed
-    return getPredefinedTables();
+    console.log('Loading enhanced predefined database tables...');
+    
+    // For now, use enhanced predefined tables with complete schema information
+    // In the future, this could be enhanced with a server-side function to query information_schema
+    const tables = getEnhancedPredefinedTables();
+    console.log(`Loaded ${tables.length} database tables with enhanced schema information`);
+    
+    return tables;
   } catch (error) {
     console.error('Error in getDatabaseTables:', error);
     return getPredefinedTables();
   }
+};
+
+// Enhanced predefined table structures with complete database schema
+const getEnhancedPredefinedTables = (): DatabaseTable[] => {
+  return [
+    {
+      table_name: 'subscriptions',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique subscription identifier' },
+        { column_name: 'username', data_type: 'text', is_nullable: false, column_default: null, description: 'VPN username for the subscription' },
+        { column_name: 'mobile', data_type: 'text', is_nullable: false, column_default: null, description: 'Customer mobile number' },
+        { column_name: 'email', data_type: 'text', is_nullable: true, column_default: null, description: 'Customer email address' },
+        { column_name: 'status', data_type: 'text', is_nullable: false, column_default: "'pending'", description: 'Current subscription status (pending, active, expired)' },
+        { column_name: 'data_limit_gb', data_type: 'integer', is_nullable: false, column_default: null, description: 'Data allowance in GB' },
+        { column_name: 'duration_days', data_type: 'integer', is_nullable: false, column_default: null, description: 'Subscription duration in days' },
+        { column_name: 'price_toman', data_type: 'integer', is_nullable: false, column_default: null, description: 'Price paid in Iranian Toman' },
+        { column_name: 'expire_at', data_type: 'timestamp', is_nullable: true, column_default: null, description: 'Subscription expiration date' },
+        { column_name: 'subscription_url', data_type: 'text', is_nullable: true, column_default: null, description: 'VPN configuration URL' },
+        { column_name: 'protocol', data_type: 'text', is_nullable: true, column_default: "'vmess'", description: 'VPN protocol (vmess, vless, trojan, etc.)' },
+        { column_name: 'plan_id', data_type: 'uuid', is_nullable: true, column_default: null, description: 'Associated subscription plan ID' },
+        { column_name: 'user_id', data_type: 'uuid', is_nullable: true, column_default: null, description: 'Associated user ID' },
+        { column_name: 'receipt_image_url', data_type: 'text', is_nullable: true, column_default: null, description: 'Receipt upload URL for manual payments' },
+        { column_name: 'admin_decision', data_type: 'text', is_nullable: true, column_default: null, description: 'Admin approval status for manual payments' },
+        { column_name: 'admin_decision_token', data_type: 'text', is_nullable: true, column_default: null, description: 'Token for admin approval/rejection links' },
+        { column_name: 'admin_decided_at', data_type: 'timestamp', is_nullable: true, column_default: null, description: 'Timestamp when admin made decision' },
+        { column_name: 'zarinpal_authority', data_type: 'text', is_nullable: true, column_default: null, description: 'Zarinpal payment authority code' },
+        { column_name: 'zarinpal_ref_id', data_type: 'text', is_nullable: true, column_default: null, description: 'Zarinpal payment reference ID' },
+        { column_name: 'marzban_user_created', data_type: 'boolean', is_nullable: true, column_default: 'false', description: 'Whether user was created in Marzban panel' },
+        { column_name: 'notes', data_type: 'text', is_nullable: true, column_default: null, description: 'Additional notes about subscription' },
+        { column_name: 'created_at', data_type: 'timestamp', is_nullable: false, column_default: 'now()', description: 'Creation timestamp' },
+        { column_name: 'updated_at', data_type: 'timestamp', is_nullable: false, column_default: 'now()', description: 'Last update timestamp' }
+      ]
+    },
+    {
+      table_name: 'subscription_plans',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique plan identifier' },
+        { column_name: 'plan_id', data_type: 'text', is_nullable: false, column_default: null, description: 'Plan identifier string' },
+        { column_name: 'name_en', data_type: 'text', is_nullable: false, column_default: null, description: 'Plan name in English' },
+        { column_name: 'name_fa', data_type: 'text', is_nullable: false, column_default: null, description: 'Plan name in Persian/Farsi' },
+        { column_name: 'description_en', data_type: 'text', is_nullable: true, column_default: null, description: 'Plan description in English' },
+        { column_name: 'description_fa', data_type: 'text', is_nullable: true, column_default: null, description: 'Plan description in Persian/Farsi' },
+        { column_name: 'price_per_gb', data_type: 'integer', is_nullable: false, column_default: null, description: 'Price per GB in Toman' },
+        { column_name: 'default_data_limit_gb', data_type: 'integer', is_nullable: false, column_default: '10', description: 'Default data limit for this plan' },
+        { column_name: 'default_duration_days', data_type: 'integer', is_nullable: false, column_default: '30', description: 'Default duration for this plan' },
+        { column_name: 'is_active', data_type: 'boolean', is_nullable: false, column_default: 'true', description: 'Whether plan is active' },
+        { column_name: 'is_visible', data_type: 'boolean', is_nullable: false, column_default: 'true', description: 'Whether plan is visible to users' },
+        { column_name: 'assigned_panel_id', data_type: 'uuid', is_nullable: true, column_default: null, description: 'Panel server assigned to this plan' },
+        { column_name: 'api_type', data_type: 'text', is_nullable: false, column_default: null, description: 'API type (marzban/marzneshin)' },
+        { column_name: 'available_countries', data_type: 'jsonb', is_nullable: true, column_default: "'[]'", description: 'Available countries for this plan' }
+      ]
+    },
+    {
+      table_name: 'panel_servers',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique panel identifier' },
+        { column_name: 'name', data_type: 'text', is_nullable: false, column_default: null, description: 'Human-readable panel name' },
+        { column_name: 'type', data_type: 'text', is_nullable: false, column_default: null, description: 'Panel software type (marzban/marzneshin)' },
+        { column_name: 'panel_url', data_type: 'text', is_nullable: false, column_default: null, description: 'Panel management URL' },
+        { column_name: 'username', data_type: 'text', is_nullable: false, column_default: null, description: 'Panel admin username' },
+        { column_name: 'password', data_type: 'text', is_nullable: false, column_default: null, description: 'Panel admin password' },
+        { column_name: 'country_en', data_type: 'text', is_nullable: false, column_default: null, description: 'Server country in English' },
+        { column_name: 'country_fa', data_type: 'text', is_nullable: false, column_default: null, description: 'Server country in Persian/Farsi' },
+        { column_name: 'is_active', data_type: 'boolean', is_nullable: false, column_default: 'true', description: 'Whether panel is active' },
+        { column_name: 'health_status', data_type: 'text', is_nullable: true, column_default: "'unknown'", description: 'Current panel health status' },
+        { column_name: 'last_health_check', data_type: 'timestamp', is_nullable: true, column_default: null, description: 'Last health check timestamp' },
+        { column_name: 'default_inbounds', data_type: 'jsonb', is_nullable: false, column_default: "'[]'", description: 'Default inbound configurations' },
+        { column_name: 'enabled_protocols', data_type: 'jsonb', is_nullable: false, column_default: null, description: 'Enabled VPN protocols' },
+        { column_name: 'panel_config_data', data_type: 'jsonb', is_nullable: true, column_default: "'{}'", description: 'Panel configuration data' }
+      ]
+    },
+    {
+      table_name: 'test_users',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique test user identifier' },
+        { column_name: 'username', data_type: 'text', is_nullable: false, column_default: null, description: 'Test user VPN username' },
+        { column_name: 'email', data_type: 'text', is_nullable: false, column_default: null, description: 'Test user email address' },
+        { column_name: 'phone_number', data_type: 'text', is_nullable: false, column_default: null, description: 'Test user phone number' },
+        { column_name: 'panel_name', data_type: 'text', is_nullable: false, column_default: null, description: 'Panel where test user was created' },
+        { column_name: 'panel_id', data_type: 'uuid', is_nullable: true, column_default: null, description: 'Associated panel ID' },
+        { column_name: 'subscription_url', data_type: 'text', is_nullable: true, column_default: null, description: 'VPN configuration URL for test user' },
+        { column_name: 'data_limit_bytes', data_type: 'bigint', is_nullable: false, column_default: '1073741824', description: 'Data limit in bytes for test user' },
+        { column_name: 'expire_date', data_type: 'timestamp', is_nullable: false, column_default: null, description: 'Test user expiration date' },
+        { column_name: 'status', data_type: 'text', is_nullable: true, column_default: "'active'", description: 'Test user status' },
+        { column_name: 'device_info', data_type: 'jsonb', is_nullable: true, column_default: "'{}'", description: 'Device information' },
+        { column_name: 'ip_address', data_type: 'inet', is_nullable: true, column_default: null, description: 'User IP address' }
+      ]
+    },
+    {
+      table_name: 'webhook_config',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique webhook config identifier' },
+        { column_name: 'webhook_url', data_type: 'text', is_nullable: false, column_default: null, description: 'Webhook destination URL' },
+        { column_name: 'method', data_type: 'text', is_nullable: false, column_default: "'POST'", description: 'HTTP method for webhook' },
+        { column_name: 'headers', data_type: 'jsonb', is_nullable: false, column_default: "'{}'", description: 'HTTP headers for webhook' },
+        { column_name: 'is_enabled', data_type: 'boolean', is_nullable: false, column_default: 'true', description: 'Whether webhook is enabled' }
+      ]
+    },
+    {
+      table_name: 'webhook_triggers',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique trigger identifier' },
+        { column_name: 'webhook_config_id', data_type: 'uuid', is_nullable: false, column_default: null, description: 'Associated webhook config ID' },
+        { column_name: 'trigger_name', data_type: 'text', is_nullable: false, column_default: null, description: 'Trigger event name' },
+        { column_name: 'is_enabled', data_type: 'boolean', is_nullable: false, column_default: 'true', description: 'Whether trigger is enabled' }
+      ]
+    },
+    {
+      table_name: 'webhook_payload_config',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique parameter identifier' },
+        { column_name: 'webhook_config_id', data_type: 'uuid', is_nullable: false, column_default: null, description: 'Associated webhook config ID' },
+        { column_name: 'parameter_name', data_type: 'text', is_nullable: false, column_default: null, description: 'Parameter name in webhook payload' },
+        { column_name: 'parameter_type', data_type: 'text', is_nullable: false, column_default: null, description: 'Parameter type (system/custom)' },
+        { column_name: 'parameter_source', data_type: 'text', is_nullable: true, column_default: null, description: 'Source field for parameter value' },
+        { column_name: 'custom_value', data_type: 'text', is_nullable: true, column_default: null, description: 'Custom static value for parameter' },
+        { column_name: 'is_enabled', data_type: 'boolean', is_nullable: false, column_default: 'true', description: 'Whether parameter is enabled' }
+      ]
+    },
+    {
+      table_name: 'payment_logs',
+      columns: [
+        { column_name: 'id', data_type: 'uuid', is_nullable: false, column_default: 'gen_random_uuid()', description: 'Unique payment log identifier' },
+        { column_name: 'subscription_id', data_type: 'uuid', is_nullable: true, column_default: null, description: 'Related subscription ID' },
+        { column_name: 'operation_type', data_type: 'text', is_nullable: false, column_default: null, description: 'Payment operation type' },
+        { column_name: 'success', data_type: 'boolean', is_nullable: true, column_default: 'false', description: 'Payment success status' },
+        { column_name: 'status_code', data_type: 'integer', is_nullable: true, column_default: null, description: 'HTTP status code' },
+        { column_name: 'error_message', data_type: 'text', is_nullable: true, column_default: null, description: 'Error message if failed' },
+        { column_name: 'request_data', data_type: 'jsonb', is_nullable: false, column_default: null, description: 'Payment request data' },
+        { column_name: 'response_data', data_type: 'jsonb', is_nullable: true, column_default: null, description: 'Payment response data' }
+      ]
+    }
+  ];
 };
 
 // Predefined table structures for webhook parameter suggestions

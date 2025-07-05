@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Trash2, Plus, TestTube, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { WebhookDebugPanel } from '@/components/admin/WebhookDebugPanel';
 import { WebhookParameterBuilder } from '@/components/admin/WebhookParameterBuilder';
+import { WebhookTestSender } from '@/components/admin/WebhookTestSender';
 import { WebhookPayloadPreview } from '@/components/admin/WebhookPayloadPreview';
 
 interface WebhookConfig {
@@ -796,20 +797,7 @@ const AdminWebhook = () => {
 
           <TabsContent value="logs">
             <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Test Webhook</CardTitle>
-                  <CardDescription>
-                    Send a test webhook to verify your configuration
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button onClick={testWebhook} disabled={testing}>
-                    <TestTube className="w-4 h-4 mr-2" />
-                    {testing ? 'Testing...' : 'Send Test Webhook'}
-                  </Button>
-                </CardContent>
-              </Card>
+              <WebhookTestSender webhookUrl={webhookUrl} />
 
               <Card>
                 <CardHeader>
