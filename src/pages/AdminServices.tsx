@@ -60,18 +60,24 @@ const AdminServices = () => {
   };
 
   const confirmDelete = async () => {
-    if (!deleteDialog.service) return;
+    if (!deleteDialog.service) {
+      console.log('DEBUG: No service selected for deletion');
+      return;
+    }
 
+    console.log('DEBUG: Starting delete process for service:', deleteDialog.service.id);
     setDeleting(true);
     try {
+      console.log('DEBUG: Calling VpnServicesService.deleteService');
       await VpnServicesService.deleteService(deleteDialog.service.id);
+      console.log('DEBUG: Delete successful');
       toast({
         title: language === 'fa' ? 'موفق' : 'Success',
         description: language === 'fa' ? 'سرویس با موفقیت حذف شد' : 'Service deleted successfully'
       });
       await loadServices();
     } catch (error) {
-      console.error('Failed to delete service:', error);
+      console.error('DEBUG: Delete failed with error:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: error instanceof Error ? error.message : 'Failed to delete service',
