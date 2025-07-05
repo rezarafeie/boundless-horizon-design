@@ -111,7 +111,8 @@ serve(async (req) => {
     }
 
     if (!triggerConfig) {
-      console.log(`WEBHOOK: Trigger ${standardizedTrigger} is not enabled or doesn't exist for config ${webhookConfig.id}`);
+      const errorMessage = `Webhook trigger '${standardizedTrigger}' is not enabled or doesn't exist for webhook config ${webhookConfig.id}. Available triggers should be configured in webhook_triggers table.`;
+      console.log(`WEBHOOK: ${errorMessage}`);
       
       // Log this as a failed attempt for debugging
       await supabase.from('webhook_logs').insert({
@@ -121,12 +122,17 @@ serve(async (req) => {
         success: false,
         response_status: null,
         response_body: null,
-        error_message: `Trigger ${standardizedTrigger} is not enabled or doesn't exist`
+        error_message: errorMessage
       });
 
       return new Response(JSON.stringify({ 
         success: false, 
-        error: `Trigger ${standardizedTrigger} is not enabled` 
+        error: errorMessage,
+        details: {
+          webhook_type: payload.webhook_type,
+          standardized_trigger: standardizedTrigger,
+          webhook_config_id: webhookConfig.id
+        }
       }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },

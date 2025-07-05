@@ -20,7 +20,7 @@ export const WebhookTestTool = () => {
       const { data, error } = await supabase.functions.invoke('send-webhook-notification', {
         body: {
           type: 'test',
-          webhook_type: 'manual_admin_trigger',
+          webhook_type: 'test',
           username: 'webhook_test_user',
           test_message: 'Admin webhook connectivity test',
           timestamp: new Date().toISOString(),
