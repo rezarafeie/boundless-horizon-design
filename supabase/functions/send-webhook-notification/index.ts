@@ -50,6 +50,22 @@ serve(async (req) => {
     const payload: WebhookPayload = await req.json();
     console.log('WEBHOOK: Received payload:', payload);
     
+    // Map legacy webhook types to standardized trigger names
+    const triggerNameMap: Record<string, string> = {
+      'testuser': 'test_account_creation',
+      'newsub': 'subscription_creation',
+      'paymentpending': 'subscription_creation',
+      'manual': 'manual_payment_approval',
+      'test': 'test',
+      'subscription_update': 'subscription_update',
+      'stripe_payment_success': 'stripe_payment_success',
+      'zarinpal_payment_success': 'zarinpal_payment_success'
+    };
+    
+    // Standardize the webhook type
+    const standardizedTrigger = triggerNameMap[payload.webhook_type] || payload.webhook_type;
+    console.log('WEBHOOK: Mapping webhook_type from', payload.webhook_type, 'to', standardizedTrigger);
+    
     // Get webhook configuration from database
     const { data: webhookConfig, error: configError } = await supabase
       .from('webhook_config')
@@ -79,7 +95,7 @@ serve(async (req) => {
       .from('webhook_triggers')
       .select('*')
       .eq('webhook_config_id', webhookConfig.id)
-      .eq('trigger_name', payload.webhook_type)
+      .eq('trigger_name', standardizedTrigger)
       .eq('is_enabled', true)
       .maybeSingle();
 
@@ -88,10 +104,10 @@ serve(async (req) => {
     }
 
     if (!triggerConfig) {
-      console.log(`WEBHOOK: Trigger ${payload.webhook_type} is not enabled or doesn't exist`);
+      console.log(`WEBHOOK: Trigger ${standardizedTrigger} is not enabled or doesn't exist`);
       return new Response(JSON.stringify({ 
         success: false, 
-        error: `Trigger ${payload.webhook_type} is not enabled` 
+        error: `Trigger ${standardizedTrigger} is not enabled` 
       }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -278,7 +294,7 @@ serve(async (req) => {
     // Log the webhook attempt
     await supabase.from('webhook_logs').insert({
       webhook_config_id: webhookConfig.id,
-      trigger_type: payload.webhook_type,
+      trigger_type: standardizedTrigger,
       payload: finalPayload,
       success: success,
       response_status: response.status,

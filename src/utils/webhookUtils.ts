@@ -2,8 +2,8 @@
 import { supabase } from '@/integrations/supabase/client';
 
 interface WebhookPayload {
-  type: 'new_subscription' | 'new_test_user';
-  webhook_type: 'testuser' | 'newsub' | 'paymentpending';
+  type: 'new_subscription' | 'new_test_user' | 'subscription_update' | 'manual_payment_approval';
+  webhook_type: 'test_account_creation' | 'subscription_creation' | 'manual_payment_approval' | 'subscription_update' | 'stripe_payment_success' | 'zarinpal_payment_success';
   subscription_id?: string;
   test_user_id?: string;
   username: string;
@@ -16,6 +16,7 @@ interface WebhookPayload {
   approve_link?: string;
   reject_link?: string;
   created_at: string;
+  [key: string]: any;
 }
 
 export class WebhookService {

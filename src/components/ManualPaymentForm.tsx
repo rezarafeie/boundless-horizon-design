@@ -214,7 +214,7 @@ const ManualPaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
 
         const webhookPayload = {
           type: 'new_subscription' as const,
-          webhook_type: 'paymentpending' as const,
+          webhook_type: 'manual_payment_approval' as const,
           subscription_id: subscriptionId,
           username: fullSubscription?.username || `user_${mobile}`,
           mobile: mobile,

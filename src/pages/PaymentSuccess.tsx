@@ -78,10 +78,10 @@ const PaymentSuccess = () => {
               const plan = fullSubscription?.subscription_plans;
               const panel = plan?.panel_servers;
               
-              await supabase.functions.invoke('send-webhook-notification', {
+              const { data: webhookData, error: webhookError } = await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_subscription',
-                  webhook_type: 'newsub',
+                  webhook_type: 'subscription_creation',
                   subscription_id: data.subscription.id,
                   username: data.subscription.username,
                   mobile: data.subscription.mobile,
@@ -230,7 +230,7 @@ const PaymentSuccess = () => {
               await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_subscription',
-                  webhook_type: 'newsub',
+                  webhook_type: 'subscription_creation',
                   subscription_id: finalSubscription.id,
                   username: finalSubscription.username,
                   mobile: finalSubscription.mobile,
@@ -326,7 +326,7 @@ const PaymentSuccess = () => {
               await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_subscription',
-                  webhook_type: 'newsub',
+                  webhook_type: 'subscription_creation',
                   subscription_id: decodedData.id,
                   username: decodedData.username,
                   mobile: decodedData.mobile,

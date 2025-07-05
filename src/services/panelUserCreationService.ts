@@ -447,7 +447,7 @@ export class PanelUserCreationService {
               await supabase.functions.invoke('send-webhook-notification', {
                 body: {
                   type: 'new_test_user',
-                  webhook_type: 'testuser',
+                  webhook_type: 'test_account_creation',
                   test_user_id: result.data.username,
                   username: result.data.username,
                   email: email,

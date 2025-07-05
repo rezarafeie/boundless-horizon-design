@@ -190,7 +190,26 @@ const AdminWebhook = () => {
     }
   };
 
-  const createInitialWebhookSetup = async (client: any, configId: string) => {
+  const createInitialWebhookSetup = async (configId: string) => {
+    // Create default triggers
+    const defaultTriggers = [
+      'manual_payment_approval',
+      'test_account_creation', 
+      'subscription_creation',
+      'stripe_payment_success',
+      'zarinpal_payment_success',
+      'subscription_update',
+      'manual_admin_trigger'
+    ];
+
+    await supabase.from('webhook_triggers').insert(
+      defaultTriggers.map(trigger => ({
+        webhook_config_id: configId,
+        trigger_name: trigger,
+        is_enabled: true
+      }))
+    );
+  };
     // Create default triggers
     const defaultTriggers = [
       'manual_payment_approval',

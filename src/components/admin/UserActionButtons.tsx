@@ -87,46 +87,42 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
     setIsSendingToAdmin(true);
     
     try {
-      console.log('📤 SEND_TO_ADMIN: Sending subscription data to webhook:', subscription.id);
+      console.log('📤 SEND_TO_ADMIN: Sending subscription data via webhook system:', subscription.id);
       
-      // Prepare comprehensive subscription data
-      const webhookData = {
-        subscription_id: subscription.id,
-        username: subscription.username,
-        mobile: subscription.mobile,
-        email: subscription.email || '',
-        status: subscription.status,
-        data_limit_gb: subscription.data_limit_gb,
-        duration_days: subscription.duration_days,
-        price_toman: subscription.price_toman,
-        plan_id: subscription.plan_id || '',
-        created_at: subscription.created_at,
-        expire_at: subscription.expire_at || '',
-        subscription_url: subscription.subscription_url || '',
-        notes: subscription.notes || '',
-        panel_info: {
-          name: subscription.subscription_plans?.panel_servers?.name || 'Unknown',
-          url: subscription.subscription_plans?.panel_servers?.panel_url || '',
-          type: subscription.subscription_plans?.panel_servers?.type || 'unknown'
+      // Send through the centralized webhook system
+      const { data, error } = await supabase.functions.invoke('send-webhook-notification', {
+        body: {
+          type: 'subscription_update',
+          webhook_type: 'subscription_update',
+          subscription_id: subscription.id,
+          username: subscription.username,
+          mobile: subscription.mobile,
+          email: subscription.email || '',
+          status: subscription.status,
+          data_limit_gb: subscription.data_limit_gb,
+          duration_days: subscription.duration_days,
+          price_toman: subscription.price_toman,
+          plan_id: subscription.plan_id || '',
+          plan_name: subscription.subscription_plans?.name_en || 'Unknown Plan',
+          panel_name: subscription.subscription_plans?.panel_servers?.name || 'Unknown Panel',
+          panel_type: subscription.subscription_plans?.panel_servers?.type || 'unknown',
+          panel_url: subscription.subscription_plans?.panel_servers?.panel_url || '',
+          expire_at: subscription.expire_at || '',
+          subscription_url: subscription.subscription_url || '',
+          notes: subscription.notes || '',
+          created_at: subscription.created_at
         }
-      };
-
-      console.log('📤 SEND_TO_ADMIN: Webhook payload:', webhookData);
-
-      // Send POST request to webhook
-      const response = await fetch('https://rafeie.app.n8n.cloud/webhook-test/bnetswewbmailnewusernotification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(webhookData)
       });
 
-      if (!response.ok) {
-        throw new Error(`Webhook request failed: ${response.status} ${response.statusText}`);
+      if (error) {
+        throw new Error(`Webhook error: ${error.message}`);
       }
 
-      console.log('✅ SEND_TO_ADMIN: Successfully sent to webhook');
+      if (!data?.success) {
+        throw new Error(`Webhook failed: ${data?.error || 'Unknown error'}`);
+      }
+
+      console.log('✅ SEND_TO_ADMIN: Successfully sent via webhook system');
 
       toast({
         title: 'Sent to Admin',
@@ -134,7 +130,7 @@ export const UserActionButtons = ({ subscription, onUpdate }: UserActionButtonsP
       });
 
     } catch (error) {
-      console.error('❌ SEND_TO_ADMIN: Error sending to webhook:', error);
+      console.error('❌ SEND_TO_ADMIN: Error sending via webhook system:', error);
       
       toast({
         title: 'Error',
