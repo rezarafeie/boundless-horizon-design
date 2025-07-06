@@ -25,19 +25,7 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
         <h3 className="text-lg font-semibold">
           {language === 'fa' ? 'اطلاعات تماس' : 'Contact Information'}
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium block mb-2">
-              {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
-            </label>
-            <input
-              type="tel"
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              value={formData.mobile}
-              onChange={(e) => onUpdateFormData('mobile', e.target.value)}
-              placeholder={language === 'fa' ? 'شماره موبایل خود را وارد کنید' : 'Enter your mobile number'}
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-4">
           <div>
             <label className="text-sm font-medium block mb-2">
               {language === 'fa' ? 'آدرس ایمیل *' : 'Email Address *'}

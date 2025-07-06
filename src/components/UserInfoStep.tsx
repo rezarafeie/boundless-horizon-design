@@ -28,10 +28,9 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
   console.log('UserInfoStep - Rendering with formData:', formData);
 
   const generateUsername = () => {
-    const prefix = 'bnets_';
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.random().toString(36).substring(2, 5);
-    return `${prefix}${timestamp}_${random}`;
+    const planId = formData.selectedPlan?.plan_id || 'default';
+    const timestamp = Math.floor(Math.random() * 10000);
+    return `bnets_${planId}_${timestamp}`;
   };
 
   const autoGenerateUsername = () => {
@@ -97,65 +96,31 @@ const UserInfoStep = ({ formData, onUpdate, appliedDiscount }: UserInfoStepProps
           {language === 'fa' ? 'اطلاعات کاربری' : 'User Information'}
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">
-              {language === 'fa' ? 'نام کاربری' : 'Username'} *
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                id="username"
-                type="text"
-                value={formData.username}
-                onChange={(e) => onUpdate('username', e.target.value.toLowerCase())}
-                placeholder={language === 'fa' ? 'نام کاربری (a-z, 0-9, _)' : 'Username (a-z, 0-9, _)'}
-                className="flex-1"
-                required
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={autoGenerateUsername}
-              >
-                {language === 'fa' ? 'تولید' : 'Generate'}
-              </Button>
+          <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">
+                {language === 'fa' ? 'نام کاربری' : 'Username'} *
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="username"
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => onUpdate('username', e.target.value.toLowerCase())}
+                  placeholder={language === 'fa' ? 'نام کاربری (a-z, 0-9, _)' : 'Username (a-z, 0-9, _)'}
+                  className="flex-1"
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={autoGenerateUsername}
+                >
+                  {language === 'fa' ? 'تولید' : 'Generate'}
+                </Button>
+              </div>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="mobile" className="text-sm font-medium">
-                {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
-                <span className="text-red-500 ml-1">*</span>
-              </Label>
-              <Input
-                id="mobile"
-                type="tel"
-                value={formData.mobile}
-                onChange={(e) => onUpdate('mobile', e.target.value)}
-                placeholder={language === 'fa' ? '09123456789' : '09123456789'}
-                className="mt-1"
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="email" className="text-sm font-medium">
-                {language === 'fa' ? 'ایمیل' : 'Email'}
-                <span className="text-red-500 ml-1">*</span>
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email || ''}
-                onChange={(e) => onUpdate('email', e.target.value)}
-                placeholder={language === 'fa' ? 'example@email.com' : 'example@email.com'}
-                className="mt-1"
-                required
-              />
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Subscription Configuration */}
