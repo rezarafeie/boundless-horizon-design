@@ -11,6 +11,7 @@ interface PaymentMethodSelectorProps {
   selectedMethod: PaymentMethod;
   onMethodChange: (method: PaymentMethod) => void;
   mobile?: string;
+  amount?: number; // Amount in Toman
 }
 
 const paymentMethods = [
@@ -55,9 +56,14 @@ const paymentMethods = [
 const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   selectedMethod,
   onMethodChange,
-  mobile
+  mobile,
+  amount = 0
 }) => {
   const { language } = useLanguage();
+  
+  // Convert Toman to USD (roughly 1 USD = 60,000 Toman)
+  const usdAmount = amount / 60000;
+  const isCryptoDisabled = usdAmount < 10;
 
   return (
     <div className="space-y-4">
@@ -74,13 +80,15 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         {paymentMethods.map((method) => {
           const Icon = method.icon;
           const isZarinpalDisabled = method.id === 'zarinpal' && !mobile?.trim();
+          const isCryptoMethodDisabled = method.id === 'crypto' && isCryptoDisabled;
+          const isMethodDisabled = !method.available || isZarinpalDisabled || isCryptoMethodDisabled;
           
           return (
             <div key={method.id} className={`flex items-center gap-3 ${language === 'fa' ? 'flex-row-reverse' : ''}`}>
               <RadioGroupItem 
                 value={method.id} 
                 id={method.id}
-                disabled={!method.available || isZarinpalDisabled}
+                disabled={isMethodDisabled}
               />
               <Label
                 htmlFor={method.id}
@@ -88,7 +96,7 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                   selectedMethod === method.id 
                     ? 'border-primary bg-primary/5' 
                     : 'border-border hover:bg-muted/50'
-                } ${!method.available || isZarinpalDisabled ? 'opacity-50 cursor-not-allowed' : ''} ${
+                } ${isMethodDisabled ? 'opacity-50 cursor-not-allowed' : ''} ${
                   language === 'fa' ? 'flex-row-reverse text-right' : ''
                 }`}
               >
@@ -101,6 +109,10 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     {isZarinpalDisabled ? (
                       <span className="text-orange-600">
                         {language === 'fa' ? 'شماره موبایل را وارد کنید تا بتوانید از زرین‌پال استفاده کنید' : 'Enter mobile number to use ZarinPal payment'}
+                      </span>
+                    ) : isCryptoMethodDisabled ? (
+                      <span className="text-orange-600">
+                        {language === 'fa' ? 'حداقل مبلغ برای پرداخت ارز دیجیتال ۱۰ دلار است' : 'Minimum $10 required for cryptocurrency payment'}
                       </span>
                     ) : (
                       language === 'fa' ? method.descriptionFa : method.descriptionEn

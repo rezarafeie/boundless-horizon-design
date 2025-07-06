@@ -92,6 +92,7 @@ const PaymentStep = ({
         selectedMethod={selectedMethod}
         onMethodChange={onMethodChange}
         mobile={mobile}
+        amount={amount}
       />
       
       {/* Discount Field */}
