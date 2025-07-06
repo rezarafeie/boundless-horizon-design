@@ -5,8 +5,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Loader, AlertCircle } from 'lucide-react';
+import { CheckCircle, Loader, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PanelUserCreationService } from '@/services/panelUserCreationService';
 
 const PaymentSuccess = () => {
@@ -18,6 +19,7 @@ const PaymentSuccess = () => {
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [error, setError] = useState(null);
   const [vpnCreationStatus, setVpnCreationStatus] = useState('pending');
+  const [connectionError, setConnectionError] = useState(false);
 
   // Helper function to extract session_id from URL (handles duplicates)
   const extractSessionId = () => {
@@ -71,6 +73,13 @@ const PaymentSuccess = () => {
 
           if (error) {
             console.error('Stripe verification error:', error);
+            
+            // Check if this is a connection error
+            if (error.message?.includes('fetch') || error.message?.includes('network') || error.message?.includes('Failed to fetch')) {
+              setConnectionError(true);
+              throw new Error('Connection failed to create network subscription');
+            }
+            
             throw new Error(error.message || 'Failed to verify payment');
           }
 
@@ -411,6 +420,12 @@ const PaymentSuccess = () => {
         }
       } catch (error) {
         console.error('Payment success handling error:', error);
+        
+        // Check if this is a connection error
+        if (error.message?.includes('Connection failed') || error.message?.includes('fetch') || error.message?.includes('network')) {
+          setConnectionError(true);
+        }
+        
         setError(error.message);
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
@@ -483,6 +498,11 @@ const PaymentSuccess = () => {
         console.error('❌ PAYMENT_SUCCESS: Error creating VPN user automatically:', error);
         setVpnCreationStatus('failed');
         
+        // Check if this is a connection error
+        if (error.message?.includes('fetch') || error.message?.includes('network') || error.message?.includes('Failed to fetch')) {
+          setConnectionError(true);
+        }
+        
         toast({
           title: language === 'fa' ? 'خطا در ایجاد VPN' : 'VPN Creation Failed', 
           description: language === 'fa' ? 
@@ -502,6 +522,10 @@ const PaymentSuccess = () => {
     } else {
       navigate('/subscription');
     }
+  };
+
+  const refreshPage = () => {
+    window.location.reload();
   };
 
   if (isLoading) {
@@ -545,8 +569,47 @@ const PaymentSuccess = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {connectionError && (
+              <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-900/20">
+                <WifiOff className="h-4 w-4 text-orange-600" />
+                <AlertDescription className="text-orange-800 dark:text-orange-200">
+                  {language === 'fa' ? (
+                    <>
+                      پرداخت شما موفق بود اما اتصال برای ایجاد اشتراک شبکه با مشکل مواجه شد. اگر اشتراک تحویل داده نشد، این صفحه را با اتصال VPN فعال رفرش کنید. اگر مشکلی دارید با پشتیبانی تماس بگیرید{' '}
+                      <a 
+                        href="https://t.me/bnets_support" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 underline"
+                      >
+                        @bnets_support
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      Your payment is successful but connection failed to create network subscription. If subscription not delivered, refresh this page with an active VPN connection. If you have any problem, contact support{' '}
+                      <a 
+                        href="https://t.me/bnets_support" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 underline"
+                      >
+                        @bnets_support
+                      </a>
+                    </>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <p className="text-muted-foreground">{error}</p>
             <div className="flex gap-2">
+              {connectionError && (
+                <Button onClick={refreshPage} variant="outline" className="flex-1 flex items-center gap-2">
+                  <Wifi className="w-4 h-4" />
+                  {language === 'fa' ? 'رفرش صفحه' : 'Refresh Page'}
+                </Button>
+              )}
               <Button onClick={() => navigate('/subscription')} variant="outline" className="flex-1">
                 {language === 'fa' ? 'تلاش مجدد' : 'Try Again'}
               </Button>
