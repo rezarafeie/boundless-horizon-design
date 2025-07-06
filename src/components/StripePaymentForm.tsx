@@ -32,12 +32,18 @@ const StripePaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
     debugLog('info', 'Starting Stripe checkout', { amount, subscriptionId, mobile });
     
     try {
+      const origin = window.location.origin;
       const { data, error } = await supabase.functions.invoke('stripe-checkout', {
         body: {
           amount: Math.round(amount * 100), // Convert to cents
           currency: 'usd',
-          subscription_id: subscriptionId,
-          mobile: mobile
+          productName: language === 'fa' ? 'اشتراک شبکه بدون مرز' : 'Boundless Network Subscription',
+          metadata: {
+            subscription_id: subscriptionId,
+            mobile: mobile
+          },
+          successUrl: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${origin}/subscription`
         }
       });
 
