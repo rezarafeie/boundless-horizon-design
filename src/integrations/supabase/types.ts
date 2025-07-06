@@ -753,6 +753,7 @@ export type Database = {
           headers: Json
           id: string
           is_enabled: boolean
+          is_primary: boolean
           method: string
           updated_at: string
           webhook_url: string
@@ -762,6 +763,7 @@ export type Database = {
           headers?: Json
           id?: string
           is_enabled?: boolean
+          is_primary?: boolean
           method?: string
           updated_at?: string
           webhook_url: string
@@ -771,6 +773,7 @@ export type Database = {
           headers?: Json
           id?: string
           is_enabled?: boolean
+          is_primary?: boolean
           method?: string
           updated_at?: string
           webhook_url?: string

@@ -66,36 +66,58 @@ serve(async (req) => {
     const standardizedTrigger = triggerNameMap[payload.webhook_type] || payload.webhook_type;
     console.log('WEBHOOK: Mapping webhook_type from', payload.webhook_type, 'to', standardizedTrigger);
     
-    // Get webhook configuration from database (handle multiple configs)
-    const { data: webhookConfigs, error: configError } = await supabase
+    // Get primary webhook configuration from database
+    const { data: primaryConfig, error: primaryError } = await supabase
       .from('webhook_config')
       .select('*')
       .eq('is_enabled', true)
-      .order('created_at', { ascending: false });
+      .eq('is_primary', true)
+      .maybeSingle();
 
-    if (configError) {
-      console.error('WEBHOOK: Error fetching config:', configError);
-      throw new Error(`Failed to fetch webhook config: ${configError.message}`);
+    if (primaryError) {
+      console.error('WEBHOOK: Error fetching primary config:', primaryError);
+      throw new Error(`Failed to fetch webhook config: ${primaryError.message}`);
     }
 
-    if (!webhookConfigs || webhookConfigs.length === 0) {
-      console.log('WEBHOOK: No active webhook configuration found');
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'No active webhook configuration found' 
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+    let webhookConfig = primaryConfig;
+
+    // Fallback to most recent enabled config if no primary config exists
+    if (!webhookConfig) {
+      console.log('WEBHOOK: No primary webhook config found, falling back to most recent enabled config');
+      
+      const { data: fallbackConfigs, error: fallbackError } = await supabase
+        .from('webhook_config')
+        .select('*')
+        .eq('is_enabled', true)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (fallbackError) {
+        console.error('WEBHOOK: Error fetching fallback config:', fallbackError);
+        throw new Error(`Failed to fetch webhook config: ${fallbackError.message}`);
+      }
+
+      if (!fallbackConfigs || fallbackConfigs.length === 0) {
+        console.log('WEBHOOK: No active webhook configuration found');
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'No active webhook configuration found' 
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+
+      webhookConfig = fallbackConfigs[0];
+      console.warn('WEBHOOK: Using fallback config (no primary config set)');
     }
 
-    // Use the most recent webhook configuration
-    const webhookConfig = webhookConfigs[0];
-    console.log('WEBHOOK: Using config:', { id: webhookConfig.id, url: webhookConfig.webhook_url, method: webhookConfig.method });
-    
-    if (webhookConfigs.length > 1) {
-      console.warn(`WEBHOOK: Found ${webhookConfigs.length} active webhook configs, using the most recent one`);
-    }
+    console.log('WEBHOOK: Using config:', { 
+      id: webhookConfig.id, 
+      url: webhookConfig.webhook_url, 
+      method: webhookConfig.method,
+      is_primary: webhookConfig.is_primary || false
+    });
 
     // Check if this trigger is enabled
     const { data: triggerConfig, error: triggerError } = await supabase
