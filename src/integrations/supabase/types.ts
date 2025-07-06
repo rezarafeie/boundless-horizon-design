@@ -58,28 +58,37 @@ export type Database = {
       }
       admin_users: {
         Row: {
+          allowed_sections: Json | null
           created_at: string
           id: string
           is_active: boolean
+          password_hash: string | null
           role: string
           updated_at: string
           user_id: string
+          username: string | null
         }
         Insert: {
+          allowed_sections?: Json | null
           created_at?: string
           id?: string
           is_active?: boolean
+          password_hash?: string | null
           role?: string
           updated_at?: string
           user_id: string
+          username?: string | null
         }
         Update: {
+          allowed_sections?: Json | null
           created_at?: string
           id?: string
           is_active?: boolean
+          password_hash?: string | null
           role?: string
           updated_at?: string
           user_id?: string
+          username?: string | null
         }
         Relationships: []
       }

@@ -7,6 +7,8 @@ interface AdminUser {
   user_id: string;
   role: 'superadmin' | 'editor';
   is_active: boolean;
+  username?: string;
+  allowed_sections?: string[];
 }
 
 export const useAdminAuth = () => {
@@ -32,7 +34,7 @@ export const useAdminAuth = () => {
 
       // Parse session data
       const sessionData = JSON.parse(adminSession);
-      if (!sessionData.isLoggedIn || sessionData.username !== 'bnets') {
+      if (!sessionData.isLoggedIn || !sessionData.username) {
         console.log('ADMIN AUTH: Invalid session data');
         localStorage.removeItem('admin_session');
         setAdminUser(null);
@@ -49,12 +51,12 @@ export const useAdminAuth = () => {
         'https://feamvyruipxtafzhptkh.supabase.co',
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
       );
-      
-      // Verify admin user exists in database
+
+      // Verify admin user exists in database by username
       const { data: adminData, error } = await adminClient
         .from('admin_users')
         .select('*')
-        .eq('user_id', 'a4148578-bcbd-4512-906e-4832f94bdb46')
+        .eq('username', sessionData.username)
         .eq('is_active', true)
         .maybeSingle();
       
@@ -75,7 +77,9 @@ export const useAdminAuth = () => {
         id: adminData.id,
         user_id: adminData.user_id,
         role: adminData.role as 'superadmin' | 'editor',
-        is_active: adminData.is_active
+        is_active: adminData.is_active,
+        username: adminData.username,
+        allowed_sections: adminData.allowed_sections || []
       };
       
       setAdminUser(typedAdminData);
@@ -108,6 +112,9 @@ export const useAdminAuth = () => {
 
   const isAdmin = !!adminUser && isAuthenticated;
   const isSuperAdmin = adminUser?.role === 'superadmin' && isAuthenticated;
+  const hasAccess = (section: string) => {
+    return isSuperAdmin || (adminUser?.allowed_sections?.includes(section) ?? false);
+  };
 
   console.log('ADMIN AUTH: Current state - isAdmin:', isAdmin, 'isSuperAdmin:', isSuperAdmin, 'isAuthenticated:', isAuthenticated, 'loading:', loading);
 
@@ -119,6 +126,7 @@ export const useAdminAuth = () => {
     isAdmin,
     isSuperAdmin,
     isAuthenticated,
+    hasAccess,
     signIn: async () => ({ error: null }),
     signOut
   };

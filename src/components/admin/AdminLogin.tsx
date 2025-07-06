@@ -39,33 +39,31 @@ export const AdminLogin = () => {
     try {
       console.log('Admin login attempt for username:', username);
       
-      // Simple credential validation
-      if (username !== 'bnets' || password !== 'reza1234') {
+      // Query admin_users table by username and password
+      const { data: adminUser, error: adminError } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('username', username)
+        .eq('password_hash', password)
+        .eq('is_active', true)
+        .single();
+
+      if (adminError || !adminUser) {
+        console.error('Invalid credentials or admin user not found:', adminError);
         setError('Invalid credentials');
         setLoading(false);
         return;
       }
 
-      // Verify the existing admin user
-      const { data: existingAdmin, error: adminError } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('user_id', 'a4148578-bcbd-4512-906e-4832f94bdb46')
-        .single();
-
-      if (adminError || !existingAdmin) {
-        console.error('Admin user not found:', adminError);
-        setError('Admin user not found');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Admin login successful');
+      console.log('Admin login successful for user:', adminUser.username);
       
-      // Set session in localStorage
+      // Set session in localStorage with user details
       localStorage.setItem('admin_session', JSON.stringify({
         isLoggedIn: true,
-        username: 'bnets',
+        username: adminUser.username,
+        userId: adminUser.user_id,
+        role: adminUser.role,
+        allowedSections: adminUser.allowed_sections || [],
         loginTime: new Date().toISOString()
       }));
 

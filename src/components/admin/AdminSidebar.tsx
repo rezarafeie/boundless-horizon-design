@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { 
   LayoutDashboard, 
   Users, 
@@ -23,59 +24,73 @@ interface AdminSidebarProps {
 export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { hasAccess } = useAdminAuth();
 
   const menuItems = [
     {
       title: 'Dashboard',
       href: '/admin',
       icon: LayoutDashboard,
+      section: 'dashboard',
     },
     {
       title: 'Users & Orders',
       href: '/admin/users',
       icon: Users,
+      section: 'users',
     },
     {
       title: 'Plans',
       href: '/admin/plans',
       icon: CreditCard,
+      section: 'plans',
     },
     {
       title: 'Panels',
       href: '/admin/panels',
       icon: Server,
+      section: 'panels',
     },
     {
       title: 'Tests',
       href: '/admin/tests',
       icon: TestTube,
+      section: 'tests',
     },
     {
       title: 'Reports',
       href: '/admin/reports',
       icon: BarChart3,
+      section: 'reports',
     },
     {
       title: 'Telegram Bot',
       href: '/admin/telegrambot',
       icon: MessageSquare,
+      section: 'telegrambot',
     },
     {
       title: 'Webhooks',
       href: '/admin/webhook',
       icon: Webhook,
+      section: 'webhook',
     },
     {
       title: 'Services',
       href: '/admin/services',
       icon: Settings,
+      section: 'services',
     },
     {
       title: 'Discounts',
       href: '/admin/discounts',
       icon: Settings,
+      section: 'discounts',
     },
   ];
+
+  // Filter menu items based on user permissions
+  const allowedMenuItems = menuItems.filter(item => hasAccess(item.section));
 
   const isActive = (href: string) => {
     if (href === '/admin') {
@@ -98,7 +113,7 @@ export const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
-        {menuItems.map((item) => {
+        {allowedMenuItems.map((item) => {
           const Icon = item.icon;
           return (
             <Link
