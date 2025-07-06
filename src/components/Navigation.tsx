@@ -12,6 +12,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Sun, Moon, Menu, X, Globe, ChevronDown, Send, ShoppingCart, Gift, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import FreeTrialWrapper from './FreeTrialWrapper';
+import { ConnectionIndicator } from './ConnectionIndicator';
 
 const Navigation = () => {
   const { language, setLanguage, t } = useLanguage();
@@ -23,11 +24,12 @@ const Navigation = () => {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <div className="flex items-center">
+          {/* Logo with Connection Indicator */}
+          <div className="flex items-center gap-3">
             <Link to="/" className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
               {language === 'fa' ? 'شبکه بدون مرز' : 'BNETS.CO'}
             </Link>
+            <ConnectionIndicator />
           </div>
 
           {/* Controls */}

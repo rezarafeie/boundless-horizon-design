@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import Index from "./pages/Index";
 import Subscription from "./pages/Subscription";
 import Renewal from "./pages/Renewal";
@@ -36,6 +37,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <ConnectionStatus />
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
