@@ -13,9 +13,10 @@ interface StripePaymentFormProps {
   subscriptionId: string;
   onPaymentStart: () => void;
   isSubmitting: boolean;
+  selectedService?: any; // Add selectedService prop
 }
 
-const StripePaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isSubmitting }: StripePaymentFormProps) => {
+const StripePaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isSubmitting, selectedService }: StripePaymentFormProps) => {
   const { language } = useLanguage();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -26,21 +27,30 @@ const StripePaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
     }
   };
 
+  // Convert Toman to USD (40,000 Toman = 1 USD) with minimum $1
+  const usdAmount = Math.max(1, Math.ceil(amount / 40000));
+  
+  // Determine product name
+  const productName = selectedService 
+    ? (selectedService.name_en || selectedService.name)
+    : 'Bnets Subscription';
+
   const handleStripeCheckout = async () => {
     setLoading(true);
     onPaymentStart();
-    debugLog('info', 'Starting Stripe checkout', { amount, subscriptionId, mobile });
+    debugLog('info', 'Starting Stripe checkout', { amount, usdAmount, subscriptionId, mobile, productName });
     
     try {
       const origin = window.location.origin;
       const { data, error } = await supabase.functions.invoke('stripe-checkout', {
         body: {
-          amount: Math.round(amount * 100), // Convert to cents
+          amount: usdAmount * 100, // Convert USD to cents
           currency: 'usd',
-          productName: language === 'fa' ? 'اشتراک شبکه بدون مرز' : 'Boundless Network Subscription',
+          productName: productName,
           metadata: {
             subscription_id: subscriptionId,
-            mobile: mobile
+            mobile: mobile,
+            original_amount_toman: amount
           },
           successUrl: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancelUrl: `${origin}/subscription`
@@ -71,8 +81,6 @@ const StripePaymentForm = ({ amount, mobile, subscriptionId, onPaymentStart, isS
       setLoading(false);
     }
   };
-
-  const usdAmount = Math.ceil(amount / 60000); // Convert Toman to USD
 
   return (
     <Card>

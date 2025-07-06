@@ -95,6 +95,7 @@ const StepContentRenderer = ({
           onMethodChange={(method) => onUpdateFormData('paymentMethod', method)}
           subscriptionId={subscriptionId}
           onPaymentSuccess={onPaymentSuccess}
+          selectedService={formData.selectedService}
         />
       </div>
     );

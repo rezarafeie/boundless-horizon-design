@@ -21,6 +21,7 @@ interface PaymentStepProps {
   onPaymentSuccess: (subscriptionUrl?: string) => void;
   appliedDiscount?: DiscountCode | null;
   onDiscountApply?: (discount: DiscountCode | null) => void;
+  selectedService?: any; // Add selectedService prop
 }
 
 const PaymentStep = ({ 
@@ -31,7 +32,8 @@ const PaymentStep = ({
   subscriptionId,
   onPaymentSuccess,
   appliedDiscount,
-  onDiscountApply
+  onDiscountApply,
+  selectedService
 }: PaymentStepProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -69,6 +71,7 @@ const PaymentStep = ({
             subscriptionId={subscriptionId}
             onPaymentStart={handlePaymentStart}
             isSubmitting={isSubmitting}
+            selectedService={selectedService}
           />
         );
       case 'crypto':
