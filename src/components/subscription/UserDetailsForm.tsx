@@ -1,5 +1,8 @@
+
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { FormData } from './types';
 
 interface UserDetailsFormProps {
@@ -25,11 +28,34 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
         <h3 className="text-lg font-semibold">
           {language === 'fa' ? 'اطلاعات تماس' : 'Contact Information'}
         </h3>
-        <div className="text-center text-muted-foreground">
-          {language === 'fa' ? 
-            'لطفاً اطلاعات سفارش خود را بررسی کنید' : 
-            'Please review your order details'
-          }
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="mobile">
+              {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'} *
+            </Label>
+            <Input
+              id="mobile"
+              type="tel"
+              value={formData.mobile}
+              onChange={(e) => onUpdateFormData('mobile', e.target.value)}
+              placeholder={language === 'fa' ? '09123456789' : '09123456789'}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="email">
+              {language === 'fa' ? 'ایمیل' : 'Email'} 
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              value={formData.email || ''}
+              onChange={(e) => onUpdateFormData('email', e.target.value)}
+              placeholder={language === 'fa' ? 'example@domain.com' : 'example@domain.com'}
+            />
+          </div>
         </div>
 
         {/* Show summary of selected service or plan */}
