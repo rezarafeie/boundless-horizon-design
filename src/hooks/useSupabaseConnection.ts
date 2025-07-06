@@ -12,7 +12,7 @@ export const useSupabaseConnection = () => {
     const checkConnection = async () => {
       try {
         // Simple connection test - try to get server time
-        const { error } = await supabase.rpc('now');
+        const { error } = await supabase.from('subscriptions').select('count').limit(1);
         
         if (error) {
           console.error('Supabase connection error:', error);

@@ -3,17 +3,13 @@ import { useSupabaseConnection } from '@/hooks/useSupabaseConnection';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { WifiOff, X, RefreshCw } from 'lucide-react';
+import { WifiOff, X } from 'lucide-react';
 
 export const ConnectionStatus = () => {
   const { showNotification, dismissNotification } = useSupabaseConnection();
   const { language } = useLanguage();
 
   if (!showNotification) return null;
-
-  const refreshPage = () => {
-    window.location.reload();
-  };
 
   return (
     <div className="fixed top-20 left-4 right-4 z-50 max-w-md mx-auto">
@@ -29,16 +25,6 @@ export const ConnectionStatus = () => {
               Your connection is not stable. For a better experience, refresh with an active VPN connection
             </>
           )}
-          <div className="flex gap-2 mt-2">
-            <Button 
-              onClick={refreshPage} 
-              size="sm" 
-              className="bg-orange-600 hover:bg-orange-700 text-white"
-            >
-              <RefreshCw className="w-4 h-4 mr-1" />
-              {language === 'fa' ? 'رفرش' : 'Refresh'}
-            </Button>
-          </div>
         </AlertDescription>
         <Button
           variant="ghost"
