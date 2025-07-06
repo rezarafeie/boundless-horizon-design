@@ -28,7 +28,7 @@ const MultiStepSubscriptionForm = () => {
       <Card className="bg-white dark:bg-gray-900 shadow-xl border-0">
         <CardHeader className="text-center pb-6">
           <CardTitle className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            {language === 'fa' ? 'خرید اشتراک VPN' : 'VPN Subscription Purchase'}
+            {language === 'fa' ? 'خرید اشتراک' : 'Subscription Purchase'}
           </CardTitle>
           <CardDescription className="text-lg text-gray-600 dark:text-gray-300">
             {language === 'fa' ? 
