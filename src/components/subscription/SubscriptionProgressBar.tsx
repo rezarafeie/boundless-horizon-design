@@ -32,7 +32,7 @@ const SubscriptionProgressBar = ({ currentStep }: SubscriptionProgressBarProps) 
           return (
             <div key={step.id} className="flex flex-col items-center">
               <div className={`
-                w-12 h-12 rounded-full flex items-center justify-center mb-2 transition-all duration-300
+                w-12 h-12 md:w-12 md:h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mb-2 transition-all duration-300
                 ${isCompleted 
                   ? 'bg-green-500 text-white' 
                   : isActive 
@@ -43,13 +43,13 @@ const SubscriptionProgressBar = ({ currentStep }: SubscriptionProgressBarProps) 
                 }
               `}>
                 {isCompleted ? (
-                  <CheckCircle className="w-6 h-6" />
+                  <CheckCircle className="w-6 h-6 md:w-6 md:h-6 sm:w-4 sm:h-4" />
                 ) : (
-                  <Icon className="w-6 h-6" />
+                  <Icon className="w-6 h-6 md:w-6 md:h-6 sm:w-4 sm:h-4" />
                 )}
               </div>
               <span className={`
-                text-sm font-medium transition-colors
+                text-sm font-medium transition-colors hidden md:block
                 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}
               `}>
                 {language === 'fa' ? step.titleFa : step.titleEn}

@@ -74,17 +74,6 @@ export const ServiceSelection = ({ planId, selectedService, onServiceSelect }: S
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-xl font-semibold mb-2">
-          {language === 'fa' ? 'انتخاب سرویس' : 'Select Service'}
-        </h3>
-        <p className="text-muted-foreground">
-          {language === 'fa' ? 
-            'یکی از سرویس‌های از پیش تعریف شده را انتخاب کنید یا سفارشی کنید' : 
-            'Choose a predefined service or customize your own'
-          }
-        </p>
-      </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {services.map((service) => (
