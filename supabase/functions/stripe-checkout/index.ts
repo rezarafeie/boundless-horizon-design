@@ -40,7 +40,13 @@ serve(async (req) => {
       throw new Error('Success and cancel URLs are required');
     }
 
-    console.log('Creating Stripe checkout session...');
+    // Validate metadata
+    if (!metadata?.subscription_id) {
+      console.error('Missing subscription_id in metadata:', metadata);
+      throw new Error('subscription_id is required in metadata');
+    }
+
+    console.log('Creating Stripe checkout session with metadata:', metadata);
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -56,14 +62,15 @@ serve(async (req) => {
         },
       ],
       mode: 'payment',
-      success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: successUrl, // Use success URL exactly as provided - don't add duplicate session_id
       cancel_url: cancelUrl,
       metadata: metadata || {},
     });
 
     console.log('Stripe session created successfully:', {
       sessionId: session.id,
-      url: session.url
+      url: session.url,
+      metadata: session.metadata
     });
 
     return new Response(JSON.stringify({ 

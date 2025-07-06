@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -18,16 +19,45 @@ const PaymentSuccess = () => {
   const [error, setError] = useState(null);
   const [vpnCreationStatus, setVpnCreationStatus] = useState('pending');
 
+  // Helper function to extract session_id from URL (handles duplicates)
+  const extractSessionId = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    
+    // If there are multiple session_id parameters due to URL construction issues,
+    // take the first valid one
+    if (sessionId) {
+      console.log('Extracted session_id:', sessionId);
+      return sessionId;
+    }
+    
+    // Fallback: check if the URL has malformed duplicates and extract manually
+    const fullUrl = window.location.href;
+    const sessionMatch = fullUrl.match(/session_id=([^&?]+)/);
+    if (sessionMatch) {
+      console.log('Extracted session_id via regex:', sessionMatch[1]);
+      return sessionMatch[1];
+    }
+    
+    return null;
+  };
+
   useEffect(() => {
     const handlePaymentSuccess = async () => {
       try {
-        // Get parameters from URL
-        const sessionId = searchParams.get('session_id');
+        // Get parameters from URL with improved parsing
+        const sessionId = extractSessionId();
         const authority = searchParams.get('Authority');
         const status = searchParams.get('Status');
         const subscriptionDataParam = searchParams.get('subscriptionData');
 
-        console.log('PaymentSuccess - URL params:', { sessionId, authority, status, subscriptionDataParam });
+        console.log('PaymentSuccess - URL params:', { 
+          sessionId, 
+          authority, 
+          status, 
+          subscriptionDataParam,
+          fullUrl: window.location.href 
+        });
 
         if (sessionId) {
           // Stripe payment verification

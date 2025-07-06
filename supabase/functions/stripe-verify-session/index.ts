@@ -117,37 +117,41 @@ serve(async (req) => {
   try {
     console.log('=== STRIPE VERIFY SESSION FUNCTION STARTED ===');
     
-    const { sessionId } = await req.json();
-    console.log('Request body:', { sessionId });
+    const requestBody = await req.json();
+    const { sessionId } = requestBody;
+    console.log('🔍 Request body received:', requestBody);
+    console.log('🔍 Extracted sessionId:', sessionId);
 
     if (!sessionId) {
-      console.error('No session ID provided');
+      console.error('❌ No session ID provided in request');
       throw new Error('Session ID is required');
     }
 
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeSecretKey) {
-      console.error('Stripe secret key not configured');
+      console.error('❌ Stripe secret key not configured');
       throw new Error('Stripe secret key not configured');
     }
 
-    console.log('Initializing Stripe with session ID:', sessionId);
+    console.log('🔧 Initializing Stripe with session ID:', sessionId);
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2023-10-16",
     });
 
     // Retrieve the session from Stripe
-    console.log('Retrieving session from Stripe...');
+    console.log('📡 Retrieving session from Stripe...');
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    console.log('Stripe session retrieved:', {
+    console.log('✅ Stripe session retrieved:', {
       id: session.id,
       payment_status: session.payment_status,
+      payment_intent: session.payment_intent,
+      customer: session.customer,
       metadata: session.metadata
     });
     
     if (session.payment_status !== 'paid') {
-      console.error('Payment not completed, status:', session.payment_status);
-      throw new Error('Payment not completed');
+      console.error('❌ Payment not completed, status:', session.payment_status);
+      throw new Error(`Payment not completed. Status: ${session.payment_status}`);
     }
 
     // Get metadata from session
@@ -156,10 +160,15 @@ serve(async (req) => {
     const mobile = metadata.mobile;
     const originalAmountToman = parseInt(metadata.original_amount_toman || '0');
 
-    console.log('Session metadata:', { subscriptionId, mobile, originalAmountToman });
+    console.log('📋 Session metadata extracted:', { 
+      subscriptionId, 
+      mobile, 
+      originalAmountToman,
+      fullMetadata: metadata 
+    });
 
     if (!subscriptionId || !mobile) {
-      console.error('Missing required metadata');
+      console.error('❌ Missing required metadata:', { subscriptionId, mobile });
       throw new Error('Missing subscription_id or mobile in metadata');
     }
 
@@ -169,7 +178,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Find existing subscription by ID
-    console.log('Finding existing subscription:', subscriptionId);
+    console.log('🔍 Finding existing subscription with ID:', subscriptionId);
     const { data: subscription, error: subscriptionError } = await supabase
       .from('subscriptions')
       .select('*')
@@ -177,13 +186,37 @@ serve(async (req) => {
       .single();
 
     if (subscriptionError || !subscription) {
-      console.error('Subscription not found:', subscriptionError);
-      throw new Error('Subscription not found for the provided ID');
+      console.error('❌ Subscription not found:', subscriptionError);
+      console.log('🔍 Attempting to find subscription by mobile:', mobile);
+      
+      // Fallback: try to find by mobile number (most recent pending subscription)
+      const { data: fallbackSubscription, error: fallbackError } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('mobile', mobile)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (fallbackError || !fallbackSubscription) {
+        console.error('❌ No subscription found by mobile either:', fallbackError);
+        throw new Error('Subscription not found for the provided ID or mobile');
+      }
+
+      console.log('✅ Found subscription by mobile fallback:', fallbackSubscription.id);
+      subscription = { ...fallbackSubscription };
     }
 
-    console.log('Found existing subscription:', subscription.username);
+    console.log('✅ Found existing subscription:', {
+      id: subscription.id,
+      username: subscription.username,
+      status: subscription.status,
+      mobile: subscription.mobile
+    });
 
     // Update subscription status to active with Stripe payment details
+    console.log('📝 Updating subscription status to active...');
     const { error: updateError } = await supabase
       .from('subscriptions')
       .update({
@@ -194,17 +227,17 @@ serve(async (req) => {
       .eq('id', subscription.id);
 
     if (updateError) {
-      console.error('Failed to update subscription status:', updateError);
+      console.error('❌ Failed to update subscription status:', updateError);
       throw new Error('Failed to update subscription status');
     }
 
-    console.log('Subscription status updated to active');
+    console.log('✅ Subscription status updated to active');
 
     // Create VPN user using PanelUserCreationService (same as PaymentSuccess.tsx)
-    console.log('Creating VPN user with PanelUserCreationService...');
+    console.log('🚀 Creating VPN user with PanelUserCreationService...');
     
     if (!subscription.plan_id) {
-      console.error('No plan_id found in subscription');
+      console.error('❌ No plan_id found in subscription');
       throw new Error('No plan_id found in subscription');
     }
 
@@ -217,29 +250,32 @@ serve(async (req) => {
       subscriptionId: subscription.id
     });
 
-    console.log('VPN creation result:', vpnResult);
+    console.log('📡 VPN creation result:', vpnResult);
 
     if (!vpnResult.success || !vpnResult.data?.subscription_url) {
-      console.error('VPN creation failed:', vpnResult);
-      throw new Error('Failed to create VPN user');
-    }
+      console.error('❌ VPN creation failed:', vpnResult);
+      // Don't fail completely - payment was verified
+      console.log('⚠️ Continuing despite VPN creation failure...');
+    } else {
+      console.log('✅ VPN user created successfully');
 
-    console.log('VPN user created successfully');
+      // Update subscription with VPN details
+      const { error: vpnUpdateError } = await supabase
+        .from('subscriptions')
+        .update({
+          subscription_url: vpnResult.data.subscription_url,
+          marzban_user_created: true,
+          expire_at: new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', subscription.id);
 
-    // Update subscription with VPN details
-    const { error: vpnUpdateError } = await supabase
-      .from('subscriptions')
-      .update({
-        subscription_url: vpnResult.data.subscription_url,
-        marzban_user_created: true,
-        expire_at: new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', subscription.id);
-
-    if (vpnUpdateError) {
-      console.error('Failed to update subscription with VPN details:', vpnUpdateError);
-      // Don't fail completely, VPN was created
+      if (vpnUpdateError) {
+        console.error('❌ Failed to update subscription with VPN details:', vpnUpdateError);
+        // Don't fail completely, VPN was created
+      } else {
+        console.log('✅ Subscription updated with VPN details');
+      }
     }
 
     // Get final subscription data
@@ -252,12 +288,18 @@ serve(async (req) => {
     const responseData = finalSubscription || {
       ...subscription,
       status: 'active',
-      subscription_url: vpnResult.data.subscription_url,
-      marzban_user_created: true,
+      subscription_url: vpnResult.data?.subscription_url || null,
+      marzban_user_created: vpnResult.success || false,
       expire_at: new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString()
     };
 
-    console.log('Returning successful response for subscription:', responseData.id);
+    console.log('✅ Returning successful response for subscription:', responseData.id);
+    console.log('📊 Final response data:', {
+      id: responseData.id,
+      status: responseData.status,
+      subscription_url: responseData.subscription_url,
+      marzban_user_created: responseData.marzban_user_created
+    });
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -267,7 +309,9 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Stripe verification error:', error);
+    console.error('💥 Stripe verification error:', error);
+    console.error('💥 Error stack:', error.stack);
+    
     return new Response(JSON.stringify({ 
       success: false, 
       error: error.message 
