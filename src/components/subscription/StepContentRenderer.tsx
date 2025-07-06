@@ -4,6 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import PaymentStep from '@/components/PaymentStep';
 import SubscriptionSuccess from '@/components/SubscriptionSuccess';
 import PlanSelection from './PlanSelection';
+import ServiceSelectionStep from './ServiceSelectionStep';
 import UserDetailsForm from './UserDetailsForm';
 import { FormData, StepNumber, SubscriptionResponse } from './types';
 
@@ -44,7 +45,7 @@ const StepContentRenderer = ({
 
   if (currentStep === 2) {
     return (
-      <UserDetailsForm
+      <ServiceSelectionStep
         formData={formData}
         onUpdateFormData={onUpdateFormData}
       />
@@ -52,6 +53,15 @@ const StepContentRenderer = ({
   }
 
   if (currentStep === 3) {
+    return (
+      <UserDetailsForm
+        formData={formData}
+        onUpdateFormData={onUpdateFormData}
+      />
+    );
+  }
+
+  if (currentStep === 4) {
     if (result) {
       return (
         <div className="text-center py-8">
@@ -86,6 +96,15 @@ const StepContentRenderer = ({
           subscriptionId={subscriptionId}
           onPaymentSuccess={onPaymentSuccess}
         />
+      </div>
+    );
+  }
+
+  if (currentStep === 5) {
+    return (
+      <div className="text-center">
+        <h2>{language === 'fa' ? 'ممنون از خرید شما' : 'Thank you for your purchase!'}</h2>
+        <p>{language === 'fa' ? 'اشتراک شما فعال شد' : 'Your subscription is now active.'}</p>
       </div>
     );
   }

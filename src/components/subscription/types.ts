@@ -22,7 +22,7 @@ export interface SubscriptionResponse {
   data_limit: number;
 }
 
-export type StepNumber = 1 | 2 | 3 | 4;
+export type StepNumber = 1 | 2 | 3 | 4 | 5;
 
 export interface StepInfo {
   id: StepNumber;

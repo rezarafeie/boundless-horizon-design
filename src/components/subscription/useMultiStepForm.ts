@@ -140,22 +140,26 @@ export const useMultiStepForm = () => {
         });
         return hasValidPlan;
       case 2:
-        const hasRequiredFields = !!(
-          formData.username?.trim() && 
-          formData.mobile?.trim() && 
-          formData.email?.trim() && // Add email validation
-          formData.dataLimit > 0 && 
-          formData.duration > 0
+        const hasServiceOrCustomPlan = !!(
+          formData.selectedService || 
+          (formData.username?.trim() && formData.dataLimit > 0 && formData.duration > 0)
         );
-        console.log('MULTI STEP FORM: Can proceed from step 2:', hasRequiredFields, {
-          username: formData.username,
-          mobile: formData.mobile,
-          email: formData.email,
-          dataLimit: formData.dataLimit,
-          duration: formData.duration
+        console.log('MULTI STEP FORM: Can proceed from step 2:', hasServiceOrCustomPlan, {
+          hasSelectedService: !!formData.selectedService,
+          hasCustomPlanData: !!(formData.username?.trim() && formData.dataLimit > 0 && formData.duration > 0)
         });
-        return hasRequiredFields;
+        return hasServiceOrCustomPlan;
       case 3:
+        const hasContactInfo = !!(
+          formData.mobile?.trim() && 
+          formData.email?.trim()
+        );
+        console.log('MULTI STEP FORM: Can proceed from step 3:', hasContactInfo, {
+          mobile: formData.mobile,
+          email: formData.email
+        });
+        return hasContactInfo;
+      case 4:
         return !!result;
       default:
         return true;
@@ -402,8 +406,8 @@ export const useMultiStepForm = () => {
       return;
     }
 
-    // Special handling for step 2 -> 3 transition (create subscription record)
-    if (currentStep === 2) {
+    // Special handling for step 3 -> 4 transition (create subscription record)
+    if (currentStep === 3) {
       const newSubscriptionId = await createSubscriptionRecord();
       if (!newSubscriptionId) {
         console.error('MULTI STEP FORM: Failed to create subscription record, cannot proceed');
@@ -417,7 +421,7 @@ export const useMultiStepForm = () => {
       }
     }
 
-    const nextStep = Math.min(currentStep + 1, 4) as StepNumber;
+    const nextStep = Math.min(currentStep + 1, 5) as StepNumber;
     console.log(`MULTI STEP FORM: Moving from step ${currentStep} to step ${nextStep}`);
     setCurrentStep(nextStep);
   };

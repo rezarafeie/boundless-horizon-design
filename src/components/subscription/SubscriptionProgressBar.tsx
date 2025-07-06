@@ -1,14 +1,15 @@
 
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle, CreditCard, User, Settings } from 'lucide-react';
+import { CheckCircle, CreditCard, User, Settings, Package } from 'lucide-react';
 import { StepNumber, StepInfo } from './types';
 
 const STEPS: StepInfo[] = [
   { id: 1, name: 'plan', icon: Settings, titleFa: 'انتخاب پلن', titleEn: 'Select Plan' },
-  { id: 2, name: 'info', icon: User, titleFa: 'اطلاعات کاربری', titleEn: 'User Info' },
-  { id: 3, name: 'payment', icon: CreditCard, titleFa: 'پرداخت', titleEn: 'Payment' },
-  { id: 4, name: 'success', icon: CheckCircle, titleFa: 'تکمیل', titleEn: 'Complete' },
+  { id: 2, name: 'service', icon: Package, titleFa: 'انتخاب سرویس', titleEn: 'Select Service' },
+  { id: 3, name: 'info', icon: User, titleFa: 'اطلاعات کاربری', titleEn: 'User Info' },
+  { id: 4, name: 'payment', icon: CreditCard, titleFa: 'پرداخت', titleEn: 'Payment' },
+  { id: 5, name: 'success', icon: CheckCircle, titleFa: 'تکمیل', titleEn: 'Complete' },
 ];
 
 interface SubscriptionProgressBarProps {
