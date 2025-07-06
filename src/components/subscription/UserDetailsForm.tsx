@@ -31,22 +31,8 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="mobile">
-              {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'} *
-            </Label>
-            <Input
-              id="mobile"
-              type="tel"
-              value={formData.mobile}
-              onChange={(e) => onUpdateFormData('mobile', e.target.value)}
-              placeholder={language === 'fa' ? '09123456789' : '09123456789'}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="email">
-              {language === 'fa' ? 'ایمیل' : 'Email'} 
+              {language === 'fa' ? 'ایمیل' : 'Email'} *
             </Label>
             <Input
               id="email"
@@ -54,6 +40,20 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
               value={formData.email || ''}
               onChange={(e) => onUpdateFormData('email', e.target.value)}
               placeholder={language === 'fa' ? 'example@domain.com' : 'example@domain.com'}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="mobile">
+              {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
+            </Label>
+            <Input
+              id="mobile"
+              type="tel"
+              value={formData.mobile}
+              onChange={(e) => onUpdateFormData('mobile', e.target.value)}
+              placeholder={language === 'fa' ? '09123456789' : '09123456789'}
             />
           </div>
         </div>
