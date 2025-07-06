@@ -21,8 +21,8 @@ const StepNavigation = ({
 }: StepNavigationProps) => {
   const { language } = useLanguage();
 
-  // Only show navigation buttons for step 2
-  if (currentStep !== 2) {
+  // Only show navigation buttons for steps 2 and 3
+  if (currentStep !== 2 && currentStep !== 3) {
     return null;
   }
 

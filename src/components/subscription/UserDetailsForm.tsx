@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FormData } from './types';
@@ -22,14 +21,14 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
         </p>
       </div>
 
-      <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+      <div className="space-y-4">
         <h3 className="text-lg font-semibold">
           {language === 'fa' ? 'اطلاعات تماس' : 'Contact Information'}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-medium block mb-2">
-              {language === 'fa' ? 'شماره موبایل *' : 'Mobile Number *'}
+              {language === 'fa' ? 'شماره موبایل' : 'Mobile Number'}
             </label>
             <input
               type="tel"
@@ -37,7 +36,6 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
               value={formData.mobile}
               onChange={(e) => onUpdateFormData('mobile', e.target.value)}
               placeholder={language === 'fa' ? 'شماره موبایل خود را وارد کنید' : 'Enter your mobile number'}
-              required
             />
           </div>
           <div>

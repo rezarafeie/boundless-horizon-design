@@ -67,12 +67,13 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         value={selectedMethod}
         onValueChange={onMethodChange}
         className="grid grid-cols-1 gap-4"
+        dir={language === 'fa' ? 'rtl' : 'ltr'}
       >
         {paymentMethods.map((method) => {
           const Icon = method.icon;
           
           return (
-            <div key={method.id} className="flex items-center space-x-3 space-x-reverse">
+            <div key={method.id} className={`flex items-center gap-3 ${language === 'fa' ? 'flex-row-reverse' : ''}`}>
               <RadioGroupItem 
                 value={method.id} 
                 id={method.id}
@@ -84,14 +85,16 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                   selectedMethod === method.id 
                     ? 'border-primary bg-primary/5' 
                     : 'border-border hover:bg-muted/50'
-                } ${!method.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${!method.available ? 'opacity-50 cursor-not-allowed' : ''} ${
+                  language === 'fa' ? 'flex-row-reverse text-right' : ''
+                }`}
               >
                 <Icon className="w-5 h-5" />
                 <div className="flex-1">
-                  <div className="font-medium">
+                  <div className={`font-medium ${language === 'fa' ? 'text-right' : 'text-left'}`}>
                     {language === 'fa' ? method.titleFa : method.titleEn}
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className={`text-sm text-muted-foreground ${language === 'fa' ? 'text-right' : 'text-left'}`}>
                     {language === 'fa' ? method.descriptionFa : method.descriptionEn}
                   </div>
                 </div>

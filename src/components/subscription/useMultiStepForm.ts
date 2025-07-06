@@ -165,11 +165,9 @@ export const useMultiStepForm = () => {
         return hasServiceOrCustomPlan;
       case 3:
         const hasContactInfo = !!(
-          formData.mobile?.trim() && 
           formData.email?.trim()
         );
         console.log('MULTI STEP FORM: Can proceed from step 3:', hasContactInfo, {
-          mobile: formData.mobile,
           email: formData.email
         });
         return hasContactInfo;
@@ -207,7 +205,7 @@ export const useMultiStepForm = () => {
     }
 
     // Validate required fields
-    if (!formData.username?.trim() || !formData.mobile?.trim() || !formData.email?.trim()) {
+    if (!formData.username?.trim() || !formData.email?.trim()) {
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 
@@ -238,7 +236,7 @@ export const useMultiStepForm = () => {
       
       const subscriptionData = {
         username: uniqueUsername,
-        mobile: formData.mobile.trim(),
+        mobile: formData.mobile?.trim() || '',
         email: formData.email.trim(), // Add email to subscription data
         data_limit_gb: formData.dataLimit,
         duration_days: formData.duration,
