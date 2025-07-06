@@ -125,6 +125,20 @@ export const useMultiStepForm = () => {
     }
   }, [formData.selectedPlan, currentStep]);
 
+  // Auto-advance from service selection step when service is selected
+  useEffect(() => {
+    if (currentStep === 2 && formData.selectedService) {
+      console.log('MULTI STEP FORM: Auto-advancing to step 3 with selected service:', {
+        serviceName: formData.selectedService.name,
+        serviceId: formData.selectedService.id
+      });
+      const timer = setTimeout(() => {
+        setCurrentStep(3);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [formData.selectedService, currentStep]);
+
   const canProceedFromStep = (step: StepNumber): boolean => {
     switch (step) {
       case 1:
