@@ -25,20 +25,11 @@ const UserDetailsForm = ({ formData, onUpdateFormData }: UserDetailsFormProps) =
         <h3 className="text-lg font-semibold">
           {language === 'fa' ? 'اطلاعات تماس' : 'Contact Information'}
         </h3>
-        <div className="grid grid-cols-1 gap-4">
-          <div>
-            <label className="text-sm font-medium block mb-2">
-              {language === 'fa' ? 'آدرس ایمیل *' : 'Email Address *'}
-            </label>
-            <input
-              type="email"
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              value={formData.email}
-              onChange={(e) => onUpdateFormData('email', e.target.value)}
-              placeholder={language === 'fa' ? 'آدرس ایمیل خود را وارد کنید' : 'Enter your email address'}
-              required
-            />
-          </div>
+        <div className="text-center text-muted-foreground">
+          {language === 'fa' ? 
+            'لطفاً اطلاعات سفارش خود را بررسی کنید' : 
+            'Please review your order details'
+          }
         </div>
 
         {/* Show summary of selected service or plan */}
