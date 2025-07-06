@@ -10,6 +10,7 @@ export type PaymentMethod = 'zarinpal' | 'stripe' | 'crypto' | 'manual';
 interface PaymentMethodSelectorProps {
   selectedMethod: PaymentMethod;
   onMethodChange: (method: PaymentMethod) => void;
+  mobile?: string;
 }
 
 const paymentMethods = [
@@ -53,7 +54,8 @@ const paymentMethods = [
 
 const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   selectedMethod,
-  onMethodChange
+  onMethodChange,
+  mobile
 }) => {
   const { language } = useLanguage();
 
@@ -71,13 +73,14 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
       >
         {paymentMethods.map((method) => {
           const Icon = method.icon;
+          const isZarinpalDisabled = method.id === 'zarinpal' && !mobile?.trim();
           
           return (
             <div key={method.id} className={`flex items-center gap-3 ${language === 'fa' ? 'flex-row-reverse' : ''}`}>
               <RadioGroupItem 
                 value={method.id} 
                 id={method.id}
-                disabled={!method.available}
+                disabled={!method.available || isZarinpalDisabled}
               />
               <Label
                 htmlFor={method.id}
@@ -85,7 +88,7 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                   selectedMethod === method.id 
                     ? 'border-primary bg-primary/5' 
                     : 'border-border hover:bg-muted/50'
-                } ${!method.available ? 'opacity-50 cursor-not-allowed' : ''} ${
+                } ${!method.available || isZarinpalDisabled ? 'opacity-50 cursor-not-allowed' : ''} ${
                   language === 'fa' ? 'flex-row-reverse text-right' : ''
                 }`}
               >
@@ -95,7 +98,13 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     {language === 'fa' ? method.titleFa : method.titleEn}
                   </div>
                   <div className={`text-sm text-muted-foreground ${language === 'fa' ? 'text-right' : 'text-left'}`}>
-                    {language === 'fa' ? method.descriptionFa : method.descriptionEn}
+                    {isZarinpalDisabled ? (
+                      <span className="text-orange-600">
+                        {language === 'fa' ? 'شماره موبایل را وارد کنید تا بتوانید از زرین‌پال استفاده کنید' : 'Enter mobile number to use ZarinPal payment'}
+                      </span>
+                    ) : (
+                      language === 'fa' ? method.descriptionFa : method.descriptionEn
+                    )}
                   </div>
                 </div>
               </Label>

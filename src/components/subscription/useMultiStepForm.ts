@@ -110,7 +110,7 @@ export const useMultiStepForm = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Auto-advance from plan selection step when plan is selected
+  // Auto-advance from plan selection step when plan is selected (only when not going back)
   useEffect(() => {
     if (currentStep === 1 && formData.selectedPlan && formData.selectedPlan.id) {
       console.log('MULTI STEP FORM: Auto-advancing to step 2 with STRICTLY validated plan:', {
@@ -123,9 +123,9 @@ export const useMultiStepForm = () => {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [formData.selectedPlan, currentStep]);
+  }, [formData.selectedPlan]); // Removed currentStep dependency to prevent auto-advance on back
 
-  // Auto-advance from service selection step when service is selected
+  // Auto-advance from service selection step when service is selected (only when not going back)
   useEffect(() => {
     if (currentStep === 2 && formData.selectedService) {
       console.log('MULTI STEP FORM: Auto-advancing to step 3 with selected service:', {
@@ -137,7 +137,7 @@ export const useMultiStepForm = () => {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [formData.selectedService, currentStep]);
+  }, [formData.selectedService]); // Removed currentStep dependency to prevent auto-advance on back
 
   const canProceedFromStep = (step: StepNumber): boolean => {
     switch (step) {
