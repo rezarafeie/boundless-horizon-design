@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -46,16 +47,19 @@ const AdminServices = () => {
   };
 
   const handleAddService = () => {
+    console.log('DEBUG: Add service button clicked');
     setEditingService(null);
     setIsFormOpen(true);
   };
 
   const handleEditService = (service: VpnService) => {
+    console.log('DEBUG: Edit service button clicked for service:', service.id);
     setEditingService(service);
     setIsFormOpen(true);
   };
 
   const handleDeleteService = (service: VpnService) => {
+    console.log('DEBUG: Delete service button clicked for service:', service.id);
     setDeleteDialog({ isOpen: true, service });
   };
 
@@ -172,14 +176,24 @@ const AdminServices = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleEditService(service)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleEditService(service);
+                            }}
+                            className="p-2"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleDeleteService(service)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteService(service);
+                            }}
+                            className="p-2"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
