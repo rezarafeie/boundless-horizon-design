@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 interface DashboardStats {
   totalUsers: number;
   activeSubscriptions: number;
+  activeUsersFromPanels: number;
   totalRevenue: number;
   pendingApprovals: number;
   dailyNewUsers: number;
@@ -27,6 +27,7 @@ interface PanelStatus {
   country_en: string;
   type: string;
   userCount?: number;
+  activeUserCount?: number;
 }
 
 interface RecentActivity {
@@ -39,11 +40,11 @@ interface RecentActivity {
 }
 
 const AdminDashboard = () => {
-  // Fetch comprehensive dashboard statistics
+  // Fetch comprehensive dashboard statistics with real active users
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
-    queryKey: ['comprehensive-dashboard-stats'],
+    queryKey: ['real-dashboard-stats'],
     queryFn: async (): Promise<DashboardStats> => {
-      console.log('Fetching comprehensive dashboard statistics...');
+      console.log('DASHBOARD: Fetching real dashboard statistics with active users from panels...');
       
       // Get database stats
       const { count: totalUsers } = await supabase
@@ -86,44 +87,63 @@ const AdminDashboard = () => {
 
       const dailyRevenue = dailyRevenueData?.reduce((sum, sub) => sum + sub.price_toman, 0) || 0;
 
-      // Get panel user counts
+      // Get real panel user counts including active users
       let panelUsers = 0;
+      let activeUsersFromPanels = 0;
+      
       try {
         const { data: panels } = await supabase
           .from('panel_servers')
           .select('*')
           .eq('is_active', true);
 
+        console.log(`DASHBOARD: Found ${panels?.length || 0} active panels`);
+
         if (panels) {
           for (const panel of panels) {
             try {
+              console.log(`DASHBOARD: Fetching user data from panel ${panel.name} (${panel.type})`);
+              
               if (panel.type === 'marzban') {
                 const { data } = await supabase.functions.invoke('marzban-get-system-info', {
                   body: { panelId: panel.id }
                 });
-                if (data?.success && data?.systemInfo?.total_user) {
-                  panelUsers += data.systemInfo.total_user;
+                if (data?.success && data?.systemInfo) {
+                  const totalPanelUsers = data.systemInfo.total_user || 0;
+                  const activePanelUsers = data.systemInfo.users_active || data.systemInfo.active_users || 0;
+                  
+                  panelUsers += totalPanelUsers;
+                  activeUsersFromPanels += activePanelUsers;
+                  
+                  console.log(`DASHBOARD: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}`);
                 }
               } else if (panel.type === 'marzneshin') {
                 const { data } = await supabase.functions.invoke('marzneshin-get-system-info', {
                   body: { panelId: panel.id }
                 });
-                if (data?.success && data?.systemInfo?.total_user) {
-                  panelUsers += data.systemInfo.total_user;
+                if (data?.success && data?.systemInfo) {
+                  const totalPanelUsers = data.systemInfo.total_user || 0;
+                  const activePanelUsers = data.systemInfo.users_active || data.systemInfo.active_users || 0;
+                  
+                  panelUsers += totalPanelUsers;
+                  activeUsersFromPanels += activePanelUsers;
+                  
+                  console.log(`DASHBOARD: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}`);
                 }
               }
             } catch (error) {
-              console.log(`Failed to get user count from panel ${panel.name}:`, error);
+              console.log(`DASHBOARD: Failed to get user count from panel ${panel.name}:`, error);
             }
           }
         }
       } catch (error) {
-        console.log('Failed to get panel user counts:', error);
+        console.log('DASHBOARD: Failed to get panel user counts:', error);
       }
 
       // Get real Telegram stats
       let telegramUsers = 0;
       let telegramRevenue = 0;
+      let telegramActiveUsers = 0;
       
       try {
         const { telegramBotApi } = await import('@/services/telegramBotApi');
@@ -131,30 +151,22 @@ const AdminDashboard = () => {
         
         if (telegramStats.success && telegramStats.data) {
           telegramUsers = telegramStats.data.totalUsers;
+          telegramActiveUsers = telegramStats.data.activeUsers || telegramUsers;
           telegramRevenue = telegramStats.data.totalRevenue;
+          console.log(`DASHBOARD: Telegram - Total: ${telegramUsers}, Active: ${telegramActiveUsers}`);
         } else {
-          console.log('Telegram Bot API unavailable:', telegramStats.error);
+          console.log('DASHBOARD: Telegram Bot API unavailable:', telegramStats.error);
         }
       } catch (error) {
-        console.log('Failed to fetch Telegram stats:', error);
+        console.log('DASHBOARD: Failed to fetch Telegram stats:', error);
       }
 
       const totalRevenue = dbRevenue + telegramRevenue;
 
-      console.log('Comprehensive dashboard stats:', {
+      const finalStats = {
         totalUsers: (totalUsers || 0) + panelUsers + telegramUsers,
         activeSubscriptions: activeSubscriptions || 0,
-        totalRevenue,
-        pendingApprovals: pendingApprovals || 0,
-        dailyNewUsers: dailyNewUsers || 0,
-        dailyRevenue,
-        panelUsers,
-        telegramUsers
-      });
-
-      return {
-        totalUsers: (totalUsers || 0) + panelUsers + telegramUsers,
-        activeSubscriptions: activeSubscriptions || 0,
+        activeUsersFromPanels: activeUsersFromPanels + telegramActiveUsers,
         totalRevenue,
         pendingApprovals: pendingApprovals || 0,
         dailyNewUsers: dailyNewUsers || 0,
@@ -162,15 +174,18 @@ const AdminDashboard = () => {
         panelUsers,
         telegramUsers
       };
+
+      console.log('DASHBOARD: Real dashboard stats with active users:', finalStats);
+      return finalStats;
     },
     refetchInterval: 60000, // Refresh every minute
   });
 
-  // Fetch panel status with user counts
+  // Fetch panel status with real user counts
   const { data: panels, isLoading: panelsLoading, refetch: refetchPanels } = useQuery({
-    queryKey: ['panel-status-with-users'],
+    queryKey: ['panel-status-with-real-users'],
     queryFn: async (): Promise<PanelStatus[]> => {
-      console.log('Fetching panel status with user counts...');
+      console.log('DASHBOARD: Fetching panel status with real user counts...');
       
       const { data, error } = await supabase
         .from('panel_servers')
@@ -184,32 +199,39 @@ const AdminDashboard = () => {
         (data || []).map(async (panel) => {
           try {
             let userCount = 0;
+            let activeUserCount = 0;
+            
             if (panel.type === 'marzban') {
               const { data: systemData } = await supabase.functions.invoke('marzban-get-system-info', {
                 body: { panelId: panel.id }
               });
-              if (systemData?.success && systemData?.systemInfo?.total_user) {
-                userCount = systemData.systemInfo.total_user;
+              if (systemData?.success && systemData?.systemInfo) {
+                userCount = systemData.systemInfo.total_user || 0;
+                activeUserCount = systemData.systemInfo.users_active || systemData.systemInfo.active_users || 0;
               }
             } else if (panel.type === 'marzneshin') {
               const { data: systemData } = await supabase.functions.invoke('marzneshin-get-system-info', {
                 body: { panelId: panel.id }
               });
-              if (systemData?.success && systemData?.systemInfo?.total_user) {
-                userCount = systemData.systemInfo.total_user;
+              if (systemData?.success && systemData?.systemInfo) {
+                userCount = systemData.systemInfo.total_user || 0;
+                activeUserCount = systemData.systemInfo.users_active || systemData.systemInfo.active_users || 0;
               }
             }
             
             return {
               ...panel,
               health_status: panel.health_status as 'online' | 'offline' | 'unknown',
-              userCount
+              userCount,
+              activeUserCount
             };
           } catch (error) {
+            console.log(`DASHBOARD: Error fetching users from panel ${panel.name}:`, error);
             return {
               ...panel,
               health_status: panel.health_status as 'online' | 'offline' | 'unknown',
-              userCount: 0
+              userCount: 0,
+              activeUserCount: 0
             };
           }
         })
@@ -220,7 +242,6 @@ const AdminDashboard = () => {
     refetchInterval: 120000, // Refresh every 2 minutes
   });
 
-  // Fetch real recent activity
   const { data: recentActivity, isLoading: activityLoading } = useQuery({
     queryKey: ['recent-activity-real'],
     queryFn: async (): Promise<RecentActivity[]> => {
@@ -320,7 +341,7 @@ const AdminDashboard = () => {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
             <p className="text-muted-foreground">
-              Real-time overview across all systems (Database + Panels + Telegram)
+              Real-time overview with actual active users from panels
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -335,7 +356,7 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Comprehensive Stats Cards */}
+        {/* Real Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -359,16 +380,16 @@ const AdminDashboard = () => {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Active Subscriptions
+                Real Active Users
               </CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? '...' : stats?.activeSubscriptions?.toLocaleString() || 0}
+              <div className="text-2xl font-bold text-green-600">
+                {statsLoading ? '...' : stats?.activeUsersFromPanels?.toLocaleString() || 0}
               </div>
               <p className="text-xs text-muted-foreground">
-                Currently active across all systems
+                Active users from panels + Telegram
               </p>
             </CardContent>
           </Card>
@@ -432,7 +453,7 @@ const AdminDashboard = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Panel Status & Users</CardTitle>
+              <CardTitle className="text-lg">Panel Status & Real Users</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -444,7 +465,9 @@ const AdminDashboard = () => {
                       <div>
                         <span className="font-medium text-sm">{panel.name}</span>
                         <p className="text-xs text-muted-foreground">
-                          {panel.country_en} • {panel.type} • {panel.userCount || 0} users
+                          {panel.country_en} • {panel.type} • 
+                          Total: {panel.userCount || 0} • 
+                          Active: <span className="text-green-600 font-medium">{panel.activeUserCount || 0}</span>
                         </p>
                       </div>
                       <div className="text-right">

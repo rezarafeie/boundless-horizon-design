@@ -26,12 +26,14 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
   const loadGlobalSummary = async () => {
     setLoading(true);
     try {
+      console.log('GLOBAL_SUMMARY: Loading real data from all systems...');
+      
       // Get real data from database
       const { count: dbUsers } = await supabase
         .from('subscriptions')
         .select('*', { count: 'exact', head: true });
 
-      const { count: activeDbUsers } = await supabase
+      const { count: activeDbSubscriptions } = await supabase
         .from('subscriptions')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'active');
@@ -43,8 +45,9 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
 
       const dbRevenue = revenueData?.reduce((sum, sub) => sum + sub.price_toman, 0) || 0;
 
-      // Get panel stats
+      // Get real panel stats
       let panelUsers = 0;
+      let panelActiveUsers = 0;
       let totalBandwidth = 0;
       
       const { data: panels } = await supabase
@@ -52,9 +55,13 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
         .select('*')
         .eq('is_active', true);
 
+      console.log(`GLOBAL_SUMMARY: Found ${panels?.length || 0} active panels`);
+
       if (panels) {
         for (const panel of panels) {
           try {
+            console.log(`GLOBAL_SUMMARY: Fetching data from panel ${panel.name} (${panel.type})`);
+            
             const functionName = panel.type === 'marzban' ? 'marzban-get-system-info' : 'marzneshin-get-system-info';
             const { data } = await supabase.functions.invoke(functionName, {
               body: { 
@@ -65,17 +72,28 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
             });
             
             if (data?.success && data?.systemInfo) {
-              panelUsers += data.systemInfo.total_user || 0;
-              totalBandwidth += (data.systemInfo.incoming_bandwidth || 0) + (data.systemInfo.outgoing_bandwidth || 0);
+              const totalPanelUsers = data.systemInfo.total_user || 0;
+              const activePanelUsers = data.systemInfo.users_active || data.systemInfo.active_users || 0;
+              const incomingBandwidth = data.systemInfo.incoming_bandwidth || 0;
+              const outgoingBandwidth = data.systemInfo.outgoing_bandwidth || 0;
+              
+              panelUsers += totalPanelUsers;
+              panelActiveUsers += activePanelUsers;
+              totalBandwidth += incomingBandwidth + outgoingBandwidth;
+              
+              console.log(`GLOBAL_SUMMARY: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}`);
+            } else {
+              console.log(`GLOBAL_SUMMARY: Failed to get data from panel ${panel.name}:`, data?.error);
             }
           } catch (error) {
-            console.log(`Failed to get stats from panel ${panel.name}:`, error);
+            console.log(`GLOBAL_SUMMARY: Error fetching from panel ${panel.name}:`, error);
           }
         }
       }
 
-      // Get Telegram stats
+      // Get real Telegram stats
       let telegramUsers = 0;
+      let telegramActiveUsers = 0;
       let telegramRevenue = 0;
       
       try {
@@ -84,20 +102,26 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
         
         if (telegramStats.success && telegramStats.data) {
           telegramUsers = telegramStats.data.totalUsers;
+          telegramActiveUsers = telegramStats.data.activeUsers || telegramUsers; // Assume all are active if not specified
           telegramRevenue = telegramStats.data.totalRevenue;
+          console.log(`GLOBAL_SUMMARY: Telegram - Total: ${telegramUsers}, Active: ${telegramActiveUsers}`);
         }
       } catch (error) {
-        console.log('Telegram API unavailable:', error);
+        console.log('GLOBAL_SUMMARY: Telegram API unavailable:', error);
       }
 
-      setSummary({
+      const finalSummary = {
         totalUsers: (dbUsers || 0) + panelUsers + telegramUsers,
         totalBandwidth,
         totalRevenue: dbRevenue + telegramRevenue,
-        activeUsers: (activeDbUsers || 0) + telegramUsers, // Assume telegram users are active
+        activeUsers: (activeDbSubscriptions || 0) + panelActiveUsers + telegramActiveUsers,
         peakUsageDate: dateRange.to.toISOString().split('T')[0]
-      });
+      };
+
+      console.log('GLOBAL_SUMMARY: Final summary:', finalSummary);
+      setSummary(finalSummary);
     } catch (error) {
+      console.error('GLOBAL_SUMMARY: Error loading summary:', error);
       toast({
         title: "Error",
         description: "Failed to load global summary",
@@ -127,7 +151,7 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold">Global Summary</h2>
+        <h2 className="text-xl font-semibold">Global Summary (Real Data)</h2>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">
             {dateRange.preset === 'custom' 
@@ -149,7 +173,7 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.totalUsers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Across all systems</p>
+            <p className="text-xs text-muted-foreground">All systems combined</p>
           </CardContent>
         </Card>
 
@@ -160,7 +184,7 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{summary.activeUsers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Currently active</p>
+            <p className="text-xs text-muted-foreground">Real active users from panels</p>
           </CardContent>
         </Card>
 
@@ -182,7 +206,7 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(summary.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">From all invoices</p>
+            <p className="text-xs text-muted-foreground">From all systems</p>
           </CardContent>
         </Card>
 
