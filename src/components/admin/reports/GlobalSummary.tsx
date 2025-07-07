@@ -47,7 +47,7 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
 
       // Get real panel stats
       let panelUsers = 0;
-      let panelActiveUsers = 0;
+      let realActiveUsersFromPanels = 0;
       let totalBandwidth = 0;
       
       const { data: panels } = await supabase
@@ -78,7 +78,7 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
               const outgoingBandwidth = data.systemInfo.outgoing_bandwidth || 0;
               
               panelUsers += totalPanelUsers;
-              panelActiveUsers += activePanelUsers;
+              realActiveUsersFromPanels += activePanelUsers;
               totalBandwidth += incomingBandwidth + outgoingBandwidth;
               
               console.log(`GLOBAL_SUMMARY: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}`);
@@ -114,11 +114,11 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
         totalUsers: (dbUsers || 0) + panelUsers + telegramUsers,
         totalBandwidth,
         totalRevenue: dbRevenue + telegramRevenue,
-        activeUsers: (activeDbSubscriptions || 0) + panelActiveUsers + telegramActiveUsers,
+        activeUsers: realActiveUsersFromPanels + telegramActiveUsers,
         peakUsageDate: dateRange.to.toISOString().split('T')[0]
       };
 
-      console.log('GLOBAL_SUMMARY: Final summary:', finalSummary);
+      console.log('GLOBAL_SUMMARY: Final summary with real active users:', finalSummary);
       setSummary(finalSummary);
     } catch (error) {
       console.error('GLOBAL_SUMMARY: Error loading summary:', error);
@@ -179,12 +179,12 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+            <CardTitle className="text-sm font-medium">Real Active Users</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{summary.activeUsers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Real active users from panels</p>
+            <p className="text-xs text-muted-foreground">Active users from panels + Telegram</p>
           </CardContent>
         </Card>
 
