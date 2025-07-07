@@ -26,16 +26,19 @@ const AdminServices = () => {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
+    console.log('AdminServices: Component mounted, loading services...');
     loadServices();
   }, []);
 
   const loadServices = async () => {
     try {
+      console.log('AdminServices: Starting to load services...');
       setLoading(true);
       const data = await VpnServicesService.getServices();
+      console.log('AdminServices: Successfully loaded', data.length, 'services');
       setServices(data);
     } catch (error) {
-      console.error('Failed to load services:', error);
+      console.error('AdminServices: Failed to load services:', error);
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
         description: language === 'fa' ? 'خطا در بارگذاری سرویس‌ها' : 'Failed to load services',
@@ -47,50 +50,75 @@ const AdminServices = () => {
   };
 
   const handleAddService = () => {
-    console.log('DEBUG: Add service button clicked');
+    console.log('AdminServices: Add service button clicked');
     setEditingService(null);
     setIsFormOpen(true);
   };
 
   const handleEditService = (service: VpnService) => {
-    console.log('DEBUG: Edit service button clicked for service:', service.id);
+    console.log('AdminServices: Edit service button clicked for service:', service.id, service.name);
     setEditingService(service);
     setIsFormOpen(true);
   };
 
   const handleDeleteService = (service: VpnService) => {
-    console.log('DEBUG: Delete service button clicked for service:', service.id);
+    console.log('AdminServices: Delete service button clicked for service:', service.id, service.name);
     setDeleteDialog({ isOpen: true, service });
   };
 
   const confirmDelete = async () => {
     if (!deleteDialog.service) {
-      console.log('DEBUG: No service selected for deletion');
+      console.log('AdminServices: No service selected for deletion');
+      toast({
+        title: language === 'fa' ? 'خطا' : 'Error',
+        description: language === 'fa' ? 'هیچ سرویسی انتخاب نشده' : 'No service selected',
+        variant: 'destructive'
+      });
       return;
     }
 
-    console.log('DEBUG: Starting delete process for service:', deleteDialog.service.id);
+    const serviceToDelete = deleteDialog.service;
+    console.log('AdminServices: Starting delete process for service:', serviceToDelete.id, serviceToDelete.name);
+    
     setDeleting(true);
     try {
-      console.log('DEBUG: Calling VpnServicesService.deleteService');
-      await VpnServicesService.deleteService(deleteDialog.service.id);
-      console.log('DEBUG: Delete successful');
+      console.log('AdminServices: Calling VpnServicesService.deleteService...');
+      await VpnServicesService.deleteService(serviceToDelete.id);
+      console.log('AdminServices: Delete operation completed successfully');
+      
       toast({
         title: language === 'fa' ? 'موفق' : 'Success',
         description: language === 'fa' ? 'سرویس با موفقیت حذف شد' : 'Service deleted successfully'
       });
+      
+      // Close the dialog first
+      setDeleteDialog({ isOpen: false, service: null });
+      
+      // Reload services to refresh the list
+      console.log('AdminServices: Reloading services after successful deletion...');
       await loadServices();
     } catch (error) {
-      console.error('DEBUG: Delete failed with error:', error);
+      console.error('AdminServices: Delete operation failed:', error);
+      
+      const errorMessage = error instanceof Error 
+        ? (language === 'fa' ? `خطا در حذف سرویس: ${error.message}` : `Failed to delete service: ${error.message}`)
+        : (language === 'fa' ? 'خطا در حذف سرویس' : 'Failed to delete service');
+      
       toast({
         title: language === 'fa' ? 'خطا' : 'Error',
-        description: error instanceof Error ? error.message : 'Failed to delete service',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
       setDeleting(false);
-      setDeleteDialog({ isOpen: false, service: null });
     }
+  };
+
+  const handleFormSuccess = async () => {
+    console.log('AdminServices: Form operation completed successfully, reloading services...');
+    setIsFormOpen(false);
+    setEditingService(null);
+    await loadServices();
   };
 
   const formatPrice = (price: number) => {
@@ -176,24 +204,18 @@ const AdminServices = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleEditService(service);
-                            }}
-                            className="p-2"
+                            onClick={() => handleEditService(service)}
+                            className="p-2 hover:bg-blue-50"
+                            title={language === 'fa' ? 'ویرایش سرویس' : 'Edit Service'}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDeleteService(service);
-                            }}
-                            className="p-2"
+                            onClick={() => handleDeleteService(service)}
+                            className="p-2 hover:bg-red-50 hover:text-red-600"
+                            title={language === 'fa' ? 'حذف سرویس' : 'Delete Service'}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -209,9 +231,12 @@ const AdminServices = () => {
 
         <ServicesForm
           isOpen={isFormOpen}
-          onClose={() => setIsFormOpen(false)}
+          onClose={() => {
+            setIsFormOpen(false);
+            setEditingService(null);
+          }}
           service={editingService}
-          onSuccess={loadServices}
+          onSuccess={handleFormSuccess}
         />
 
         <AlertDialog open={deleteDialog.isOpen} onOpenChange={(open) => 
@@ -230,7 +255,7 @@ const AdminServices = () => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>
+              <AlertDialogCancel disabled={deleting}>
                 {language === 'fa' ? 'لغو' : 'Cancel'}
               </AlertDialogCancel>
               <AlertDialogAction
