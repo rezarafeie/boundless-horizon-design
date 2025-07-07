@@ -16,6 +16,7 @@ serve(async (req) => {
     const { panelId, dateFrom, dateTo } = await req.json();
     
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Getting system info for panel: ${panelId}`);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Date range: ${dateFrom} to ${dateTo}`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -104,11 +105,23 @@ serve(async (req) => {
     const endDate = dateTo ? new Date(dateTo) : new Date();
     const startDate = dateFrom ? new Date(dateFrom) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
+    // Format dates as ISO strings for the API
+    const startDateISO = startDate.toISOString();
+    const endDateISO = endDate.toISOString();
+
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Using date range: ${startDateISO} to ${endDateISO}`);
+
     // Get traffic analytics
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching traffic stats from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching traffic stats`);
     let trafficData = null;
+    let totalIncoming = 0;
+    let totalOutgoing = 0;
+    
     try {
-      const trafficResponse = await fetch(`${panel.panel_url}/api/system/stats/traffic?start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
+      const trafficUrl = `${panel.panel_url}/api/system/stats/traffic?start=${encodeURIComponent(startDateISO)}&end=${encodeURIComponent(endDateISO)}`;
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic API URL: ${trafficUrl}`);
+      
+      const trafficResponse = await fetch(trafficUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -119,17 +132,44 @@ serve(async (req) => {
 
       if (trafficResponse.ok) {
         trafficData = await trafficResponse.json();
-        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic data received successfully:`, {
-          dataType: typeof trafficData,
-          isArray: Array.isArray(trafficData),
-          length: Array.isArray(trafficData) ? trafficData.length : 'N/A'
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic data received:`, {
+          step: trafficData.step,
+          total: trafficData.total,
+          usagesCount: trafficData.usages ? trafficData.usages.length : 0
         });
+
+        // Process traffic data according to Marzneshin API format
+        if (trafficData.usages && Array.isArray(trafficData.usages)) {
+          trafficData.usages.forEach((usage: any) => {
+            if (Array.isArray(usage) && usage.length >= 2) {
+              const [incoming, outgoing] = usage;
+              if (typeof incoming === 'number' && typeof outgoing === 'number') {
+                totalIncoming += incoming;
+                totalOutgoing += outgoing;
+              }
+            }
+          });
+        }
+
+        // Use the total field if available and valid
+        if (trafficData.total && typeof trafficData.total === 'number') {
+          const totalFromApi = trafficData.total;
+          console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Using total from API: ${totalFromApi}, calculated: ${totalIncoming + totalOutgoing}`);
+          // Use the larger value (API total or calculated total)
+          const calculatedTotal = totalIncoming + totalOutgoing;
+          if (totalFromApi > calculatedTotal) {
+            totalIncoming = totalFromApi / 2; // Split evenly if we can't determine breakdown
+            totalOutgoing = totalFromApi / 2;
+          }
+        }
+
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Processed traffic - Incoming: ${totalIncoming}, Outgoing: ${totalOutgoing}`);
       } else {
         const errorText = await trafficResponse.text();
         console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] Traffic API failed:`, {
           status: trafficResponse.status,
           statusText: trafficResponse.statusText,
-          url: `${panel.panel_url}/api/system/stats/traffic`,
+          url: trafficUrl,
           errorResponse: errorText
         });
       }
@@ -152,11 +192,7 @@ serve(async (req) => {
 
       if (userStatsResponse.ok) {
         userStatsData = await userStatsResponse.json();
-        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats received successfully:`, {
-          dataType: typeof userStatsData,
-          keys: Object.keys(userStatsData || {}),
-          userStatsData
-        });
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats received successfully:`, userStatsData);
       } else {
         const errorText = await userStatsResponse.text();
         console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed:`, {
@@ -170,7 +206,7 @@ serve(async (req) => {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API network error:`, userStatsError);
     }
 
-    // Format response data
+    // Format response data to match the expected structure
     const systemInfo = {
       total_user: userStatsData?.total || 0,
       users_active: userStatsData?.active || 0,
@@ -178,26 +214,12 @@ serve(async (req) => {
       users_disabled: userStatsData?.limited || 0,
       users_on_hold: userStatsData?.on_hold || 0,
       users_online: userStatsData?.online || 0,
-      traffic_data: trafficData || [],
-      incoming_bandwidth: 0, // Will be calculated from traffic data
-      outgoing_bandwidth: 0  // Will be calculated from traffic data
+      traffic_data: trafficData || null,
+      incoming_bandwidth: totalIncoming,
+      outgoing_bandwidth: totalOutgoing
     };
 
-    // Calculate total bandwidth if traffic data is available
-    if (trafficData && Array.isArray(trafficData)) {
-      let totalIncoming = 0;
-      let totalOutgoing = 0;
-      
-      trafficData.forEach((point: any) => {
-        totalIncoming += point.incoming || 0;
-        totalOutgoing += point.outgoing || 0;
-      });
-      
-      systemInfo.incoming_bandwidth = totalIncoming;
-      systemInfo.outgoing_bandwidth = totalOutgoing;
-    }
-
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Returning system info:`, systemInfo);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Returning standardized system info:`, systemInfo);
 
     return new Response(JSON.stringify({
       success: true,
