@@ -1,5 +1,4 @@
 
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -51,87 +50,200 @@ serve(async (req) => {
     }
 
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Panel credentials check passed for: ${panel.name}`);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Using credentials - Username: ${panel.username}, Password length: ${panel.password.length}`);
 
-    // Authenticate with Marzneshin
+    // Step 1 & 2: Enhanced Authentication with Multiple Formats
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Attempting authentication with: ${panel.panel_url}/api/admins/token`);
     
+    const authUrl = `${panel.panel_url}/api/admins/token`;
+    const authData = {
+      username: panel.username,
+      password: panel.password
+    };
+
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Authentication request data:`, {
+      url: authUrl,
+      username: panel.username,
+      passwordLength: panel.password.length,
+      requestBody: JSON.stringify(authData)
+    });
+
     let authResponse;
+    let authAttempts = [];
+
+    // Try JSON format first (current format)
     try {
-      authResponse = await fetch(`${panel.panel_url}/api/admins/token`, {
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Attempting JSON authentication...`);
+      authResponse = await fetch(authUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'User-Agent': 'Marzneshin-API-Client/1.0'
         },
-        body: JSON.stringify({
-          username: panel.username,
-          password: panel.password
-        })
+        body: JSON.stringify(authData)
       });
+
+      const responseText = await authResponse.text();
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] JSON Auth Response:`, {
+        status: authResponse.status,
+        statusText: authResponse.statusText,
+        headers: Object.fromEntries(authResponse.headers.entries()),
+        body: responseText
+      });
+
+      authAttempts.push({
+        format: 'JSON',
+        status: authResponse.status,
+        success: authResponse.ok,
+        response: responseText
+      });
+
+      // If JSON format fails with 422, try form-encoded format
+      if (!authResponse.ok && authResponse.status === 422) {
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] JSON format failed with 422, trying form-encoded...`);
+        
+        const formData = new URLSearchParams();
+        formData.append('username', panel.username);
+        formData.append('password', panel.password);
+
+        authResponse = await fetch(authUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+            'User-Agent': 'Marzneshin-API-Client/1.0'
+          },
+          body: formData.toString()
+        });
+
+        const formResponseText = await authResponse.text();
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Form Auth Response:`, {
+          status: authResponse.status,
+          statusText: authResponse.statusText,
+          headers: Object.fromEntries(authResponse.headers.entries()),
+          body: formResponseText
+        });
+
+        authAttempts.push({
+          format: 'FORM',
+          status: authResponse.status,
+          success: authResponse.ok,
+          response: formResponseText
+        });
+      }
+
     } catch (fetchError: any) {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Network error during authentication:`, fetchError);
       throw new Error(`Network error connecting to panel ${panel.name}: ${fetchError.message}`);
     }
 
+    // Step 3: Enhanced Error Handling for Authentication
     if (!authResponse.ok) {
-      const errorText = await authResponse.text();
-      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Auth failed:`, {
+      let errorDetails;
+      try {
+        const errorText = await authResponse.text();
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+      } catch {
+        errorDetails = { message: 'Unknown error' };
+      }
+
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Authentication failed:`, {
         status: authResponse.status,
         statusText: authResponse.statusText,
         panelUrl: panel.panel_url,
-        errorResponse: errorText,
-        requestBody: { username: panel.username, password: '[REDACTED]' }
+        username: panel.username,
+        errorDetails: errorDetails,
+        allAttempts: authAttempts
       });
-      throw new Error(`Authentication failed for panel ${panel.name}: ${authResponse.status} ${authResponse.statusText}. Response: ${errorText}`);
+
+      throw new Error(`Authentication failed for panel ${panel.name}: ${authResponse.status} ${authResponse.statusText}. Error: ${JSON.stringify(errorDetails)}. Tried formats: ${authAttempts.map(a => `${a.format}(${a.status})`).join(', ')}`);
     }
 
-    let authData;
+    // Step 4: Enhanced Token Handling
+    let authDataResponse;
     try {
-      authData = await authResponse.json();
+      const responseText = await authResponse.text();
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Raw auth response:`, responseText);
+      authDataResponse = JSON.parse(responseText);
     } catch (parseError: any) {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Failed to parse auth response:`, parseError);
       throw new Error(`Invalid response format from panel ${panel.name} authentication`);
     }
 
-    const token = authData.access_token;
+    const token = authDataResponse.access_token;
 
     if (!token) {
-      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] No access token in response:`, authData);
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] No access token in response:`, authDataResponse);
       throw new Error('No access token received from authentication');
     }
 
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Authentication successful for panel: ${panel.name}`);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Token received (first 20 chars): ${token.substring(0, 20)}...`);
 
-    // Get user status overview (ONLY user stats, no traffic stats)
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats`);
+    // Validate token format
+    if (typeof token !== 'string' || token.length < 10) {
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Invalid token format:`, { tokenType: typeof token, tokenLength: token?.length });
+      throw new Error('Invalid token format received');
+    }
+
+    // Step 5: Enhanced User Stats API Call with Better Error Handling
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats from: ${panel.panel_url}/api/system/stats/users`);
+    
+    const userStatsUrl = `${panel.panel_url}/api/system/stats/users`;
     let userStatsData = null;
+    
     try {
-      const userStatsResponse = await fetch(`${panel.panel_url}/api/system/stats/users`, {
+      const userStatsResponse = await fetch(userStatsUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'User-Agent': 'Marzneshin-API-Client/1.0'
         }
       });
 
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats response:`, {
+        status: userStatsResponse.status,
+        statusText: userStatsResponse.statusText,
+        headers: Object.fromEntries(userStatsResponse.headers.entries())
+      });
+
       if (userStatsResponse.ok) {
-        userStatsData = await userStatsResponse.json();
-        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats received successfully:`, userStatsData);
+        const responseText = await userStatsResponse.text();
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats raw response:`, responseText);
+        
+        try {
+          userStatsData = JSON.parse(responseText);
+          console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats parsed successfully:`, userStatsData);
+        } catch (parseError: any) {
+          console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Failed to parse user stats response:`, parseError);
+          throw new Error(`Invalid JSON in user stats response: ${parseError.message}`);
+        }
       } else {
         const errorText = await userStatsResponse.text();
-        console.warn(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed:`, {
+        console.error(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed:`, {
           status: userStatsResponse.status,
           statusText: userStatsResponse.statusText,
-          url: `${panel.panel_url}/api/system/stats/users`,
-          errorResponse: errorText
+          url: userStatsUrl,
+          errorResponse: errorText,
+          tokenUsed: `${token.substring(0, 20)}...`
         });
+        
+        // Don't throw error, just log and continue with null data
+        userStatsData = null;
       }
     } catch (userStatsError: any) {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API network error:`, userStatsError);
+      userStatsData = null;
     }
 
-    // Format response data to match the expected structure (without traffic data)
+    // Step 6: Enhanced Response Format with Detailed Success Info
     const systemInfo = {
       total_user: userStatsData?.total || 0,
       users_active: userStatsData?.active || 0,
@@ -139,16 +251,24 @@ serve(async (req) => {
       users_disabled: userStatsData?.limited || 0,
       users_on_hold: userStatsData?.on_hold || 0,
       users_online: userStatsData?.online || 0,
-      traffic_data: null, // No traffic data
-      incoming_bandwidth: 0, // Set to 0 since we're not fetching traffic
-      outgoing_bandwidth: 0 // Set to 0 since we're not fetching traffic
+      traffic_data: null, // No traffic data for now
+      incoming_bandwidth: 0,
+      outgoing_bandwidth: 0
     };
 
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Returning standardized system info (without traffic):`, systemInfo);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Returning final system info:`, systemInfo);
 
     return new Response(JSON.stringify({
       success: true,
-      systemInfo
+      systemInfo,
+      debugInfo: {
+        panelName: panel.name,
+        panelUrl: panel.panel_url,
+        authAttempts: authAttempts,
+        tokenReceived: !!token,
+        userStatsSuccess: !!userStatsData,
+        timestamp: new Date().toISOString()
+      }
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -172,4 +292,3 @@ serve(async (req) => {
     });
   }
 });
-
