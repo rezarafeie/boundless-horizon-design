@@ -162,6 +162,43 @@ export const PanelsManagement = () => {
     if (!confirm('Are you sure you want to delete this panel?')) return;
 
     try {
+      // Check for dependencies first
+      const { data: subscriptionPlans, error: plansError } = await supabase
+        .from('subscription_plans')
+        .select('id, name_en')
+        .eq('assigned_panel_id', id);
+
+      if (plansError) throw plansError;
+
+      if (subscriptionPlans && subscriptionPlans.length > 0) {
+        const planNames = subscriptionPlans.map(plan => plan.name_en).join(', ');
+        alert(`Cannot delete panel. It is assigned to ${subscriptionPlans.length} subscription plan(s): ${planNames}. Please reassign these plans first.`);
+        return;
+      }
+
+      // Check for test users
+      const { data: testUsers, error: testUsersError } = await supabase
+        .from('test_users')
+        .select('id, username')
+        .eq('panel_id', id);
+
+      if (testUsersError) throw testUsersError;
+
+      if (testUsers && testUsers.length > 0) {
+        if (!confirm(`This panel has ${testUsers.length} test users. Delete anyway? (Test users will be removed)`)) {
+          return;
+        }
+        
+        // Delete test users first
+        const { error: deleteTestUsersError } = await supabase
+          .from('test_users')
+          .delete()
+          .eq('panel_id', id);
+
+        if (deleteTestUsersError) throw deleteTestUsersError;
+      }
+
+      // Now delete the panel
       const { error } = await supabase
         .from('panel_servers')
         .delete()
@@ -171,6 +208,7 @@ export const PanelsManagement = () => {
       await fetchPanels();
     } catch (error) {
       console.error('Error deleting panel:', error);
+      alert(`Failed to delete panel: ${error.message}`);
     }
   };
 
@@ -214,54 +252,54 @@ export const PanelsManagement = () => {
 
   return (
     <div className="space-y-6">
-      {/* API Tester Section */}
+      {/* Panel Management Section */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Marzneshin API Testing
-          </CardTitle>
-          <CardDescription>
-            Test Marzneshin panel API endpoints to diagnose inbound detection issues
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <MarzneshinApiTester />
-        </CardContent>
-      </Card>
-
-      {/* Existing Panel Management Section */}
-      <Card>
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">Panel Management</h1>
-            <p className="text-gray-600">Manage your panel servers and test their connectivity</p>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => openApiTester()}
-              className="flex items-center gap-2"
-            >
-              <TestTube className="w-4 h-4" />
-              API Endpoint Tester
-            </Button>
-            <Select value={filterStatus} onValueChange={(value: 'all' | 'failed') => setFilterStatus(value)}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Panels</SelectItem>
-                <SelectItem value="failed">Failed Tests Only</SelectItem>
-              </SelectContent>
-            </Select>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={resetForm}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Panel
-                </Button>
-              </DialogTrigger>
+        <CardHeader className="pb-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <CardTitle className="text-2xl lg:text-3xl font-bold">Panel Management</CardTitle>
+              <CardDescription className="text-sm lg:text-base">
+                Manage your panel servers and test their connectivity
+              </CardDescription>
+            </div>
+            
+            {/* Action Buttons - Mobile Responsive */}
+            <div className="flex flex-col sm:flex-row gap-2 lg:gap-3">
+              {/* Filter */}
+              <Select value={filterStatus} onValueChange={(value: 'all' | 'failed') => setFilterStatus(value)}>
+                <SelectTrigger className="w-full sm:w-40 lg:w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Panels</SelectItem>
+                  <SelectItem value="failed">Failed Tests Only</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {/* API Tester */}
+              <Button 
+                variant="outline" 
+                onClick={() => openApiTester()}
+                className="w-full sm:w-auto"
+                size="default"
+              >
+                <TestTube className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">API Tester</span>
+                <span className="sm:hidden">Test APIs</span>
+              </Button>
+              
+              {/* Add Panel */}
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button 
+                    onClick={resetForm}
+                    className="w-full sm:w-auto"
+                    size="default"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Panel
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>
@@ -388,9 +426,12 @@ export const PanelsManagement = () => {
                   </div>
                 </form>
               </DialogContent>
-            </Dialog>
+              </Dialog>
+            </div>
           </div>
-        </div>
+        </CardHeader>
+
+        <CardContent>
 
         <div className="grid gap-6">
           {filteredPanels.length === 0 ? (
@@ -432,20 +473,36 @@ export const PanelsManagement = () => {
                         {panel.type.charAt(0).toUpperCase() + panel.type.slice(1)} Panel • {panel.country_en} ({panel.country_fa})
                       </CardDescription>
                     </div>
-                    <div className="flex gap-2">
+                     <div className="flex flex-wrap gap-2">
                       <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={() => openApiTester(panel)}
                         title="Test API Endpoints"
+                        className="flex items-center gap-1"
                       >
-                        <TestTube className="w-4 h-4" />
+                        <TestTube className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="hidden sm:inline text-xs">Test</span>
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(panel)}>
-                        <Edit className="w-4 h-4" />
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleEdit(panel)}
+                        title="Edit Panel"
+                        className="flex items-center gap-1"
+                      >
+                        <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="hidden sm:inline text-xs">Edit</span>
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleDelete(panel.id)}>
-                        <Trash2 className="w-4 h-4" />
+                      <Button 
+                        variant="destructive" 
+                        size="sm" 
+                        onClick={() => handleDelete(panel.id)}
+                        title="Delete Panel"
+                        className="flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="hidden sm:inline text-xs">Delete</span>
                       </Button>
                     </div>
                   </div>
@@ -509,7 +566,8 @@ export const PanelsManagement = () => {
               </Card>
             ))
           )}
-        </div>
+          </div>
+        </CardContent>
       </Card>
 
       {/* API Tester Modal */}
