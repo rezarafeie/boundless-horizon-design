@@ -85,8 +85,19 @@ serve(async (req) => {
         status: authResponse.status,
         statusText: authResponse.statusText,
         headers: Object.fromEntries(authResponse.headers.entries()),
-        body: responseText
+        body: responseText,
+        bodyLength: responseText.length,
+        bodyType: typeof responseText
       });
+      
+      // Try to parse and examine the response structure
+      try {
+        const parsedResponse = JSON.parse(responseText);
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Parsed JSON Auth Response:`, parsedResponse);
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Available keys in response:`, Object.keys(parsedResponse));
+      } catch (parseErr) {
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Could not parse auth response as JSON:`, parseErr);
+      }
 
       authAttempts.push({
         format: 'JSON',
@@ -121,8 +132,19 @@ serve(async (req) => {
           status: authResponse.status,
           statusText: authResponse.statusText,
           headers: Object.fromEntries(authResponse.headers.entries()),
-          body: formResponseText
+          body: formResponseText,
+          bodyLength: formResponseText.length,
+          bodyType: typeof formResponseText
         });
+        
+        // Try to parse and examine the form response structure
+        try {
+          const parsedFormResponse = JSON.parse(formResponseText);
+          console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Parsed Form Auth Response:`, parsedFormResponse);
+          console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Available keys in form response:`, Object.keys(parsedFormResponse));
+        } catch (parseErr) {
+          console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Could not parse form response as JSON:`, parseErr);
+        }
 
         authAttempts.push({
           format: 'FORM',
@@ -191,16 +213,34 @@ serve(async (req) => {
       }
       
       authDataResponse = JSON.parse(responseText);
+      
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Final parsed auth response:`, authDataResponse);
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Auth response keys:`, Object.keys(authDataResponse || {}));
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Auth response type:`, typeof authDataResponse);
+      
     } catch (parseError: any) {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Failed to parse auth response:`, parseError);
-      throw new Error(`Invalid response format from panel ${panel.name} authentication`);
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Raw response that failed:`, responseText);
+      throw new Error(`Invalid response format from panel ${panel.name} authentication: ${parseError.message}`);
     }
 
-    const token = authDataResponse.access_token;
+    // Try different possible token field names
+    const token = authDataResponse.access_token || 
+                  authDataResponse.token || 
+                  authDataResponse.accessToken ||
+                  authDataResponse.access ||
+                  authDataResponse.auth_token;
+
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Looking for token in response...`);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] access_token:`, authDataResponse.access_token);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] token:`, authDataResponse.token);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] accessToken:`, authDataResponse.accessToken);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Found token:`, !!token);
 
     if (!token) {
-      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] No access token in response:`, authDataResponse);
-      throw new Error('No access token received from authentication');
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] No access token in response. Full response:`, JSON.stringify(authDataResponse, null, 2));
+      console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Panel: ${panel.name}, URL: ${panel.panel_url}`);
+      throw new Error(`No access token received from authentication. Response keys: ${Object.keys(authDataResponse || {}).join(', ')}`);
     }
 
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Authentication successful for panel: ${panel.name}`);
