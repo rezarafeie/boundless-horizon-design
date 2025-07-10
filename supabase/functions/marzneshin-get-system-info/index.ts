@@ -50,9 +50,8 @@ serve(async (req) => {
     }
 
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Panel credentials check passed for: ${panel.name}`);
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Using credentials - Username: ${panel.username}, Password length: ${panel.password.length}`);
 
-    // Step 1 & 2: Enhanced Authentication with Multiple Formats
+    // Step 1 & 2: Authentication with Fixed Headers (No User-Agent)
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Attempting authentication with: ${panel.panel_url}/api/admins/token`);
     
     const authUrl = `${panel.panel_url}/api/admins/token`;
@@ -61,26 +60,23 @@ serve(async (req) => {
       password: panel.password
     };
 
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Authentication request data:`, {
-      url: authUrl,
-      username: panel.username,
-      passwordLength: panel.password.length,
-      requestBody: JSON.stringify(authData)
-    });
-
     let authResponse;
     let authAttempts = [];
 
-    // Try JSON format first (current format)
+    // Try JSON format first (without User-Agent header)
     try {
       console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Attempting JSON authentication...`);
+      
+      const jsonHeaders = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] JSON Auth Headers:`, jsonHeaders);
+      
       authResponse = await fetch(authUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'Marzneshin-API-Client/1.0'
-        },
+        headers: jsonHeaders,
         body: JSON.stringify(authData)
       });
 
@@ -103,17 +99,20 @@ serve(async (req) => {
       if (!authResponse.ok && authResponse.status === 422) {
         console.log(`[MARZNESHIN-GET-SYSTEM-INFO] JSON format failed with 422, trying form-encoded...`);
         
+        const formHeaders = {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        };
+        
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Form Auth Headers:`, formHeaders);
+        
         const formData = new URLSearchParams();
         formData.append('username', panel.username);
         formData.append('password', panel.password);
 
         authResponse = await fetch(authUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-            'User-Agent': 'Marzneshin-API-Client/1.0'
-          },
+          headers: formHeaders,
           body: formData.toString()
         });
 
@@ -191,21 +190,25 @@ serve(async (req) => {
       throw new Error('Invalid token format received');
     }
 
-    // Step 5: Enhanced User Stats API Call with Better Error Handling
+    // Step 5: Fixed User Stats API Call with Minimal Headers
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats from: ${panel.panel_url}/api/system/stats/users`);
     
     const userStatsUrl = `${panel.panel_url}/api/system/stats/users`;
     let userStatsData = null;
     
     try {
+      // Use minimal headers - only Authorization and Accept (no Content-Type, no User-Agent)
+      const statsHeaders = {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      };
+      
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User Stats Headers:`, statsHeaders);
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Comparing with working curl test - should match exactly`);
+      
       const userStatsResponse = await fetch(userStatsUrl, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'Marzneshin-API-Client/1.0'
-        }
+        headers: statsHeaders
       });
 
       console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats response:`, {
@@ -232,7 +235,8 @@ serve(async (req) => {
           statusText: userStatsResponse.statusText,
           url: userStatsUrl,
           errorResponse: errorText,
-          tokenUsed: `${token.substring(0, 20)}...`
+          tokenUsed: `${token.substring(0, 20)}...`,
+          headersUsed: statsHeaders
         });
         
         // Don't throw error, just log and continue with null data
@@ -267,6 +271,7 @@ serve(async (req) => {
         authAttempts: authAttempts,
         tokenReceived: !!token,
         userStatsSuccess: !!userStatsData,
+        headersFix: 'Removed User-Agent and Content-Type from GET requests',
         timestamp: new Date().toISOString()
       }
     }), {
