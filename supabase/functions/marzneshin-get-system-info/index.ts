@@ -166,8 +166,30 @@ serve(async (req) => {
     // Step 4: Enhanced Token Handling
     let authDataResponse;
     try {
-      const responseText = await authResponse.text();
-      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Raw auth response:`, responseText);
+      // Get the response text from the successful authentication request
+      let responseText;
+      if (authResponse.bodyUsed) {
+        // If body was already consumed, we need to re-authenticate
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Response body already consumed, re-authenticating...`);
+        
+        const reAuthHeaders = {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        };
+        
+        const reAuthResponse = await fetch(authUrl, {
+          method: 'POST',
+          headers: reAuthHeaders,
+          body: JSON.stringify(authData)
+        });
+        
+        responseText = await reAuthResponse.text();
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Re-auth response:`, responseText);
+      } else {
+        responseText = await authResponse.text();
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Raw auth response:`, responseText);
+      }
+      
       authDataResponse = JSON.parse(responseText);
     } catch (parseError: any) {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Failed to parse auth response:`, parseError);
@@ -190,21 +212,21 @@ serve(async (req) => {
       throw new Error('Invalid token format received');
     }
 
-    // Step 5: Fixed User Stats API Call with Minimal Headers
+    // Step 5: Enhanced User Stats API Call with Proper Token Handling
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats from: ${panel.panel_url}/api/system/stats/users`);
     
     const userStatsUrl = `${panel.panel_url}/api/system/stats/users`;
     let userStatsData = null;
     
     try {
-      // Use minimal headers - only Authorization and Accept (no Content-Type, no User-Agent)
+      // Use minimal headers - only Authorization and Accept
       const statsHeaders = {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json'
       };
       
       console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User Stats Headers:`, statsHeaders);
-      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Comparing with working curl test - should match exactly`);
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Making authenticated API call to get user stats...`);
       
       const userStatsResponse = await fetch(userStatsUrl, {
         method: 'GET',
@@ -224,26 +246,44 @@ serve(async (req) => {
         try {
           userStatsData = JSON.parse(responseText);
           console.log(`[MARZNESHIN-GET-SYSTEM-INFO] User stats parsed successfully:`, userStatsData);
+          
+          // Validate that we have the expected data structure
+          if (!userStatsData || typeof userStatsData !== 'object') {
+            throw new Error('Invalid user stats data structure');
+          }
+          
         } catch (parseError: any) {
           console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Failed to parse user stats response:`, parseError);
-          throw new Error(`Invalid JSON in user stats response: ${parseError.message}`);
+          console.error(`[MARZNESHIN-GET-SYSTEM-INFO] Raw response that failed to parse:`, responseText);
+          
+          // Try to continue with null data instead of throwing
+          userStatsData = null;
         }
       } else {
         const errorText = await userStatsResponse.text();
-        console.error(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API failed:`, {
+        console.error(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API FAILED - AUTHENTICATION ISSUE:`, {
           status: userStatsResponse.status,
           statusText: userStatsResponse.statusText,
           url: userStatsUrl,
           errorResponse: errorText,
-          tokenUsed: `${token.substring(0, 20)}...`,
-          headersUsed: statsHeaders
+          tokenUsed: `Bearer ${token.substring(0, 20)}...`,
+          headersUsed: statsHeaders,
+          panelName: panel.name,
+          panelUrl: panel.panel_url
         });
         
-        // Don't throw error, just log and continue with null data
-        userStatsData = null;
+        // This is likely the authentication error the user is seeing
+        throw new Error(`Authentication failed for user stats API call. Status: ${userStatsResponse.status}. Panel may have invalid credentials or token expired.`);
       }
     } catch (userStatsError: any) {
       console.error(`[MARZNESHIN-GET-SYSTEM-INFO] User stats API network error:`, userStatsError);
+      
+      // Re-throw authentication errors, but handle network errors gracefully
+      if (userStatsError.message.includes('Authentication failed')) {
+        throw userStatsError;
+      }
+      
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Continuing with null user stats data due to network error`);
       userStatsData = null;
     }
 
