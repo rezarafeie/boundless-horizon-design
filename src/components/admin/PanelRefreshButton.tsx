@@ -303,7 +303,7 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         });
 
       } else {
-        // For Marzban, use the original approach
+        // For Marzban, detect if it's beta version and handle accordingly
         const configResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
           method: 'GET',
           headers: {
@@ -319,18 +319,57 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
         const configData = await configResponse.json();
         console.log('PANEL REFRESH: Marzban config data received');
 
-        inbounds = configData.inbounds || {};
-        proxies = configData.proxies || {};
-        enabledProtocols = Object.keys(proxies);
+        // ✅ BETA VERSION DETECTION: Check for group_ids to determine version
+        const isBetaVersion = configData.group_ids && Array.isArray(configData.group_ids);
         
-        defaultInbounds = Object.entries(inbounds).flatMap(([protocol, tags]: [string, any]) => 
-          Array.isArray(tags) ? tags.map((tag: string, index: number) => index) : []
-        );
-        
-        totalConfigs = Object.values(inbounds as Record<string, any>).reduce((sum: number, protocols: any) => {
-          const count = Array.isArray(protocols) ? protocols.length : 0;
-          return sum + count;
-        }, 0);
+        if (isBetaVersion) {
+          console.log('PANEL REFRESH: Marzban BETA version detected - using group_ids');
+          
+          // For beta version, store group_ids instead of inbounds
+          const groupIds = configData.group_ids;
+          
+          // Extract protocol details from proxy_settings if available
+          if (configData.proxy_settings && typeof configData.proxy_settings === 'object') {
+            enabledProtocols = Object.keys(configData.proxy_settings);
+            proxies = configData.proxy_settings;
+          } else {
+            // Auto-generate common protocols since empty proxy_settings generates all
+            enabledProtocols = ['vless', 'vmess', 'trojan', 'shadowsocks'];
+            proxies = {};
+            enabledProtocols.forEach(protocol => {
+              proxies[protocol] = {};
+            });
+          }
+          
+          // Store group_ids as default inbounds for compatibility
+          defaultInbounds = groupIds;
+          inbounds = { groups: groupIds };
+          totalConfigs = groupIds.length;
+          
+          console.log('PANEL REFRESH: Marzban BETA processing completed:', {
+            groupIds,
+            enabledProtocols,
+            totalConfigs,
+            hasProxySettings: !!configData.proxy_settings
+          });
+          
+        } else {
+          console.log('PANEL REFRESH: Marzban LEGACY version detected - using inbounds/proxies');
+          
+          // Legacy version handling
+          inbounds = configData.inbounds || {};
+          proxies = configData.proxies || {};
+          enabledProtocols = Object.keys(proxies);
+          
+          defaultInbounds = Object.entries(inbounds).flatMap(([protocol, tags]: [string, any]) => 
+            Array.isArray(tags) ? tags.map((tag: string, index: number) => index) : []
+          );
+          
+          totalConfigs = Object.values(inbounds as Record<string, any>).reduce((sum: number, protocols: any) => {
+            const count = Array.isArray(protocols) ? protocols.length : 0;
+            return sum + count;
+          }, 0);
+        }
       }
 
       console.log('PANEL REFRESH: Final processed data:', {
@@ -397,11 +436,20 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
       if (enabledProtocols.length === 0) {
         toast.error(`⚠️ No protocols enabled - panel cannot create users`);
       } else {
-        const workaroundMsg = panel.type === 'marzneshin' ? ' (using UPDATED service mapping v3)' : '';
+        // Determine version and create appropriate message
+        let versionMsg = '';
+        if (panel.type === 'marzneshin') {
+          versionMsg = ' (using UPDATED service mapping v3)';
+        } else {
+          // Check if beta version was detected for Marzban
+          const isBetaDetected = (inbounds as any).groups && Array.isArray((inbounds as any).groups);
+          versionMsg = isBetaDetected ? ' (BETA version with group_ids)' : ' (legacy version)';
+        }
+        
         const protocolSummary = enabledProtocols.length > 1 ? 
           `${enabledProtocols.length} protocols (${enabledProtocols.join(', ')})` : 
           enabledProtocols[0];
-        toast.success(`Panel config refreshed successfully${workaroundMsg}! Found ${totalConfigs} services across ${protocolSummary}.`);
+        toast.success(`Panel config refreshed successfully${versionMsg}! Found ${totalConfigs} configs across ${protocolSummary}.`);
       }
       
       onRefreshComplete();

@@ -263,11 +263,49 @@ serve(async (req) => {
 
     logStep("User found successfully", { username: userData.username });
 
-    return new Response(JSON.stringify({
+    // ✅ BETA VERSION SUPPORT: Detect if this is beta version and extract protocol details
+    let isBetaVersion = false;
+    let protocolDetails = {};
+    
+    if (userData.proxy_settings && typeof userData.proxy_settings === 'object') {
+      isBetaVersion = true;
+      protocolDetails = userData.proxy_settings;
+      
+      logStep("Beta version detected", { 
+        hasProxySettings: true,
+        protocols: Object.keys(userData.proxy_settings),
+        groupIds: userData.group_ids || []
+      });
+      
+      // Extract protocol UUIDs for subscription URL generation
+      Object.entries(userData.proxy_settings).forEach(([protocol, settings]: [string, any]) => {
+        if (settings && settings.id) {
+          logStep(`Protocol ${protocol} details`, { id: settings.id });
+        }
+      });
+    } else if (userData.proxies || userData.inbounds) {
+      logStep("Legacy version detected", { 
+        hasProxies: !!userData.proxies,
+        hasInbounds: !!userData.inbounds 
+      });
+    }
+
+    // Enhanced response with version detection
+    const response = {
       success: true,
       user: userData,
-      api_type: "marzban"
-    }), {
+      api_type: "marzban",
+      version: isBetaVersion ? "beta" : "legacy",
+      protocol_details: protocolDetails,
+      group_ids: userData.group_ids || null
+    };
+
+    logStep("Returning enhanced user data", { 
+      version: response.version,
+      hasProtocolDetails: Object.keys(protocolDetails).length > 0
+    });
+
+    return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });

@@ -225,10 +225,12 @@ serve(async (req) => {
       throw error;
     }
 
-    // Step 2: Get template user configuration (usually 'reza') with enhanced fallback logic
+    // Step 2: Get template user configuration (usually 'reza') to detect beta version and get group_ids
     console.log('🔵 [MARZBAN-CREATE-USER] Fetching template user configuration...');
     
     let templateUser = null;
+    let isBetaVersion = false;
+    let groupIds: number[] = [];
     
     try {
       const templateUserResponse = await fetch(`${panelConfig.panel_url}/api/user/reza`, {
@@ -247,17 +249,33 @@ serve(async (req) => {
 
       if (templateUserResponse.ok) {
         templateUser = await templateUserResponse.json();
+        
+        // Check if this is beta version by looking for group_ids
+        if (templateUser.group_ids && Array.isArray(templateUser.group_ids)) {
+          isBetaVersion = true;
+          groupIds = templateUser.group_ids;
+          console.log('🟢 [MARZBAN-CREATE-USER] Beta version detected! Using group_ids:', groupIds);
+        } else {
+          console.log('🔵 [MARZBAN-CREATE-USER] Legacy version detected, using old structure');
+        }
+        
         console.log('🟢 [MARZBAN-CREATE-USER] Template user fetched successfully:', {
           username: templateUser.username,
+          isBetaVersion,
+          groupIds: groupIds.length > 0 ? groupIds : 'none',
           hasProxies: !!templateUser.proxies,
           proxiesCount: Object.keys(templateUser.proxies || {}).length,
           hasInbounds: !!templateUser.inbounds,
-          inboundsCount: Object.keys(templateUser.inbounds || {}).length
+          inboundsCount: Object.keys(templateUser.inbounds || {}).length,
+          hasProxySettings: !!templateUser.proxy_settings
         });
 
-        // Validate template user has required proxy data
-        if (!templateUser.proxies && !templateUser.inbounds) {
-          console.error('⚠️ [MARZBAN-CREATE-USER] Template user has no proxy or inbound data, will use fallback');
+        // Validate template user has required data
+        if (isBetaVersion && groupIds.length === 0) {
+          console.error('⚠️ [MARZBAN-CREATE-USER] Beta version but no group_ids found, will use fallback');
+          templateUser = null;
+        } else if (!isBetaVersion && !templateUser.proxies && !templateUser.inbounds) {
+          console.error('⚠️ [MARZBAN-CREATE-USER] Legacy version but no proxy or inbound data, will use fallback');
           templateUser = null;
         }
       } else {
@@ -271,14 +289,38 @@ serve(async (req) => {
       console.error('⚠️ [MARZBAN-CREATE-USER] Template user fetch exception, will use fallback:', error.message);
     }
 
-    // Step 3: Create the new user with proper proxy configuration
+    // Step 3: Create the new user with proper configuration based on version
     const dataLimitBytes = dataLimitGB * 1073741824; // Convert GB to bytes
     const expireTimestamp = Math.floor(Date.now() / 1000) + (durationDays * 24 * 60 * 60);
 
     let newUserData;
 
-    if (templateUser && (templateUser.proxies || templateUser.inbounds)) {
-      // Use template user configuration
+    if (isBetaVersion && groupIds.length > 0) {
+      // ✅ BETA VERSION: Use new group_ids structure
+      newUserData = {
+        username: username,
+        status: "active",
+        expire: expireTimestamp,
+        data_limit: dataLimitBytes,
+        data_limit_reset_strategy: "no_reset",
+        note: notes || `Created via bnets.co - Subscription`,
+        group_ids: groupIds,
+        proxy_settings: {}, // Empty proxy_settings will auto-generate all protocols
+        next_plan: {
+          user_template_id: 0,
+          data_limit: 0,
+          expire: 0,
+          add_remaining_traffic: false
+        }
+      };
+
+      console.log('🟢 [MARZBAN-CREATE-USER] Using BETA VERSION structure with group_ids:', {
+        groupIds: groupIds,
+        emptyProxySettings: 'will auto-generate all protocols'
+      });
+      
+    } else if (templateUser && (templateUser.proxies || templateUser.inbounds)) {
+      // ✅ LEGACY VERSION: Use template user configuration
       newUserData = {
         username: username,
         proxies: templateUser.proxies || {},
@@ -291,12 +333,13 @@ serve(async (req) => {
         status: "active"
       };
 
-      console.log('🟢 [MARZBAN-CREATE-USER] Using template user proxy configuration:', {
+      console.log('🟢 [MARZBAN-CREATE-USER] Using LEGACY VERSION template user configuration:', {
         proxiesCount: Object.keys(templateUser.proxies || {}).length,
         inboundsCount: Object.keys(templateUser.inbounds || {}).length
       });
+      
     } else if (enabledProtocols && Array.isArray(enabledProtocols) && enabledProtocols.length > 0) {
-      // Use dynamic proxies from enabled protocols
+      // Use dynamic proxies from enabled protocols (legacy fallback)
       const proxies: Record<string, {}> = {};
       enabledProtocols.forEach(protocol => {
         proxies[protocol] = {};
@@ -312,12 +355,13 @@ serve(async (req) => {
         status: "active"
       };
 
-      console.log('🟢 [MARZBAN-CREATE-USER] Using dynamic proxies from enabled protocols:', {
+      console.log('🟢 [MARZBAN-CREATE-USER] Using dynamic proxies from enabled protocols (legacy):', {
         enabledProtocols: enabledProtocols,
         proxiesCount: Object.keys(proxies).length
       });
+      
     } else if (panelConfig.panel_config_data?.inbounds) {
-      // Use stored panel inbound data
+      // Use stored panel inbound data (legacy fallback)
       const storedInbounds = panelConfig.panel_config_data.inbounds;
       const inbounds: Record<string, {}> = {};
       
@@ -338,10 +382,11 @@ serve(async (req) => {
         status: "active"
       };
 
-      console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbound data:', {
+      console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbound data (legacy):', {
         inboundsCount: Object.keys(inbounds).length,
         storedInboundsCount: storedInbounds.length
       });
+      
     } else {
       // Last resort fallback - use minimal proxy configuration
       newUserData = {
