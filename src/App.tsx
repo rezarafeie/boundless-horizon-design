@@ -23,6 +23,7 @@ import AdminWebhook from "./pages/AdminWebhook";
 import AdminServices from "./pages/AdminServices";
 import AdminApproveOrder from "./pages/AdminApproveOrder";
 import AdminRejectOrder from "./pages/AdminRejectOrder";
+import AdminManualVpn from "./pages/AdminManualVpn";
 import DeliveryPage from "./pages/DeliveryPage";
 import SubscriptionDelivery from "./pages/SubscriptionDelivery";
 import PaymentSuccess from "./pages/PaymentSuccess";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/admin/telegrambot" element={<AdminTelegramBot />} />
               <Route path="/admin/services" element={<AdminServices />} />
               <Route path="/admin/webhook" element={<AdminWebhook />} />
+              <Route path="/admin/manual-vpn" element={<AdminManualVpn />} />
               <Route path="/admin/approve-order/:id" element={<AdminApproveOrder />} />
               <Route path="/admin/reject-order/:id" element={<AdminRejectOrder />} />
               <Route path="/delivery" element={<DeliveryPage />} />

@@ -328,6 +328,22 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           // For beta version, store group_ids instead of inbounds
           const groupIds = configData.group_ids;
           
+          // ✅ EXTRACT AND CACHE TEMPLATE VALUES FROM REZA USER
+          const templateData = {
+            proxy_settings: configData.proxy_settings || {},
+            group_ids: groupIds,
+            // Extract specific protocol settings for future use
+            vmess_id: configData.proxy_settings?.vmess?.id || null,
+            vless_id: configData.proxy_settings?.vless?.id || null,
+            vless_flow: configData.proxy_settings?.vless?.flow || null,
+            trojan_password: configData.proxy_settings?.trojan?.password || null,
+            shadowsocks_password: configData.proxy_settings?.shadowsocks?.password || null,
+            shadowsocks_method: configData.proxy_settings?.shadowsocks?.method || null,
+            primary_group_id: groupIds.length > 0 ? groupIds[0] : null
+          };
+          
+          console.log('PANEL REFRESH: Cached template data from reza user:', templateData);
+          
           // Extract protocol details from proxy_settings if available
           if (configData.proxy_settings && typeof configData.proxy_settings === 'object') {
             enabledProtocols = Object.keys(configData.proxy_settings);
@@ -343,14 +359,18 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
           
           // Store group_ids as default inbounds for compatibility
           defaultInbounds = groupIds;
-          inbounds = { groups: groupIds };
+          inbounds = { 
+            groups: groupIds,
+            template_data: templateData // Store cached template for user creation
+          };
           totalConfigs = groupIds.length;
           
           console.log('PANEL REFRESH: Marzban BETA processing completed:', {
             groupIds,
             enabledProtocols,
             totalConfigs,
-            hasProxySettings: !!configData.proxy_settings
+            hasProxySettings: !!configData.proxy_settings,
+            templateDataCached: true
           });
           
         } else {

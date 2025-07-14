@@ -22,9 +22,9 @@ serve(async (req) => {
   let subscriptionId = null;
 
   try {
-    const { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols, subscriptionId: subId } = await req.json();
+    const { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols, subscriptionId: subId, customApiBody, manualMode } = await req.json();
     
-    requestData = { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols };
+    requestData = { username, dataLimitGB, durationDays, notes, panelId, enabledProtocols, manualMode, hasCustomBody: !!customApiBody };
     subscriptionId = subId;
     
     console.log('🔵 [MARZBAN-CREATE-USER] Starting user creation with STRICT panel selection:', {
@@ -295,8 +295,45 @@ serve(async (req) => {
 
     let newUserData;
 
+    // ✅ MANUAL MODE: Use custom API body if provided
+    if (manualMode && customApiBody) {
+      console.log('🔧 [MARZBAN-CREATE-USER] Using MANUAL MODE with custom API body');
+      newUserData = customApiBody;
+      
+      console.log('🟢 [MARZBAN-CREATE-USER] Manual mode body:', {
+        customBodyKeys: Object.keys(customApiBody),
+        username: customApiBody.username,
+        hasProxySettings: !!customApiBody.proxy_settings,
+        hasGroupIds: !!customApiBody.group_ids
+      });
+      
+    } else {
+
     if (isBetaVersion && groupIds.length > 0) {
-      // ✅ BETA VERSION: Use new group_ids structure (exactly as specified)
+      // ✅ BETA VERSION: Use cached template data from panel refresh if available
+      let proxySettings = {};
+      let finalGroupIds = groupIds;
+      
+      // Try to get cached template data from panel config
+      if (panelConfig.panel_config_data?.inbounds?.template_data) {
+        const templateData = panelConfig.panel_config_data.inbounds.template_data;
+        console.log('🟢 [MARZBAN-CREATE-USER] Using cached template data from panel refresh:', templateData);
+        
+        // Use saved proxy settings if available
+        if (templateData.proxy_settings && Object.keys(templateData.proxy_settings).length > 0) {
+          proxySettings = templateData.proxy_settings;
+        }
+        
+        // Use saved group_ids if available
+        if (templateData.group_ids && templateData.group_ids.length > 0) {
+          finalGroupIds = templateData.group_ids;
+        }
+      } else if (templateUser?.proxy_settings) {
+        // Fallback to template user data if no cached data
+        proxySettings = templateUser.proxy_settings;
+        console.log('🟡 [MARZBAN-CREATE-USER] Using template user proxy_settings as fallback');
+      }
+      
       newUserData = {
         username: username,
         status: "active",
@@ -304,8 +341,11 @@ serve(async (req) => {
         data_limit: dataLimitBytes,
         data_limit_reset_strategy: "no_reset",
         note: notes || `Created via bnets.co - Subscription`,
-        group_ids: groupIds,
-        proxy_settings: {}, // Empty = auto-generates all protocols
+        group_ids: finalGroupIds,
+        proxy_settings: proxySettings, // Use cached/template settings or empty for auto-generation
+        on_hold_expire_duration: 0,
+        on_hold_timeout: expireTimestamp,
+        auto_delete_in_days: 0,
         next_plan: {
           user_template_id: 0,
           data_limit: 0,
@@ -314,9 +354,11 @@ serve(async (req) => {
         }
       };
 
-      console.log('🟢 [MARZBAN-CREATE-USER] Using BETA VERSION structure with group_ids:', {
-        groupIds: groupIds,
-        emptyProxySettings: 'will auto-generate all protocols'
+      console.log('🟢 [MARZBAN-CREATE-USER] Using BETA VERSION structure with cached template data:', {
+        groupIds: finalGroupIds,
+        proxySettingsKeys: Object.keys(proxySettings),
+        hasCachedData: !!panelConfig.panel_config_data?.inbounds?.template_data,
+        usingTemplate: Object.keys(proxySettings).length > 0 ? 'yes' : 'will auto-generate all protocols'
       });
       
     } else if (templateUser && (templateUser.proxies || templateUser.inbounds)) {
@@ -413,6 +455,7 @@ serve(async (req) => {
         panel_name: panelConfig.name
       });
     }
+    } // End of manual mode else block
 
     console.log('🔵 [MARZBAN-CREATE-USER] Creating user with data:', {
       username: newUserData.username,

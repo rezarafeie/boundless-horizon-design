@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 
 export const ManualVpnCreationTool = () => {
   const [isCreating, setIsCreating] = useState(false);
+  const [isManualMode, setIsManualMode] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     planId: '',
@@ -21,6 +22,7 @@ export const ManualVpnCreationTool = () => {
     durationDays: 30,
     notes: 'Manual VPN creation test'
   });
+  const [manualApiBody, setManualApiBody] = useState('');
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [creationResult, setCreationResult] = useState<any>(null);
   const { toast } = useToast();
@@ -82,6 +84,47 @@ export const ManualVpnCreationTool = () => {
     return `bnets_${randomId}_${randomSuffix}`;
   };
 
+  const getDefaultApiBody = () => {
+    const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.durationDays * 24 * 60 * 60);
+    const dataLimitBytes = formData.dataLimitGB * 1073741824;
+    
+    return JSON.stringify({
+      "username": "{{username}}",
+      "status": "active",
+      "expire": "{{expire}}",
+      "data_limit": "{{data_limit}}",
+      "data_limit_reset_strategy": "no_reset",
+      "note": "{{note}}",
+      "group_ids": [1],
+      "proxy_settings": {
+        "vmess": { "id": "sample-vmess-id" },
+        "vless": { "id": "sample-vless-id", "flow": "xtls-rprx-vision" },
+        "trojan": { "password": "sample-trojan-password" },
+        "shadowsocks": { "password": "sample-ss-password", "method": "chacha20-ietf-poly1305" }
+      },
+      "on_hold_expire_duration": 0,
+      "on_hold_timeout": "{{expire}}",
+      "auto_delete_in_days": 0,
+      "next_plan": {
+        "user_template_id": 0,
+        "data_limit": 0,
+        "expire": 0,
+        "add_remaining_traffic": false
+      }
+    }, null, 2);
+  };
+
+  const replaceVariables = (jsonString: string) => {
+    const expireTimestamp = Math.floor(Date.now() / 1000) + (formData.durationDays * 24 * 60 * 60);
+    const dataLimitBytes = formData.dataLimitGB * 1073741824;
+    
+    return jsonString
+      .replace(/{{username}}/g, formData.username)
+      .replace(/{{expire}}/g, expireTimestamp.toString())
+      .replace(/{{data_limit}}/g, dataLimitBytes.toString())
+      .replace(/{{note}}/g, formData.notes);
+  };
+
   const handleCreateVpn = async () => {
     if (!formData.planId || !formData.username) {
       toast({
@@ -126,15 +169,41 @@ export const ManualVpnCreationTool = () => {
       addDebugLog(`Panel Type: ${panelType}`);
       addDebugLog(`Edge Function: ${edgeFunctionName}`);
 
-      // Prepare request data
-      const requestData = {
-        username: formData.username,
-        dataLimitGB: formData.dataLimitGB,
-        durationDays: formData.durationDays,
-        notes: formData.notes,
-        panelId: selectedPlan.panel_servers?.id,
-        subscriptionId: 'manual-test-' + Date.now()
-      };
+      let requestData;
+      
+      if (isManualMode && manualApiBody.trim()) {
+        // Manual mode: use custom API body with variable replacement
+        try {
+          const processedBody = replaceVariables(manualApiBody);
+          const parsedBody = JSON.parse(processedBody);
+          
+          addDebugLog('🔧 Manual Mode: Using custom API body');
+          addDebugLog(`Variables replaced: username, expire, data_limit, note`);
+          
+          // For manual mode, we send the custom body directly to a special endpoint
+          requestData = {
+            username: formData.username,
+            customApiBody: parsedBody,
+            panelId: selectedPlan.panel_servers?.id,
+            subscriptionId: 'manual-test-' + Date.now(),
+            manualMode: true
+          };
+          
+        } catch (error) {
+          addDebugLog(`❌ Invalid JSON in manual API body: ${error.message}`);
+          throw new Error(`Invalid JSON in manual API body: ${error.message}`);
+        }
+      } else {
+        // Standard mode: use form data
+        requestData = {
+          username: formData.username,
+          dataLimitGB: formData.dataLimitGB,
+          durationDays: formData.durationDays,
+          notes: formData.notes,
+          panelId: selectedPlan.panel_servers?.id,
+          subscriptionId: 'manual-test-' + Date.now()
+        };
+      }
 
       addDebugLog('📤 Sending request to edge function...');
       addDebugLog(`Request Data: ${JSON.stringify(requestData, null, 2)}`);
@@ -202,7 +271,85 @@ export const ManualVpnCreationTool = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Manual Mode Toggle */}
+          <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="manual-mode"
+                checked={isManualMode}
+                onChange={(e) => {
+                  setIsManualMode(e.target.checked);
+                  if (e.target.checked && !manualApiBody.trim()) {
+                    setManualApiBody(getDefaultApiBody());
+                  }
+                }}
+                className="rounded"
+              />
+              <Label htmlFor="manual-mode" className="font-medium">
+                Manual Mode
+              </Label>
+            </div>
+            <p className="text-sm text-blue-700">
+              Enable to manually edit the API request body with variable support ({"{{username}}"}, {"{{expire}}"}, {"{{data_limit}}"}, {"{{note}}"})
+            </p>
+          </div>
+
+          {isManualMode ? (
+            /* Manual API Body Editor */
+            <div className="space-y-2">
+              <Label htmlFor="apiBody">Custom API Request Body</Label>
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600">
+                  Edit the JSON body that will be sent to the panel API. Supported variables: 
+                  <code className="bg-gray-100 px-1 rounded">{"{{username}}"}</code>, 
+                  <code className="bg-gray-100 px-1 rounded">{"{{expire}}"}</code>, 
+                  <code className="bg-gray-100 px-1 rounded">{"{{data_limit}}"}</code>, 
+                  <code className="bg-gray-100 px-1 rounded">{"{{note}}"}</code>
+                </p>
+                <Textarea
+                  id="apiBody"
+                  value={manualApiBody}
+                  onChange={(e) => setManualApiBody(e.target.value)}
+                  placeholder="Enter custom API body JSON..."
+                  rows={15}
+                  className="font-mono text-sm"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setManualApiBody(getDefaultApiBody())}
+                  >
+                    Reset to Default Template
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      try {
+                        const formatted = JSON.stringify(JSON.parse(manualApiBody), null, 2);
+                        setManualApiBody(formatted);
+                        toast({ title: 'JSON formatted successfully' });
+                      } catch (error) {
+                        toast({ 
+                          title: 'Invalid JSON', 
+                          description: error.message,
+                          variant: 'destructive' 
+                        });
+                      }
+                    }}
+                  >
+                    Format JSON
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Standard Form Fields */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
               <div className="flex gap-2">
@@ -271,18 +418,19 @@ export const ManualVpnCreationTool = () => {
                 max="365"
               />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              placeholder="Optional notes for the VPN user"
-              rows={2}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Optional notes for the VPN user"
+                rows={2}
+              />
+            </div>
           </div>
+          )}
 
           <div className="flex gap-2">
             <Button
