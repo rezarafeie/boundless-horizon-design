@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, Database, DollarSign, Activity, Calendar, RefreshCw } from 'lucide-react';
+import { Users, Database, Activity, RefreshCw, Wifi } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DateRange } from '../DateRangeSelector';
@@ -18,9 +18,8 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
   const [summary, setSummary] = useState({
     totalUsers: 0,
     totalBandwidth: 0,
-    totalRevenue: 0,
     activeUsers: 0,
-    peakUsageDate: null as string | null
+    onlineUsers: 0
   });
 
   const loadGlobalSummary = async () => {
@@ -38,16 +37,11 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
         .select('*', { count: 'exact', head: true })
         .eq('status', 'active');
 
-      const { data: revenueData } = await supabase
-        .from('subscriptions')
-        .select('price_toman')
-        .in('status', ['paid', 'active', 'expired']);
-
-      const dbRevenue = revenueData?.reduce((sum, sub) => sum + sub.price_toman, 0) || 0;
 
       // Get real panel stats
       let panelUsers = 0;
       let realActiveUsersFromPanels = 0;
+      let onlineUsersFromPanels = 0;
       let totalBandwidth = 0;
       
       const { data: panels } = await supabase
@@ -74,14 +68,16 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
             if (data?.success && data?.systemInfo) {
               const totalPanelUsers = data.systemInfo.total_user || 0;
               const activePanelUsers = data.systemInfo.users_active || data.systemInfo.active_users || 0;
+              const onlinePanelUsers = data.systemInfo.online_users || 0;
               const incomingBandwidth = data.systemInfo.incoming_bandwidth || 0;
               const outgoingBandwidth = data.systemInfo.outgoing_bandwidth || 0;
               
               panelUsers += totalPanelUsers;
               realActiveUsersFromPanels += activePanelUsers;
+              onlineUsersFromPanels += onlinePanelUsers;
               totalBandwidth += incomingBandwidth + outgoingBandwidth;
               
-              console.log(`GLOBAL_SUMMARY: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}`);
+              console.log(`GLOBAL_SUMMARY: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}, Online: ${onlinePanelUsers}`);
             } else {
               console.log(`GLOBAL_SUMMARY: Failed to get data from panel ${panel.name}:`, data?.error);
             }
@@ -94,7 +90,6 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
       // Get real Telegram stats
       let telegramUsers = 0;
       let telegramActiveUsers = 0;
-      let telegramRevenue = 0;
       
       try {
         const { telegramBotApi } = await import('@/services/telegramBotApi');
@@ -103,7 +98,6 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
         if (telegramStats.success && telegramStats.data) {
           telegramUsers = telegramStats.data.totalUsers;
           telegramActiveUsers = telegramStats.data.activeUsers || telegramUsers; // Assume all are active if not specified
-          telegramRevenue = telegramStats.data.totalRevenue;
           console.log(`GLOBAL_SUMMARY: Telegram - Total: ${telegramUsers}, Active: ${telegramActiveUsers}`);
         }
       } catch (error) {
@@ -113,9 +107,8 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
       const finalSummary = {
         totalUsers: (dbUsers || 0) + panelUsers + telegramUsers,
         totalBandwidth,
-        totalRevenue: dbRevenue + telegramRevenue,
         activeUsers: realActiveUsersFromPanels + telegramActiveUsers,
-        peakUsageDate: dateRange.to.toISOString().split('T')[0]
+        onlineUsers: onlineUsersFromPanels
       };
 
       console.log('GLOBAL_SUMMARY: Final summary with real active users:', finalSummary);
@@ -165,7 +158,7 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -201,23 +194,12 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Online Users</CardTitle>
+            <Wifi className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(summary.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">From all systems</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Peak Usage</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.peakUsageDate || 'N/A'}</div>
-            <p className="text-xs text-muted-foreground">Highest traffic day</p>
+            <div className="text-2xl font-bold text-blue-600">{summary.onlineUsers.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Currently online users</p>
           </CardContent>
         </Card>
       </div>
