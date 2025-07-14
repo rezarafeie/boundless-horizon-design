@@ -15,3 +15,9 @@ verify_jwt = false
 
 [functions.marzneshin-search-user]
 verify_jwt = false
+
+[functions.refresh-panel-config]
+verify_jwt = false
+
+[functions.marzban-create-user]
+verify_jwt = false

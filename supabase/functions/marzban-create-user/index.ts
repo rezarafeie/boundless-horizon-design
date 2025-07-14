@@ -304,7 +304,8 @@ serve(async (req) => {
         customBodyKeys: Object.keys(customApiBody),
         username: customApiBody.username,
         hasProxySettings: !!customApiBody.proxy_settings,
-        hasGroupIds: !!customApiBody.group_ids
+        hasGroupIds: !!customApiBody.group_ids,
+        fullBody: JSON.stringify(customApiBody, null, 2)
       });
       
     } else {
@@ -486,7 +487,8 @@ serve(async (req) => {
     console.log('🔵 [MARZBAN-CREATE-USER] User creation response:', {
       status: createUserResponse.status,
       statusText: createUserResponse.statusText,
-      ok: createUserResponse.ok
+      ok: createUserResponse.ok,
+      headers: Object.fromEntries(createUserResponse.headers.entries())
     });
 
     if (!createUserResponse.ok) {
@@ -495,22 +497,41 @@ serve(async (req) => {
         status: createUserResponse.status,
         statusText: createUserResponse.statusText,
         error: errorText,
-        panelUrl: panelConfig.panel_url
+        panelUrl: panelConfig.panel_url,
+        requestBodySample: JSON.stringify(newUserData, null, 2).substring(0, 500) + '...'
       });
       
-      // Log the failure
+      // Log the failure with detailed debug info
       await supabase.from('user_creation_logs').insert({
         subscription_id: subscriptionId,
         panel_id: panelConfig.id,
         edge_function_name: 'marzban-create-user',
-        request_data: requestData,
+        request_data: { ...requestData, requestBody: newUserData },
         success: false,
         error_message: `User creation failed: ${createUserResponse.status} - ${errorText}`,
         panel_url: panelConfig.panel_url,
-        panel_name: panelConfig.name
+        panel_name: panelConfig.name,
+        response_data: {
+          status: createUserResponse.status,
+          headers: Object.fromEntries(createUserResponse.headers.entries()),
+          error: errorText
+        }
       });
       
-      throw new Error(`User creation failed: ${createUserResponse.status} - ${errorText}`);
+      return new Response(JSON.stringify({
+        success: false,
+        error: `User creation failed: ${createUserResponse.status} - ${errorText}`,
+        debug: {
+          panelUrl: panelConfig.panel_url,
+          panelName: panelConfig.name,
+          status: createUserResponse.status,
+          headers: Object.fromEntries(createUserResponse.headers.entries()),
+          requestBodyKeys: Object.keys(newUserData)
+        }
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: createUserResponse.status,
+      });
     }
 
     const createdUser = await createUserResponse.json();
