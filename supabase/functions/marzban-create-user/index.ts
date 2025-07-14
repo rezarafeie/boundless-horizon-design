@@ -346,13 +346,7 @@ serve(async (req) => {
         proxy_settings: proxySettings, // Use cached/template settings or empty for auto-generation
         on_hold_expire_duration: 0,
         on_hold_timeout: 0,
-        auto_delete_in_days: 0,
-        next_plan: {
-          user_template_id: 0,
-          data_limit: 0,
-          expire: 0,
-          add_remaining_traffic: false
-        }
+        auto_delete_in_days: 0
       };
 
       console.log('🟢 [MARZBAN-CREATE-USER] Using BETA VERSION structure with cached template data:', {
