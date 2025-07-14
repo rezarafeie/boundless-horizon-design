@@ -296,7 +296,7 @@ serve(async (req) => {
     let newUserData;
 
     if (isBetaVersion && groupIds.length > 0) {
-      // ✅ BETA VERSION: Use new group_ids structure
+      // ✅ BETA VERSION: Use new group_ids structure (exactly as specified)
       newUserData = {
         username: username,
         status: "active",
@@ -305,7 +305,7 @@ serve(async (req) => {
         data_limit_reset_strategy: "no_reset",
         note: notes || `Created via bnets.co - Subscription`,
         group_ids: groupIds,
-        proxy_settings: {}, // Empty proxy_settings will auto-generate all protocols
+        proxy_settings: {}, // Empty = auto-generates all protocols
         next_plan: {
           user_template_id: 0,
           data_limit: 0,
