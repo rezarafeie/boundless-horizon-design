@@ -345,7 +345,7 @@ serve(async (req) => {
         group_ids: finalGroupIds,
         proxy_settings: proxySettings, // Use cached/template settings or empty for auto-generation
         on_hold_expire_duration: 0,
-        on_hold_timeout: 0,
+        on_hold_timeout: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString(),
         auto_delete_in_days: 0
       };
 
