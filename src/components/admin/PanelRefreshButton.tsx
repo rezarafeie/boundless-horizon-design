@@ -304,20 +304,25 @@ export const PanelRefreshButton = ({ panel, onRefreshComplete }: PanelRefreshBut
 
       } else {
         // For Marzban, detect if it's beta version and handle accordingly
+        console.log('PANEL REFRESH: Fetching Marzban user data from /api/user/reza');
+        
         const configResponse = await fetch(`${panel.panel_url}/api/user/reza`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
         });
 
         if (!configResponse.ok) {
-          throw new Error(`Config fetch failed: ${configResponse.status} - ${configResponse.statusText}`);
+          const errorText = await configResponse.text();
+          console.error('PANEL REFRESH: Marzban API error response:', errorText);
+          throw new Error(`Config fetch failed: ${configResponse.status} - ${configResponse.statusText}. Response: ${errorText}`);
         }
 
         const configData = await configResponse.json();
-        console.log('PANEL REFRESH: Marzban config data received');
+        console.log('PANEL REFRESH: Marzban config data received:', JSON.stringify(configData, null, 2));
 
         // ✅ BETA VERSION DETECTION: Check for group_ids to determine version
         const isBetaVersion = configData.group_ids && Array.isArray(configData.group_ids);
