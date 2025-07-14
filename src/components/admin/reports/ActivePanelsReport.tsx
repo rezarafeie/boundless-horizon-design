@@ -212,42 +212,131 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                   </div>
                  ) : panel.systemInfo ? (
                    <div className="space-y-4">
-                     {/* Basic Stats */}
+                     {/* System Version */}
+                     {panel.systemInfo.version && (
+                       <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded">
+                         Version: {panel.systemInfo.version}
+                       </div>
+                     )}
+
+                     {/* System Resources */}
                      <div className="grid grid-cols-2 gap-4">
-                       <div className="flex items-center gap-2">
-                         <Users className="w-4 h-4 text-blue-600" />
-                         <div>
-                           <p className="text-sm font-medium">Total Users</p>
-                           <p className="text-lg font-bold">{formatNumber(panel.systemInfo.total_user)}</p>
-                         </div>
+                       <div className="space-y-1">
+                         <p className="text-sm font-medium flex items-center gap-2">
+                           <Database className="w-4 h-4 text-blue-600" />
+                           Memory
+                         </p>
+                         <p className="text-sm">
+                           {panel.systemInfo.mem_used ? 
+                             `${(panel.systemInfo.mem_used / (1024*1024*1024)).toFixed(1)} GB` : '0 GB'
+                           } / {panel.systemInfo.mem_total ? 
+                             `${(panel.systemInfo.mem_total / (1024*1024*1024)).toFixed(1)} GB` : '0 GB'
+                           }
+                         </p>
+                         {panel.systemInfo.mem_total > 0 && (
+                           <div className="w-full bg-muted h-2 rounded">
+                             <div 
+                               className="bg-blue-600 h-2 rounded transition-all duration-300"
+                               style={{ width: `${(panel.systemInfo.mem_used / panel.systemInfo.mem_total) * 100}%` }}
+                             />
+                           </div>
+                         )}
                        </div>
                        
-                       <div className="flex items-center gap-2">
-                         <Activity className="w-4 h-4 text-green-600" />
-                         <div>
-                           <p className="text-sm font-medium">Active Users</p>
-                           <p className="text-lg font-bold">{formatNumber(panel.systemInfo.users_active)}</p>
+                       <div className="space-y-1">
+                         <p className="text-sm font-medium flex items-center gap-2">
+                           <Activity className="w-4 h-4 text-green-600" />
+                           CPU
+                         </p>
+                         <p className="text-sm">
+                           {panel.systemInfo.cpu_usage || 0}% ({panel.systemInfo.cpu_cores || 0} cores)
+                         </p>
+                         <div className="w-full bg-muted h-2 rounded">
+                           <div 
+                             className="bg-green-600 h-2 rounded transition-all duration-300"
+                             style={{ width: `${panel.systemInfo.cpu_usage || 0}%` }}
+                           />
                          </div>
                        </div>
                      </div>
 
-                     {/* Marzneshin-specific User Status Chart */}
-                     {panel.type === 'marzneshin' && panel.systemInfo.total_user > 0 && (
+                     {/* User Statistics */}
+                     <div className="pt-3 border-t">
+                       <div className="flex items-center gap-2 mb-3">
+                         <Users className="w-4 h-4" />
+                         <span className="text-sm font-medium">User Statistics</span>
+                       </div>
+                       
+                       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                         <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                             {formatNumber(panel.systemInfo.total_user)}
+                           </p>
+                           <p className="text-xs text-blue-600 dark:text-blue-400">Total</p>
+                         </div>
+                         
+                         <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-green-700 dark:text-green-300">
+                             {formatNumber(panel.systemInfo.online_users)}
+                           </p>
+                           <p className="text-xs text-green-600 dark:text-green-400">Online</p>
+                         </div>
+                         
+                         <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                             {formatNumber(panel.systemInfo.active_users)}
+                           </p>
+                           <p className="text-xs text-emerald-600 dark:text-emerald-400">Active</p>
+                         </div>
+                         
+                         <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-yellow-700 dark:text-yellow-300">
+                             {formatNumber(panel.systemInfo.on_hold_users)}
+                           </p>
+                           <p className="text-xs text-yellow-600 dark:text-yellow-400">On Hold</p>
+                         </div>
+                         
+                         <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-red-700 dark:text-red-300">
+                             {formatNumber(panel.systemInfo.disabled_users)}
+                           </p>
+                           <p className="text-xs text-red-600 dark:text-red-400">Disabled</p>
+                         </div>
+                         
+                         <div className="text-center p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-orange-700 dark:text-orange-300">
+                             {formatNumber(panel.systemInfo.expired_users)}
+                           </p>
+                           <p className="text-xs text-orange-600 dark:text-orange-400">Expired</p>
+                         </div>
+                         
+                         <div className="text-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-purple-700 dark:text-purple-300">
+                             {formatNumber(panel.systemInfo.limited_users)}
+                           </p>
+                           <p className="text-xs text-purple-600 dark:text-purple-400">Limited</p>
+                         </div>
+                       </div>
+                     </div>
+
+                     {/* User Status Chart */}
+                     {panel.systemInfo.total_user > 0 && (
                        <div className="pt-3 border-t">
                          <div className="flex items-center gap-2 mb-2">
                            <Users className="w-4 h-4" />
-                           <span className="text-sm font-medium">User Status Overview</span>
+                           <span className="text-sm font-medium">User Distribution</span>
                          </div>
                          <div className="h-48">
                            <ResponsiveContainer width="100%" height="100%">
                              <PieChart>
                                <Pie
                                  data={[
-                                   { name: 'Active', value: panel.systemInfo.users_active, color: COLORS[0] },
-                                   { name: 'Expired', value: panel.systemInfo.users_expired, color: COLORS[1] },
-                                   { name: 'On Hold', value: panel.systemInfo.users_on_hold || 0, color: COLORS[2] },
-                                   { name: 'Limited', value: panel.systemInfo.users_disabled || 0, color: COLORS[3] },
-                                   { name: 'Online', value: panel.systemInfo.users_online || 0, color: COLORS[4] }
+                                   { name: 'Online', value: panel.systemInfo.online_users, color: COLORS[0] },
+                                   { name: 'Active', value: panel.systemInfo.active_users, color: COLORS[1] },
+                                   { name: 'On Hold', value: panel.systemInfo.on_hold_users, color: COLORS[2] },
+                                   { name: 'Disabled', value: panel.systemInfo.disabled_users, color: COLORS[3] },
+                                   { name: 'Expired', value: panel.systemInfo.expired_users, color: COLORS[4] },
+                                   { name: 'Limited', value: panel.systemInfo.limited_users, color: '#FF6B6B' }
                                  ].filter(item => item.value > 0)}
                                  cx="50%"
                                  cy="50%"
@@ -258,11 +347,12 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                                  dataKey="value"
                                >
                                  {[
-                                   { name: 'Active', value: panel.systemInfo.users_active, color: COLORS[0] },
-                                   { name: 'Expired', value: panel.systemInfo.users_expired, color: COLORS[1] },
-                                   { name: 'On Hold', value: panel.systemInfo.users_on_hold || 0, color: COLORS[2] },
-                                   { name: 'Limited', value: panel.systemInfo.users_disabled || 0, color: COLORS[3] },
-                                   { name: 'Online', value: panel.systemInfo.users_online || 0, color: COLORS[4] }
+                                   { name: 'Online', value: panel.systemInfo.online_users, color: COLORS[0] },
+                                   { name: 'Active', value: panel.systemInfo.active_users, color: COLORS[1] },
+                                   { name: 'On Hold', value: panel.systemInfo.on_hold_users, color: COLORS[2] },
+                                   { name: 'Disabled', value: panel.systemInfo.disabled_users, color: COLORS[3] },
+                                   { name: 'Expired', value: panel.systemInfo.expired_users, color: COLORS[4] },
+                                   { name: 'Limited', value: panel.systemInfo.limited_users, color: '#FF6B6B' }
                                  ].filter(item => item.value > 0).map((entry, index) => (
                                    <Cell key={`cell-${index}`} fill={entry.color} />
                                  ))}
@@ -274,62 +364,27 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                        </div>
                      )}
 
-                     {/* Marzneshin Traffic Chart */}
-                     {panel.type === 'marzneshin' && panel.systemInfo.traffic_data && Array.isArray(panel.systemInfo.traffic_data) && panel.systemInfo.traffic_data.length > 0 && (
-                       <div className="pt-3 border-t">
-                         <div className="flex items-center gap-2 mb-2">
-                           <TrendingUp className="w-4 h-4" />
-                           <span className="text-sm font-medium">Traffic Usage (Last 7 Days)</span>
+                     {/* Bandwidth */}
+                     <div className="pt-3 border-t">
+                       <div className="flex items-center gap-2 mb-3">
+                         <TrendingUp className="w-4 h-4" />
+                         <span className="text-sm font-medium">Bandwidth Usage</span>
+                       </div>
+                       <div className="grid grid-cols-2 gap-4">
+                         <div className="text-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-indigo-700 dark:text-indigo-300">
+                             {(panel.systemInfo.incoming_bandwidth / (1024*1024*1024)).toFixed(2)} GB
+                           </p>
+                           <p className="text-xs text-indigo-600 dark:text-indigo-400">Incoming</p>
                          </div>
-                         <div className="h-48">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <LineChart data={panel.systemInfo.traffic_data.map((point: any) => ({
-                               timestamp: new Date(point.timestamp).toLocaleDateString(),
-                               traffic: ((point.incoming || 0) + (point.outgoing || 0)) / (1024*1024*1024) // Convert to GB
-                             }))}>
-                               <CartesianGrid strokeDasharray="3 3" />
-                               <XAxis dataKey="timestamp" />
-                               <YAxis label={{ value: 'GB', angle: -90, position: 'insideLeft' }} />
-                               <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} GB`, 'Traffic']} />
-                               <Line type="monotone" dataKey="traffic" stroke="#8884d8" strokeWidth={2} />
-                             </LineChart>
-                           </ResponsiveContainer>
+                         <div className="text-center p-3 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg">
+                           <p className="text-lg font-bold text-cyan-700 dark:text-cyan-300">
+                             {(panel.systemInfo.outgoing_bandwidth / (1024*1024*1024)).toFixed(2)} GB
+                           </p>
+                           <p className="text-xs text-cyan-600 dark:text-cyan-400">Outgoing</p>
                          </div>
                        </div>
-                     )}
-                     
-                     {/* Traditional grid for non-Marzneshin or fallback */}
-                     {panel.type !== 'marzneshin' && (
-                       <>
-                         <div className="grid grid-cols-2 gap-4">
-                           <div>
-                             <p className="text-sm font-medium">Expired</p>
-                             <p className="text-sm text-yellow-600">{formatNumber(panel.systemInfo.users_expired)}</p>
-                           </div>
-                           <div>
-                             <p className="text-sm font-medium">Disabled</p>
-                             <p className="text-sm text-red-600">{formatNumber(panel.systemInfo.users_disabled || 0)}</p>
-                           </div>
-                         </div>
-                         
-                         <div className="pt-3 border-t">
-                           <div className="flex items-center gap-2 mb-2">
-                             <Database className="w-4 h-4" />
-                             <span className="text-sm font-medium">Bandwidth</span>
-                           </div>
-                           <div className="grid grid-cols-2 gap-4 text-sm">
-                             <div>
-                               <p className="text-muted-foreground">Incoming</p>
-                               <p>{(panel.systemInfo.incoming_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
-                             </div>
-                             <div>
-                               <p className="text-muted-foreground">Outgoing</p>
-                               <p>{(panel.systemInfo.outgoing_bandwidth / (1024*1024*1024)).toFixed(2)} GB</p>
-                             </div>
-                           </div>
-                         </div>
-                       </>
-                     )}
+                     </div>
                    </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
