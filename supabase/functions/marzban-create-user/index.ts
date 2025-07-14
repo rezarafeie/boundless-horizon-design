@@ -345,7 +345,7 @@ serve(async (req) => {
         group_ids: finalGroupIds,
         proxy_settings: proxySettings, // Use cached/template settings or empty for auto-generation
         on_hold_expire_duration: 0,
-        on_hold_timeout: expireTimestamp,
+        on_hold_timeout: 0,
         auto_delete_in_days: 0,
         next_plan: {
           user_template_id: 0,
