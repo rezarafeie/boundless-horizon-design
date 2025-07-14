@@ -63,6 +63,7 @@ serve(async (req) => {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: `username=${encodeURIComponent(panel.username)}&password=${encodeURIComponent(panel.password)}`,
+        signal: AbortSignal.timeout(30000), // 30 second timeout
       })
 
       if (!authResponse.ok) {
@@ -87,7 +88,8 @@ serve(async (req) => {
         console.log('📋 Fetching Marzneshin services...')
         
         const servicesResponse = await fetch(`${panel.panel_url}/api/services`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(30000)
         })
 
         if (servicesResponse.ok) {
@@ -95,7 +97,8 @@ serve(async (req) => {
           console.log('📋 Fetching Marzneshin inbounds...')
           
           const inboundsResponse = await fetch(`${panel.panel_url}/api/inbounds`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: AbortSignal.timeout(30000)
           })
 
           if (inboundsResponse.ok) {
@@ -150,7 +153,8 @@ serve(async (req) => {
             console.log('📋 Fetching legacy Marzban inbounds...')
             
             const inboundsResponse = await fetch(`${panel.panel_url}/api/inbounds`, {
-              headers: { 'Authorization': `Bearer ${token}` }
+              headers: { 'Authorization': `Bearer ${token}` },
+              signal: AbortSignal.timeout(30000)
             })
 
             if (inboundsResponse.ok) {
@@ -178,7 +182,7 @@ serve(async (req) => {
         .update({
           panel_config_data: configData,
           updated_at: new Date().toISOString(),
-          health_status: 'healthy',
+          health_status: 'online',
           last_health_check: new Date().toISOString()
         })
         .eq('id', panelId)
@@ -220,7 +224,7 @@ serve(async (req) => {
       await supabase
         .from('panel_servers')
         .update({
-          health_status: 'unhealthy',
+          health_status: 'unknown',
           last_health_check: new Date().toISOString()
         })
         .eq('id', panelId)
