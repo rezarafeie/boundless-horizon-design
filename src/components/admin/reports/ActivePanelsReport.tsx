@@ -85,10 +85,6 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
               
               if (!data?.success) {
                 const errorMsg = data?.error || 'Failed to get system info';
-                // Handle "not implemented" as special case
-                if (data?.error === 'not_implemented') {
-                  throw new Error('API_NOT_IMPLEMENTED');
-                }
                 throw new Error(errorMsg);
               }
               
@@ -260,109 +256,109 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                        </div>
                      </div>
 
-                     {/* User Statistics */}
-                     <div className="pt-3 border-t">
-                       <div className="flex items-center gap-2 mb-3">
-                         <Users className="w-4 h-4" />
-                         <span className="text-sm font-medium">User Statistics</span>
-                       </div>
-                       
-                       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                         <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                           <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
-                             {formatNumber(panel.systemInfo.total_user)}
-                           </p>
-                           <p className="text-xs text-blue-600 dark:text-blue-400">Total</p>
-                         </div>
-                         
-                         <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                           <p className="text-lg font-bold text-green-700 dark:text-green-300">
-                             {formatNumber(panel.systemInfo.online_users)}
-                           </p>
-                           <p className="text-xs text-green-600 dark:text-green-400">Online</p>
-                         </div>
-                         
-                         <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
-                           <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
-                             {formatNumber(panel.systemInfo.active_users)}
-                           </p>
-                           <p className="text-xs text-emerald-600 dark:text-emerald-400">Active</p>
-                         </div>
-                         
-                         <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                           <p className="text-lg font-bold text-yellow-700 dark:text-yellow-300">
-                             {formatNumber(panel.systemInfo.on_hold_users)}
-                           </p>
-                           <p className="text-xs text-yellow-600 dark:text-yellow-400">On Hold</p>
-                         </div>
-                         
-                         <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                           <p className="text-lg font-bold text-red-700 dark:text-red-300">
-                             {formatNumber(panel.systemInfo.disabled_users)}
-                           </p>
-                           <p className="text-xs text-red-600 dark:text-red-400">Disabled</p>
-                         </div>
-                         
-                         <div className="text-center p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                           <p className="text-lg font-bold text-orange-700 dark:text-orange-300">
-                             {formatNumber(panel.systemInfo.expired_users)}
-                           </p>
-                           <p className="text-xs text-orange-600 dark:text-orange-400">Expired</p>
-                         </div>
-                         
-                         <div className="text-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                           <p className="text-lg font-bold text-purple-700 dark:text-purple-300">
-                             {formatNumber(panel.systemInfo.limited_users)}
-                           </p>
-                           <p className="text-xs text-purple-600 dark:text-purple-400">Limited</p>
-                         </div>
-                       </div>
-                     </div>
+                      {/* User Statistics */}
+                      <div className="pt-3 border-t">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Users className="w-4 h-4" />
+                          <span className="text-sm font-medium">User Statistics</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                          <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                              {formatNumber(panel.systemInfo.total_user || panel.systemInfo.total)}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400">Total</p>
+                          </div>
+                          
+                          <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                            <p className="text-lg font-bold text-green-700 dark:text-green-300">
+                              {formatNumber(panel.systemInfo.online_users || panel.systemInfo.online)}
+                            </p>
+                            <p className="text-xs text-green-600 dark:text-green-400">Online</p>
+                          </div>
+                          
+                          <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                            <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                              {formatNumber(panel.systemInfo.active_users || panel.systemInfo.active)}
+                            </p>
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400">Active</p>
+                          </div>
+                          
+                          <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                            <p className="text-lg font-bold text-yellow-700 dark:text-yellow-300">
+                              {formatNumber(panel.systemInfo.on_hold_users || panel.systemInfo.on_hold)}
+                            </p>
+                            <p className="text-xs text-yellow-600 dark:text-yellow-400">On Hold</p>
+                          </div>
+                          
+                          <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                            <p className="text-lg font-bold text-red-700 dark:text-red-300">
+                              {formatNumber(panel.systemInfo.disabled_users || 0)}
+                            </p>
+                            <p className="text-xs text-red-600 dark:text-red-400">Disabled</p>
+                          </div>
+                          
+                          <div className="text-center p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                            <p className="text-lg font-bold text-orange-700 dark:text-orange-300">
+                              {formatNumber(panel.systemInfo.expired_users || panel.systemInfo.expired)}
+                            </p>
+                            <p className="text-xs text-orange-600 dark:text-orange-400">Expired</p>
+                          </div>
+                          
+                          <div className="text-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                            <p className="text-lg font-bold text-purple-700 dark:text-purple-300">
+                              {formatNumber(panel.systemInfo.limited_users || panel.systemInfo.limited)}
+                            </p>
+                            <p className="text-xs text-purple-600 dark:text-purple-400">Limited</p>
+                          </div>
+                        </div>
+                      </div>
 
-                     {/* User Status Chart */}
-                     {panel.systemInfo.total_user > 0 && (
-                       <div className="pt-3 border-t">
-                         <div className="flex items-center gap-2 mb-2">
-                           <Users className="w-4 h-4" />
-                           <span className="text-sm font-medium">User Distribution</span>
-                         </div>
-                         <div className="h-48">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <PieChart>
-                               <Pie
-                                 data={[
-                                   { name: 'Online', value: panel.systemInfo.online_users, color: COLORS[0] },
-                                   { name: 'Active', value: panel.systemInfo.active_users, color: COLORS[1] },
-                                   { name: 'On Hold', value: panel.systemInfo.on_hold_users, color: COLORS[2] },
-                                   { name: 'Disabled', value: panel.systemInfo.disabled_users, color: COLORS[3] },
-                                   { name: 'Expired', value: panel.systemInfo.expired_users, color: COLORS[4] },
-                                   { name: 'Limited', value: panel.systemInfo.limited_users, color: '#FF6B6B' }
-                                 ].filter(item => item.value > 0)}
-                                 cx="50%"
-                                 cy="50%"
-                                 labelLine={false}
-                                 label={({ name, value }) => `${name}: ${value}`}
-                                 outerRadius={60}
-                                 fill="#8884d8"
-                                 dataKey="value"
-                               >
-                                 {[
-                                   { name: 'Online', value: panel.systemInfo.online_users, color: COLORS[0] },
-                                   { name: 'Active', value: panel.systemInfo.active_users, color: COLORS[1] },
-                                   { name: 'On Hold', value: panel.systemInfo.on_hold_users, color: COLORS[2] },
-                                   { name: 'Disabled', value: panel.systemInfo.disabled_users, color: COLORS[3] },
-                                   { name: 'Expired', value: panel.systemInfo.expired_users, color: COLORS[4] },
-                                   { name: 'Limited', value: panel.systemInfo.limited_users, color: '#FF6B6B' }
-                                 ].filter(item => item.value > 0).map((entry, index) => (
-                                   <Cell key={`cell-${index}`} fill={entry.color} />
-                                 ))}
-                               </Pie>
-                               <Tooltip />
-                             </PieChart>
-                           </ResponsiveContainer>
-                         </div>
-                       </div>
-                     )}
+                      {/* User Status Chart */}
+                      {(panel.systemInfo.total_user || panel.systemInfo.total) > 0 && (
+                        <div className="pt-3 border-t">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Users className="w-4 h-4" />
+                            <span className="text-sm font-medium">User Distribution</span>
+                          </div>
+                          <div className="h-48">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={[
+                                    { name: 'Online', value: panel.systemInfo.online_users || panel.systemInfo.online, color: COLORS[0] },
+                                    { name: 'Active', value: panel.systemInfo.active_users || panel.systemInfo.active, color: COLORS[1] },
+                                    { name: 'On Hold', value: panel.systemInfo.on_hold_users || panel.systemInfo.on_hold, color: COLORS[2] },
+                                    { name: 'Disabled', value: panel.systemInfo.disabled_users || 0, color: COLORS[3] },
+                                    { name: 'Expired', value: panel.systemInfo.expired_users || panel.systemInfo.expired, color: COLORS[4] },
+                                    { name: 'Limited', value: panel.systemInfo.limited_users || panel.systemInfo.limited, color: '#FF6B6B' }
+                                  ].filter(item => item.value > 0)}
+                                  cx="50%"
+                                  cy="50%"
+                                  labelLine={false}
+                                  label={({ name, value }) => `${name}: ${value}`}
+                                  outerRadius={60}
+                                  fill="#8884d8"
+                                  dataKey="value"
+                                >
+                                  {[
+                                    { name: 'Online', value: panel.systemInfo.online_users || panel.systemInfo.online, color: COLORS[0] },
+                                    { name: 'Active', value: panel.systemInfo.active_users || panel.systemInfo.active, color: COLORS[1] },
+                                    { name: 'On Hold', value: panel.systemInfo.on_hold_users || panel.systemInfo.on_hold, color: COLORS[2] },
+                                    { name: 'Disabled', value: panel.systemInfo.disabled_users || 0, color: COLORS[3] },
+                                    { name: 'Expired', value: panel.systemInfo.expired_users || panel.systemInfo.expired, color: COLORS[4] },
+                                    { name: 'Limited', value: panel.systemInfo.limited_users || panel.systemInfo.limited, color: '#FF6B6B' }
+                                  ].filter(item => item.value > 0).map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
 
                      {/* Bandwidth */}
                      <div className="pt-3 border-t">

@@ -253,9 +253,9 @@ serve(async (req) => {
     }
 
     // Step 5: Enhanced User Stats API Call with Proper Token Handling
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats from: ${panel.panel_url}/api/system/stats/users`);
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats from: https://p.rain.rest/api/system/stats/users`);
     
-    const userStatsUrl = `${panel.panel_url}/api/system/stats/users`;
+    const userStatsUrl = `https://p.rain.rest/api/system/stats/users`;
     let userStatsData = null;
     
     try {
@@ -329,15 +329,12 @@ serve(async (req) => {
 
     // Step 6: Enhanced Response Format with Detailed Success Info
     const systemInfo = {
-      total_user: userStatsData?.total || 0,
-      users_active: userStatsData?.active || 0,
-      users_expired: userStatsData?.expired || 0,
-      users_disabled: userStatsData?.limited || 0,
-      users_on_hold: userStatsData?.on_hold || 0,
-      users_online: userStatsData?.online || 0,
-      traffic_data: null, // No traffic data for now
-      incoming_bandwidth: 0,
-      outgoing_bandwidth: 0
+      total: userStatsData?.total || 0,
+      active: userStatsData?.active || 0,
+      expired: userStatsData?.expired || 0,
+      limited: userStatsData?.limited || 0,
+      on_hold: userStatsData?.on_hold || 0,
+      online: userStatsData?.online || 0
     };
 
     console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Returning final system info:`, systemInfo);
