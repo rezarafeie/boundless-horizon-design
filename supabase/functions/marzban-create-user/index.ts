@@ -420,10 +420,14 @@ serve(async (req) => {
       dataLimitGB: dataLimitGB,
       dataLimitBytes: dataLimitBytes,
       panelUrl: panelConfig.panel_url,
+      isBetaVersion: isBetaVersion,
+      hasGroupIds: !!newUserData.group_ids && newUserData.group_ids.length > 0,
+      groupIds: newUserData.group_ids || [],
       hasProxies: !!newUserData.proxies && Object.keys(newUserData.proxies).length > 0,
       hasInbounds: !!newUserData.inbounds && Object.keys(newUserData.inbounds).length > 0,
       proxiesCount: Object.keys(newUserData.proxies || {}).length,
-      inboundsCount: Object.keys(newUserData.inbounds || {}).length
+      inboundsCount: Object.keys(newUserData.inbounds || {}).length,
+      fullRequestBody: JSON.stringify(newUserData, null, 2)
     });
 
     const createUserResponse = await fetch(`${panelConfig.panel_url}/api/user`, {
