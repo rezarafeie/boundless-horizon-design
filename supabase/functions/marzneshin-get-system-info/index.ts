@@ -253,9 +253,8 @@ serve(async (req) => {
     }
 
     // Step 5: Enhanced User Stats API Call with Proper Token Handling
-    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats from: https://p.rain.rest/api/system/stats/users`);
-    
-    const userStatsUrl = `https://p.rain.rest/api/system/stats/users`;
+    const userStatsUrl = `${panel.panel_url}/api/system/stats/users`;
+    console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Fetching user stats from: ${userStatsUrl}`);
     let userStatsData = null;
     
     try {
