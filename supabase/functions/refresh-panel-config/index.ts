@@ -54,10 +54,15 @@ serve(async (req) => {
     }
 
     try {
-      // Step 1: Authenticate with panel
+      // Step 1: Authenticate with panel using panel-type-specific endpoint
       console.log(`🔐 Authenticating with ${panel.type} panel: ${panel.panel_url}`)
       
-      const authResponse = await fetch(`${panel.panel_url}/api/admin/token`, {
+      // Use correct authentication endpoint based on panel type
+      const authEndpoint = panel.type === 'marzneshin' ? '/api/admins/token' : '/api/admin/token'
+      const authUrl = `${panel.panel_url}${authEndpoint}`
+      console.log(`🔐 Using auth endpoint: ${authUrl}`)
+      
+      const authResponse = await fetch(authUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
