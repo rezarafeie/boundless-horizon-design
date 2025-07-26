@@ -88,6 +88,8 @@ serve(async (req) => {
       enabledProtocols: panel.enabled_protocols
     });
 
+    logStep('PANEL_TYPE_CONFIRMATION', `Confirmed panel type: ${panelType} for panel: ${panel.name}`);
+
     // Validate panel configuration
     if (!panel.panel_url || !panel.username || !panel.password) {
       logStep('ERROR', 'Panel configuration incomplete', {
@@ -404,7 +406,18 @@ serve(async (req) => {
       logStep('UPDATE', 'Updating subscription record');
       
       try {
-        const subscriptionUrl = userData.subscription_url || `${baseUrl}/sub/${username}`;
+        // Build subscription URL based on panel type and response data
+        let subscriptionUrl;
+        if (userData.subscription_url) {
+          subscriptionUrl = userData.subscription_url;
+        } else {
+          if (panelType === 'marzban') {
+            subscriptionUrl = `${baseUrl}/sub/${username}`;
+          } else {
+            // Marzneshin format
+            subscriptionUrl = `${baseUrl}/sub/${username}`;
+          }
+        }
         const expireAt = userData.expire ? 
           new Date(userData.expire * 1000).toISOString() : 
           new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
@@ -432,12 +445,25 @@ serve(async (req) => {
       }
     }
 
-    // Return success response
+    // Return success response with correct subscription URL format
+    let subscriptionUrl;
+    if (userData.subscription_url) {
+      subscriptionUrl = userData.subscription_url;
+    } else {
+      // Generate subscription URL based on panel type
+      if (panelType === 'marzban') {
+        subscriptionUrl = `${baseUrl}/sub/${username}`;
+      } else {
+        // Marzneshin format
+        subscriptionUrl = `${baseUrl}/sub/${username}`;
+      }
+    }
+
     const result = {
       success: true,
       data: {
         username: userData.username,
-        subscription_url: userData.subscription_url || `${baseUrl}/sub/${username}`,
+        subscription_url: subscriptionUrl,
         expire: userData.expire || Math.floor(Date.now() / 1000) + (durationDays * 24 * 60 * 60),
         data_limit: userData.data_limit || (dataLimitGB * 1073741824),
         panel_type: panelType,
