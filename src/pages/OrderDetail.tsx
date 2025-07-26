@@ -194,7 +194,7 @@ const OrderDetail = () => {
                 </div>
               )}
 
-              {isManualPayment && (
+              {(subscription.status === 'pending' && (subscription.admin_decision === 'pending' || subscription.admin_decision === null)) && (
                 <>
                   <Separator />
                   <div className="space-y-3">
