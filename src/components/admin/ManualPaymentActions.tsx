@@ -114,7 +114,7 @@ export const ManualPaymentActions = ({
           // This ensures consistent panel configuration usage and proper VPN creation
           const { data: approveResult, error: approveError } = await supabase.functions.invoke('admin-approve-subscription', {
             body: {
-              subscriptionId: subscription.id,
+              id: subscription.id,  // Fixed: edge function expects 'id', not 'subscriptionId'
               action: 'approve',
               token: tempToken
             }
