@@ -95,52 +95,45 @@ export const ManualPaymentActions = ({
         }
 
         try {
-          console.log('🔵 MANUAL_PAYMENT: Creating VPN user automatically after approval');
+          console.log('🔵 MANUAL_PAYMENT: Using admin-approve-subscription edge function for consistency');
           
-          // ✅ Use the PanelUserCreationService for automatic VPN creation
-          const vpnResult = await PanelUserCreationService.createUserFromPanel({
-            planId: subscription.plan_id,
-            username: subscription.username,
-            dataLimitGB: subscription.data_limit_gb,
-            durationDays: subscription.duration_days,
-            notes: `Manual payment approved - Amount: ${subscription.price_toman} Toman`,
-            subscriptionId: subscription.id
+          // Generate a temporary decision token for the approval process
+          const tempToken = crypto.randomUUID();
+          
+          // Update subscription with the temp token first
+          const { error: tokenError } = await supabase
+            .from('subscriptions')
+            .update({ admin_decision_token: tempToken })
+            .eq('id', subscriptionId);
+          
+          if (tokenError) {
+            throw new Error('Failed to prepare subscription for approval');
+          }
+          
+          // ✅ Use the same admin-approve-subscription edge function that AdminApproveOrder uses
+          // This ensures consistent panel configuration usage and proper VPN creation
+          const { data: approveResult, error: approveError } = await supabase.functions.invoke('admin-approve-subscription', {
+            body: {
+              subscriptionId: subscription.id,
+              action: 'approve',
+              token: tempToken
+            }
           });
           
-          if (vpnResult.success && vpnResult.data?.subscription_url) {
-            updateData.subscription_url = vpnResult.data.subscription_url;
-            updateData.marzban_user_created = true;
-            updateData.expire_at = new Date(Date.now() + (subscription.duration_days * 24 * 60 * 60 * 1000)).toISOString();
-            updateData.status = 'active'; // Change status to active when VPN is created
-            
-            // Update notes to include success
-            const existingNotes = subscription.notes || '';
-            updateData.notes = `${existingNotes} - VPN created automatically after approval using ${vpnResult.data.panel_type} panel`;
-            
-            console.log('🟢 MANUAL_PAYMENT: VPN user created successfully automatically');
-            
-            // Log successful creation
-            await logUserCreationAttempt(
-              subscription.id,
-              vpnResult.data.panel_type === 'marzneshin' ? 'marzneshin-create-user' : 'marzban-create-user',
-              {
-                planId: subscription.plan_id,
-                username: subscription.username,
-                dataLimitGB: subscription.data_limit_gb,
-                durationDays: subscription.duration_days
-              },
-              true,
-              vpnResult.data,
-              null,
-              {
-                panel_id: vpnResult.data.panel_id,
-                panel_name: vpnResult.data.panel_name,
-                panel_url: vpnResult.data.panel_url
-              }
-            );
-          } else {
-            throw new Error(vpnResult.error || 'VPN creation failed');
+          if (approveError) {
+            throw new Error(`Admin approval function failed: ${approveError.message}`);
           }
+          
+          if (!approveResult?.success) {
+            throw new Error(`Approval process failed: ${approveResult?.error || 'Unknown error'}`);
+          }
+          
+          console.log('🟢 MANUAL_PAYMENT: VPN user created successfully via admin-approve-subscription');
+          
+          // The edge function handles all updates, so we don't need to update again
+          // Just refresh the data to get the latest state
+          onStatusUpdate();
+          return; // Exit early since the edge function handled everything
         } catch (vpnError) {
           console.error('❌ MANUAL_PAYMENT: VPN creation failed:', vpnError);
           
