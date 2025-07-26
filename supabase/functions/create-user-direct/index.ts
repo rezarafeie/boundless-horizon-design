@@ -308,7 +308,7 @@ serve(async (req) => {
         const expireDate = new Date();
         expireDate.setDate(expireDate.getDate() + durationDays);
         
-        // Build proxies object with proper inbound tags
+        // Build proxies object with proper inbound tags for Marzban
         const proxies: any = {};
         enabledProtocols.forEach((protocol: string) => {
           // Find inbounds for this protocol
@@ -317,14 +317,24 @@ serve(async (req) => {
           );
           
           if (protocolInbounds.length > 0) {
-            // Use the inbound tags as groups
+            // For Marzban, we need to include the inbound tags directly in the protocol config
             proxies[protocol] = {
-              "inbounds": protocolInbounds.map(inbound => inbound.tag)
+              ...protocolInbounds.reduce((acc: any, inbound: any) => {
+                acc[inbound.tag] = {};
+                return acc;
+              }, {})
             };
           } else {
-            // Fallback to empty object if no inbounds found
+            // If no specific inbounds found, create empty config which will use defaults
             proxies[protocol] = {};
           }
+        });
+
+        // Log the final proxies configuration
+        logStep('PROXIES_CONFIG', 'Final proxies configuration for user creation', {
+          proxies: proxies,
+          inboundCount: inbounds.length,
+          enabledProtocols: enabledProtocols
         });
 
         const userPayload = {
