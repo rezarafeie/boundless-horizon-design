@@ -103,12 +103,18 @@ const handler = async (req: Request): Promise<Response> => {
         console.log('ADMIN_APPROVE: Creating VPN user for approved subscription:', subscriptionId);
         
         if (subscription.plan_id) {
-          // First get the plan data to determine panel type
-          console.log('ADMIN_APPROVE: Fetching plan data for plan_id:', subscription.plan_id);
+          // Get the plan and its assigned panel to determine the correct panel type
+          console.log('ADMIN_APPROVE: Fetching plan and panel data for plan_id:', subscription.plan_id);
           
-          const { data: plan, error: planError } = await supabase
+          const { data: planWithPanel, error: planError } = await supabase
             .from('subscription_plans')
-            .select('api_type')
+            .select(`
+              api_type,
+              assigned_panel_id,
+              panel_servers (
+                type
+              )
+            `)
             .eq('id', subscription.plan_id)
             .maybeSingle();
 
@@ -117,17 +123,20 @@ const handler = async (req: Request): Promise<Response> => {
             throw new Error(`Failed to fetch plan data: ${planError.message}`);
           }
 
-          if (!plan) {
+          if (!planWithPanel) {
             console.error('ADMIN_APPROVE: Plan not found for id:', subscription.plan_id);
             throw new Error('Subscription plan not found');
           }
 
-          if (!plan.api_type) {
-            console.error('ADMIN_APPROVE: Plan missing api_type:', plan);
-            throw new Error('Plan api_type not configured');
+          // Use the actual panel type, not the plan's api_type
+          const panelType = planWithPanel.panel_servers?.type || planWithPanel.api_type;
+          
+          if (!panelType) {
+            console.error('ADMIN_APPROVE: No panel type found for plan:', planWithPanel);
+            throw new Error('Panel type not configured');
           }
 
-          console.log('ADMIN_APPROVE: Plan api_type:', plan.api_type);
+          console.log('ADMIN_APPROVE: Using panel type:', panelType);
           
           const { data: vpnResult, error: vpnError } = await supabase.functions.invoke('create-user-direct', {
             body: {
@@ -135,7 +144,7 @@ const handler = async (req: Request): Promise<Response> => {
               dataLimitGB: subscription.data_limit_gb,
               durationDays: subscription.duration_days,
               notes: `Admin approved subscription - Manual payment verified`,
-              panelType: plan.api_type, // This is the key fix - use api_type as panelType
+              panelType: panelType, // Use the actual panel type, not plan.api_type
               subscriptionId: subscription.id,
               isFreeTriaL: false
             }
