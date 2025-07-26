@@ -15,6 +15,7 @@ interface CreateUserRequest {
   panelType: 'marzban' | 'marzneshin';
   subscriptionId?: string;
   isFreeTriaL?: boolean;
+  assignedPanelId?: string;
 }
 
 function logStep(step: string, message: string, details?: any) {
@@ -31,9 +32,9 @@ serve(async (req) => {
     logStep('INIT', 'Starting direct user creation');
 
     const requestBody = await req.json();
-    const { username, dataLimitGB, durationDays, notes, panelType, subscriptionId, isFreeTriaL } = requestBody as CreateUserRequest;
+    const { username, dataLimitGB, durationDays, notes, panelType, subscriptionId, isFreeTriaL, assignedPanelId } = requestBody as CreateUserRequest;
 
-    logStep('REQUEST', 'Request received', { username, dataLimitGB, durationDays, panelType, subscriptionId, isFreeTriaL });
+    logStep('REQUEST', 'Request received', { username, dataLimitGB, durationDays, panelType, subscriptionId, isFreeTriaL, assignedPanelId });
 
     // Input validation
     if (!username || !dataLimitGB || !durationDays || !panelType) {
@@ -52,33 +53,72 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get panel information with better error handling
-    logStep('DB_QUERY', `Fetching ${panelType} panel data`);
+    let panel;
     
-    const { data: panels, error: panelError } = await supabase
-      .from('panel_servers')
-      .select('*')
-      .eq('type', panelType)
-      .eq('is_active', true)
-      .order('created_at', { ascending: true });
+    if (assignedPanelId) {
+      // Use the specific assigned panel
+      logStep('DB_QUERY', `Fetching specific panel by ID: ${assignedPanelId}`);
+      
+      const { data: assignedPanel, error: panelError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('id', assignedPanelId)
+        .eq('is_active', true)
+        .maybeSingle();
 
-    if (panelError) {
-      logStep('ERROR', 'Database query failed', panelError);
-      throw new Error(`Database query failed: ${panelError.message}`);
+      if (panelError) {
+        logStep('ERROR', 'Database query failed for assigned panel', panelError);
+        throw new Error(`Database query failed: ${panelError.message}`);
+      }
+
+      if (!assignedPanel) {
+        logStep('ERROR', `Assigned panel not found or inactive: ${assignedPanelId}`);
+        throw new Error(`Assigned panel ${assignedPanelId} not found or inactive. Please check panel configuration.`);
+      }
+
+      // Verify panel type matches
+      if (assignedPanel.type !== panelType) {
+        logStep('ERROR', `Panel type mismatch`, { 
+          expectedType: panelType, 
+          actualType: assignedPanel.type, 
+          panelId: assignedPanelId 
+        });
+        throw new Error(`Panel type mismatch: expected ${panelType}, got ${assignedPanel.type}`);
+      }
+
+      panel = assignedPanel;
+      logStep('PANEL_ASSIGNED', `Using assigned panel: ${panel.name}`, { panelId: assignedPanelId });
+    } else {
+      // Fall back to finding any panel of the requested type
+      logStep('DB_QUERY', `Fetching ${panelType} panel data (fallback)`);
+      
+      const { data: panels, error: panelError } = await supabase
+        .from('panel_servers')
+        .select('*')
+        .eq('type', panelType)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+
+      if (panelError) {
+        logStep('ERROR', 'Database query failed', panelError);
+        throw new Error(`Database query failed: ${panelError.message}`);
+      }
+
+      if (!panels || panels.length === 0) {
+        logStep('ERROR', `No ${panelType} panels found`, { panelType, totalPanels: 0 });
+        throw new Error(`No active ${panelType} panels available. Please configure panels in admin dashboard.`);
+      }
+
+      // Filter for healthy panels first, then fall back to any active panel
+      let availablePanels = panels.filter(panel => panel.health_status === 'online');
+      if (availablePanels.length === 0) {
+        logStep('WARNING', 'No healthy panels found, using any active panel');
+        availablePanels = panels;
+      }
+
+      panel = availablePanels[0];
+      logStep('PANEL_FALLBACK', `Using fallback panel: ${panel.name}`);
     }
-
-    if (!panels || panels.length === 0) {
-      logStep('ERROR', `No ${panelType} panels found`, { panelType, totalPanels: 0 });
-      throw new Error(`No active ${panelType} panels available. Please configure panels in admin dashboard.`);
-    }
-
-    // Filter for healthy panels first, then fall back to any active panel
-    let availablePanels = panels.filter(panel => panel.health_status === 'online');
-    if (availablePanels.length === 0) {
-      logStep('WARNING', 'No healthy panels found, using any active panel');
-      availablePanels = panels;
-    }
-
-    const panel = availablePanels[0];
     logStep('PANEL', 'Panel selected', {
       id: panel.id,
       name: panel.name,

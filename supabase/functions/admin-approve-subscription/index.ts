@@ -157,7 +157,8 @@ const handler = async (req: Request): Promise<Response> => {
               notes: `Admin approved subscription - Manual payment verified`,
               panelType: panelType, // Use the actual panel type, not plan.api_type
               subscriptionId: subscription.id,
-              isFreeTriaL: false
+              isFreeTriaL: false,
+              assignedPanelId: plan.assigned_panel_id // Pass the specific panel ID
             }
           });
 
