@@ -274,76 +274,146 @@ serve(async (req) => {
     
     try {
       if (panelType === 'marzban') {
-        // Marzban user creation - First get inbounds to configure groups properly
-        logStep('INBOUNDS', 'Fetching Marzban inbounds for user creation');
+        // Marzban user creation - Use exact same logic as marzban-create-user function
+        logStep('TEMPLATE', 'Fetching template user configuration for Marzban');
         
-        let inbounds: any[] = [];
+        let templateUser = null;
+        let isBetaVersion = false;
+        let groupIds: number[] = [];
+        
         try {
-          const inboundsResponse = await fetch(`${baseUrl}/api/inbounds`, {
-            method: 'GET',
+          const templateUserResponse = await fetch(`${baseUrl}/api/user/reza`, {
             headers: {
               'Authorization': `Bearer ${token}`,
-              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
             },
             signal: AbortSignal.timeout(10000)
           });
 
-          if (inboundsResponse.ok) {
-            inbounds = await inboundsResponse.json();
-            logStep('INBOUNDS', 'Successfully fetched inbounds', { 
-              count: inbounds.length,
-              inboundTags: inbounds.map(i => i.tag)
+          if (templateUserResponse.ok) {
+            templateUser = await templateUserResponse.json();
+            
+            // Check if this is beta version by looking for group_ids
+            if (templateUser.group_ids && Array.isArray(templateUser.group_ids)) {
+              isBetaVersion = true;
+              groupIds = templateUser.group_ids;
+              logStep('TEMPLATE', 'Beta version detected! Using group_ids', { groupIds });
+            } else {
+              logStep('TEMPLATE', 'Legacy version detected, using old structure');
+            }
+            
+            logStep('TEMPLATE', 'Template user fetched successfully', {
+              username: templateUser.username,
+              isBetaVersion,
+              groupIds: groupIds.length > 0 ? groupIds : 'none',
+              hasProxies: !!templateUser.proxies,
+              proxiesCount: Object.keys(templateUser.proxies || {}).length
             });
+
+            // Validate template user has required data
+            if (isBetaVersion && groupIds.length === 0) {
+              logStep('WARNING', 'Beta version but no group_ids found, will use fallback');
+              templateUser = null;
+            } else if (!isBetaVersion && !templateUser.proxies && !templateUser.inbounds) {
+              logStep('WARNING', 'Legacy version but no proxy or inbound data, will use fallback');
+              templateUser = null;
+            }
           } else {
-            logStep('WARNING', 'Failed to fetch inbounds, using empty proxies', {
-              status: inboundsResponse.status
+            const errorText = await templateUserResponse.text();
+            logStep('WARNING', 'Template user fetch failed, will use fallback', {
+              status: templateUserResponse.status,
+              errorText: errorText
             });
           }
-        } catch (inboundError) {
-          logStep('WARNING', 'Error fetching inbounds, using empty proxies', {
-            error: inboundError.message
-          });
+        } catch (error) {
+          logStep('WARNING', 'Template user fetch exception, will use fallback', { error: error.message });
         }
 
         const expireDate = new Date();
         expireDate.setDate(expireDate.getDate() + durationDays);
+        const expireTimestamp = Math.floor(expireDate.getTime() / 1000);
         
-        // Build proxies object with proper inbound tags for Marzban
-        const proxies: any = {};
-        enabledProtocols.forEach((protocol: string) => {
-          // Find inbounds for this protocol
-          const protocolInbounds = inbounds.filter(inbound => 
-            inbound.protocol?.toLowerCase() === protocol.toLowerCase()
-          );
+        let userPayload;
+
+        if (isBetaVersion && groupIds.length > 0) {
+          // BETA VERSION: Use group_ids and proxy_settings structure
+          let proxySettings = {};
+          let finalGroupIds = groupIds;
           
-          if (protocolInbounds.length > 0) {
-            // For Marzban, we need to include the inbound tags directly in the protocol config
-            proxies[protocol] = {
-              ...protocolInbounds.reduce((acc: any, inbound: any) => {
-                acc[inbound.tag] = {};
-                return acc;
-              }, {})
-            };
-          } else {
-            // If no specific inbounds found, create empty config which will use defaults
-            proxies[protocol] = {};
+          // Try to get cached template data from panel config
+          if (panel.panel_config_data?.inbounds?.template_data) {
+            const templateData = panel.panel_config_data.inbounds.template_data;
+            logStep('TEMPLATE', 'Using cached template data from panel refresh', templateData);
+            
+            // Use saved proxy settings if available
+            if (templateData.proxy_settings && Object.keys(templateData.proxy_settings).length > 0) {
+              proxySettings = templateData.proxy_settings;
+            }
+            
+            // Use saved group_ids if available
+            if (templateData.group_ids && templateData.group_ids.length > 0) {
+              finalGroupIds = templateData.group_ids;
+            }
+          } else if (templateUser?.proxy_settings) {
+            // Fallback to template user data if no cached data
+            proxySettings = templateUser.proxy_settings;
+            logStep('TEMPLATE', 'Using template user proxy_settings as fallback');
           }
-        });
+          
+          userPayload = {
+            username: username,
+            status: "active",
+            expire: expireTimestamp,
+            data_limit: dataLimitGB * 1073741824,
+            data_limit_reset_strategy: "no_reset",
+            note: notes || `Admin approved subscription - Manual payment verified`,
+            group_ids: finalGroupIds,
+            proxy_settings: proxySettings,
+            on_hold_expire_duration: 0,
+            on_hold_timeout: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString(),
+            auto_delete_in_days: 0
+          };
 
-        // Log the final proxies configuration
-        logStep('PROXIES_CONFIG', 'Final proxies configuration for user creation', {
-          proxies: proxies,
-          inboundCount: inbounds.length,
-          enabledProtocols: enabledProtocols
-        });
+          logStep('CREATE', 'Using BETA VERSION structure with template data', {
+            groupIds: finalGroupIds,
+            proxySettingsKeys: Object.keys(proxySettings),
+            hasCachedData: !!panel.panel_config_data?.inbounds?.template_data
+          });
+          
+        } else if (templateUser && (templateUser.proxies || templateUser.inbounds)) {
+          // LEGACY VERSION: Use template user configuration
+          userPayload = {
+            username: username,
+            proxies: templateUser.proxies || {},
+            inbounds: templateUser.inbounds || {},
+            expire: expireTimestamp,
+            data_limit: dataLimitGB * 1073741824,
+            data_limit_reset_strategy: templateUser.data_limit_reset_strategy || "no_reset",
+            excluded_inbounds: templateUser.excluded_inbounds || {},
+            note: notes || `Admin approved subscription - Manual payment verified`,
+            status: "active"
+          };
 
-        const userPayload = {
-          username: username,
-          data_limit: dataLimitGB * 1073741824, // Convert GB to bytes
-          expire: Math.floor(expireDate.getTime() / 1000),
-          proxies: proxies,
-          note: notes || `Created via bnets.co - ${isFreeTriaL ? 'Free Trial' : 'Subscription'}`
-        };
+          logStep('CREATE', 'Using LEGACY VERSION template user configuration', {
+            proxiesCount: Object.keys(templateUser.proxies || {}).length,
+            inboundsCount: Object.keys(templateUser.inbounds || {}).length
+          });
+          
+        } else {
+          // Last resort fallback - use minimal proxy configuration
+          userPayload = {
+            username: username,
+            proxies: { "vless": {} }, // Minimal proxy config to satisfy Marzban requirements
+            expire: expireTimestamp,
+            data_limit: dataLimitGB * 1073741824,
+            data_limit_reset_strategy: "no_reset",
+            note: notes || `Admin approved subscription - Manual payment verified`,
+            status: "active"
+          };
+
+          logStep('WARNING', 'Using minimal fallback proxy configuration');
+        }
 
         logStep('CREATE', 'Creating Marzban user', userPayload);
 
