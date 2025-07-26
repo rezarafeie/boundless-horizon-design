@@ -106,15 +106,10 @@ const handler = async (req: Request): Promise<Response> => {
           // Get the plan and its assigned panel to determine the correct panel type
           console.log('ADMIN_APPROVE: Fetching plan and panel data for plan_id:', subscription.plan_id);
           
-          const { data: planWithPanel, error: planError } = await supabase
+          // Get the plan data first
+          const { data: plan, error: planError } = await supabase
             .from('subscription_plans')
-            .select(`
-              api_type,
-              assigned_panel_id,
-              panel_servers (
-                type
-              )
-            `)
+            .select('assigned_panel_id')
             .eq('id', subscription.plan_id)
             .maybeSingle();
 
@@ -123,20 +118,36 @@ const handler = async (req: Request): Promise<Response> => {
             throw new Error(`Failed to fetch plan data: ${planError.message}`);
           }
 
-          if (!planWithPanel) {
-            console.error('ADMIN_APPROVE: Plan not found for id:', subscription.plan_id);
-            throw new Error('Subscription plan not found');
+          if (!plan || !plan.assigned_panel_id) {
+            console.error('ADMIN_APPROVE: Plan not found or no assigned panel for id:', subscription.plan_id);
+            throw new Error('Subscription plan not found or no panel assigned');
           }
 
-          // Use the actual panel type, not the plan's api_type
-          const panelType = planWithPanel.panel_servers?.type || planWithPanel.api_type;
+          // Get the actual panel server to determine the correct type
+          const { data: panelServer, error: panelError } = await supabase
+            .from('panel_servers')
+            .select('type, name')
+            .eq('id', plan.assigned_panel_id)
+            .maybeSingle();
+
+          if (panelError) {
+            console.error('ADMIN_APPROVE: Error fetching panel server:', panelError);
+            throw new Error(`Failed to fetch panel server: ${panelError.message}`);
+          }
+
+          if (!panelServer) {
+            console.error('ADMIN_APPROVE: Panel server not found for id:', plan.assigned_panel_id);
+            throw new Error('Panel server not found');
+          }
+
+          const panelType = panelServer.type;
           
           if (!panelType) {
-            console.error('ADMIN_APPROVE: No panel type found for plan:', planWithPanel);
+            console.error('ADMIN_APPROVE: No panel type found for panel:', panelServer);
             throw new Error('Panel type not configured');
           }
 
-          console.log('ADMIN_APPROVE: Using panel type:', panelType);
+          console.log('ADMIN_APPROVE: Detected panel type:', panelType, 'for panel:', panelServer.name);
           
           const { data: vpnResult, error: vpnError } = await supabase.functions.invoke('create-user-direct', {
             body: {
