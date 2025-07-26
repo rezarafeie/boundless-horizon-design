@@ -37,8 +37,8 @@ export const ManualPaymentActions = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-  // Show actions only if status is pending and admin_decision is pending
-  if (status !== 'pending' || adminDecision !== 'pending') {
+  // Show actions only if status is pending and admin_decision is pending or null (not yet decided)
+  if (status !== 'pending' || (adminDecision !== 'pending' && adminDecision !== null)) {
     return null;
   }
 
