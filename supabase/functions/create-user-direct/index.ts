@@ -274,18 +274,64 @@ serve(async (req) => {
     
     try {
       if (panelType === 'marzban') {
-        // Marzban user creation
+        // Marzban user creation - First get inbounds to configure groups properly
+        logStep('INBOUNDS', 'Fetching Marzban inbounds for user creation');
+        
+        let inbounds: any[] = [];
+        try {
+          const inboundsResponse = await fetch(`${baseUrl}/api/inbounds`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json',
+            },
+            signal: AbortSignal.timeout(10000)
+          });
+
+          if (inboundsResponse.ok) {
+            inbounds = await inboundsResponse.json();
+            logStep('INBOUNDS', 'Successfully fetched inbounds', { 
+              count: inbounds.length,
+              inboundTags: inbounds.map(i => i.tag)
+            });
+          } else {
+            logStep('WARNING', 'Failed to fetch inbounds, using empty proxies', {
+              status: inboundsResponse.status
+            });
+          }
+        } catch (inboundError) {
+          logStep('WARNING', 'Error fetching inbounds, using empty proxies', {
+            error: inboundError.message
+          });
+        }
+
         const expireDate = new Date();
         expireDate.setDate(expireDate.getDate() + durationDays);
         
+        // Build proxies object with proper inbound tags
+        const proxies: any = {};
+        enabledProtocols.forEach((protocol: string) => {
+          // Find inbounds for this protocol
+          const protocolInbounds = inbounds.filter(inbound => 
+            inbound.protocol?.toLowerCase() === protocol.toLowerCase()
+          );
+          
+          if (protocolInbounds.length > 0) {
+            // Use the inbound tags as groups
+            proxies[protocol] = {
+              "inbounds": protocolInbounds.map(inbound => inbound.tag)
+            };
+          } else {
+            // Fallback to empty object if no inbounds found
+            proxies[protocol] = {};
+          }
+        });
+
         const userPayload = {
           username: username,
           data_limit: dataLimitGB * 1073741824, // Convert GB to bytes
           expire: Math.floor(expireDate.getTime() / 1000),
-          proxies: enabledProtocols.reduce((acc: any, protocol: string) => {
-            acc[protocol] = {};
-            return acc;
-          }, {}),
+          proxies: proxies,
           note: notes || `Created via bnets.co - ${isFreeTriaL ? 'Free Trial' : 'Subscription'}`
         };
 
