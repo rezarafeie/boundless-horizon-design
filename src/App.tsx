@@ -24,7 +24,6 @@ import AdminServices from "./pages/AdminServices";
 import AdminApproveOrder from "./pages/AdminApproveOrder";
 import AdminRejectOrder from "./pages/AdminRejectOrder";
 import AdminManualVpn from "./pages/AdminManualVpn";
-import OrderDetail from "./pages/OrderDetail";
 import DeliveryPage from "./pages/DeliveryPage";
 import SubscriptionDelivery from "./pages/SubscriptionDelivery";
 import PaymentSuccess from "./pages/PaymentSuccess";
@@ -59,7 +58,6 @@ const App = () => (
               <Route path="/admin/manual-vpn" element={<AdminManualVpn />} />
               <Route path="/admin/approve-order/:id" element={<AdminApproveOrder />} />
               <Route path="/admin/reject-order/:id" element={<AdminRejectOrder />} />
-              <Route path="/order/:id" element={<OrderDetail />} />
               <Route path="/delivery" element={<DeliveryPage />} />
               <Route path="/subscription-delivery" element={<SubscriptionDelivery />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
