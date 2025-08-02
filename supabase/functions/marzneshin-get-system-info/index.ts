@@ -185,32 +185,14 @@ serve(async (req) => {
       throw new Error(`Authentication failed for panel ${panel.name}: ${authResponse.status} ${authResponse.statusText}. Error: ${JSON.stringify(errorDetails)}. Tried formats: ${authAttempts.map(a => `${a.format}(${a.status})`).join(', ')}`);
     }
 
-    // Step 4: Enhanced Token Handling
+    // Step 4: Enhanced Token Handling - Use the last successful response
     let authDataResponse;
+    let responseText;
+    
     try {
-      // Get the response text from the successful authentication request
-      let responseText;
-      if (authResponse.bodyUsed) {
-        // If body was already consumed, we need to re-authenticate
-        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Response body already consumed, re-authenticating...`);
-        
-        const reAuthHeaders = {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        };
-        
-        const reAuthResponse = await fetch(authUrl, {
-          method: 'POST',
-          headers: reAuthHeaders,
-          body: JSON.stringify(authData)
-        });
-        
-        responseText = await reAuthResponse.text();
-        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Re-auth response:`, responseText);
-      } else {
-        responseText = await authResponse.text();
-        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Raw auth response:`, responseText);
-      }
+      // Get the response text from the most recent successful authentication
+      responseText = await authResponse.text();
+      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Raw auth response:`, responseText);
       
       authDataResponse = JSON.parse(responseText);
       
