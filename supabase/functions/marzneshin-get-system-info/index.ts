@@ -91,8 +91,9 @@ serve(async (req) => {
       });
       
       // Try to parse and examine the response structure
+      let parsedResponse = null;
       try {
-        const parsedResponse = JSON.parse(responseText);
+        parsedResponse = JSON.parse(responseText);
         console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Parsed JSON Auth Response:`, parsedResponse);
         console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Available keys in response:`, Object.keys(parsedResponse));
       } catch (parseErr) {
@@ -103,7 +104,8 @@ serve(async (req) => {
         format: 'JSON',
         status: authResponse.status,
         success: authResponse.ok,
-        response: responseText
+        response: responseText,
+        parsedData: parsedResponse
       });
 
       // If JSON format fails with 422, try form-encoded format
@@ -138,8 +140,9 @@ serve(async (req) => {
         });
         
         // Try to parse and examine the form response structure
+        let parsedFormResponse = null;
         try {
-          const parsedFormResponse = JSON.parse(formResponseText);
+          parsedFormResponse = JSON.parse(formResponseText);
           console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Parsed Form Auth Response:`, parsedFormResponse);
           console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Available keys in form response:`, Object.keys(parsedFormResponse));
         } catch (parseErr) {
@@ -150,7 +153,8 @@ serve(async (req) => {
           format: 'FORM',
           status: authResponse.status,
           success: authResponse.ok,
-          response: formResponseText
+          response: formResponseText,
+          parsedData: parsedFormResponse
         });
       }
 
@@ -185,16 +189,21 @@ serve(async (req) => {
       throw new Error(`Authentication failed for panel ${panel.name}: ${authResponse.status} ${authResponse.statusText}. Error: ${JSON.stringify(errorDetails)}. Tried formats: ${authAttempts.map(a => `${a.format}(${a.status})`).join(', ')}`);
     }
 
-    // Step 4: Enhanced Token Handling - Use the last successful response
+    // Step 4: Enhanced Token Handling - Use the successful auth response data
     let authDataResponse;
-    let responseText;
     
     try {
-      // Get the response text from the most recent successful authentication
-      responseText = await authResponse.text();
-      console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Raw auth response:`, responseText);
-      
-      authDataResponse = JSON.parse(responseText);
+      // Use the parsed data from the successful authentication attempt
+      const successfulAttempt = authAttempts.find(attempt => attempt.success && attempt.parsedData);
+      if (successfulAttempt && successfulAttempt.parsedData) {
+        authDataResponse = successfulAttempt.parsedData;
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Using successful auth data:`, authDataResponse);
+      } else {
+        // Fallback: try to parse the response if we don't have parsed data
+        const responseText = await authResponse.text();
+        console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Raw auth response:`, responseText);
+        authDataResponse = JSON.parse(responseText);
+      }
       
       console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Final parsed auth response:`, authDataResponse);
       console.log(`[MARZNESHIN-GET-SYSTEM-INFO] Auth response keys:`, Object.keys(authDataResponse || {}));
