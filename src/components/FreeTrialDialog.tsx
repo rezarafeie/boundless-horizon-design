@@ -271,33 +271,14 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         }
       };
 
-      // Get user's IP address (approximate)
-      const getUserIP = async () => {
-        try {
-          const response = await fetch('https://api.ipify.org?format=json');
-          const data = await response.json();
-          return data.ip;
-        } catch (error) {
-          console.warn('IP address fetch failed:', error);
-          return null;
-        }
-      };
 
       const deviceFingerprint = generateDeviceFingerprint();
-      let userIP = null;
-      
-      try {
-        userIP = await getUserIP();
-      } catch (error) {
-        console.warn('Failed to get user IP:', error);
-      }
 
-      // Check if user can create free trial (3-day limit with IP and fingerprint)
+      // Check if user can create free trial (3-day limit with fingerprint)
       const { data: canCreate, error: limitError } = await supabase
         .rpc('can_create_free_trial', {
           user_email: formData.email,
           user_phone: formData.phone,
-          user_ip: userIP,
           user_device_fingerprint: deviceFingerprint
         });
 
@@ -325,7 +306,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         return;
       }
 
-      // Use STRICT plan-to-panel binding with email, phone, IP, and device fingerprint
+      // Use STRICT plan-to-panel binding with email, phone, and device fingerprint
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
         selectedPlan, // UUID with STRICT panel assignment
@@ -333,7 +314,6 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         7, // 7 days for free trial
         formData.email,
         formData.phone,
-        userIP,
         deviceFingerprint
       );
 

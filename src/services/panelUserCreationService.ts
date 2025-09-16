@@ -360,7 +360,6 @@ export class PanelUserCreationService {
     durationDays: number = 7,
     email?: string,
     phone?: string,
-    userIP?: string,
     deviceFingerprint?: string
   ): Promise<PanelUserCreationResponse> {
     console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { 
@@ -370,7 +369,6 @@ export class PanelUserCreationService {
       durationDays, 
       email: email ? 'provided' : 'not provided', 
       phone: phone ? 'provided' : 'not provided',
-      userIP: userIP ? 'provided' : 'not provided',
       deviceFingerprint: deviceFingerprint ? 'provided' : 'not provided'
     });
     
@@ -433,7 +431,7 @@ export class PanelUserCreationService {
             subscription_url: result.data.subscription_url,
             expire_date: expireDate.toISOString(),
             data_limit_bytes: Math.round(dataLimitGB * 1024 * 1024 * 1024), // Convert GB to bytes
-            ip_address: userIP,
+            ip_address: null,
             user_device_fingerprint: deviceFingerprint,
             device_info: {}
           };

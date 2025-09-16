@@ -1041,6 +1041,11 @@ export type Database = {
               user_ip?: unknown
               user_phone: string
             }
+          | {
+              user_device_fingerprint?: string
+              user_email: string
+              user_phone: string
+            }
           | { user_email: string; user_ip?: unknown; user_phone: string }
         Returns: boolean
       }
