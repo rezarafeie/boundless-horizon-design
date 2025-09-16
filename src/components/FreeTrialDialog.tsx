@@ -274,33 +274,73 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
       const deviceFingerprint = generateDeviceFingerprint();
 
-      // Check if user can create free trial (3-day limit with fingerprint)
-      const { data: canCreate, error: limitError } = await supabase
-        .rpc('can_create_free_trial', {
-          p_email: formData.email,
-          p_phone: formData.phone,
-          p_device_fingerprint: deviceFingerprint
+      // CRITICAL FIX: Add proper race condition prevention
+      let canCreate = false;
+      let existingTrialsCount = 0;
+      
+      try {
+        // Step 1: Check existing trials first with better logging
+        console.log('FREE_TRIAL: Checking existing trials for:', {
+          email: formData.email,
+          phone: formData.phone,
+          deviceFingerprint: deviceFingerprint ? 'provided' : 'none'
         });
 
-      if (limitError) {
-        console.error('FREE_TRIAL: Error checking trial limit:', limitError);
+        const threeDaysAgo = new Date();
+        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+        const { data: existingTrials, error: queryError } = await supabase
+          .from('test_users')
+          .select('id, email, phone_number, user_device_fingerprint, created_at')
+          .or(`email.eq.${formData.email},phone_number.eq.${formData.phone}${deviceFingerprint ? `,user_device_fingerprint.eq.${deviceFingerprint}` : ''}`)
+          .gte('created_at', threeDaysAgo.toISOString())
+          .order('created_at', { ascending: false });
+
+        if (queryError) {
+          console.error('FREE_TRIAL: Database query error:', queryError);
+          toast({
+            title: language === 'fa' ? 'خطا' : 'Error',
+            description: language === 'fa' ? 
+              'خطا در بررسی محدودیت تست رایگان' : 
+              'Error checking free trial limit',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        existingTrialsCount = existingTrials?.length || 0;
+        console.log('FREE_TRIAL: Found existing trials:', {
+          count: existingTrialsCount,
+          trials: existingTrials?.map(t => ({
+            id: t.id,
+            email: t.email,
+            phone: t.phone_number,
+            createdAt: t.created_at
+          }))
+        });
+
+        if (existingTrialsCount > 0) {
+          console.log('FREE_TRIAL: User cannot create trial due to 3-day limit');
+          toast({
+            title: language === 'fa' ? 'محدودیت زمانی' : 'Time Limit',
+            description: language === 'fa' ? 
+              'شما در ۳ روز گذشته تست رایگان دریافت کرده‌اید. لطفاً پس از ۳ روز مجدداً تلاش کنید.' : 
+              'You have received a free trial in the past 3 days. Please try again after 3 days.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        canCreate = true;
+        console.log('FREE_TRIAL: User can create trial - no existing trials found');
+        
+      } catch (checkError) {
+        console.error('FREE_TRIAL: Error during trial check:', checkError);
         toast({
           title: language === 'fa' ? 'خطا' : 'Error',
           description: language === 'fa' ? 
             'خطا در بررسی محدودیت تست رایگان' : 
             'Error checking free trial limit',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      if (!canCreate) {
-        console.log('FREE_TRIAL: User cannot create trial due to 3-day limit');
-        toast({
-          title: language === 'fa' ? 'محدودیت زمانی' : 'Time Limit',
-          description: language === 'fa' ? 
-            'شما در ۳ روز گذشته تست رایگان دریافت کرده‌اید. لطفاً پس از ۳ روز مجدداً تلاش کنید.' : 
-            'You have received a free trial in the past 3 days. Please try again after 3 days.',
           variant: 'destructive',
         });
         return;

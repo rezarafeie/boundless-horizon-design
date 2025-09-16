@@ -454,29 +454,45 @@ export class PanelUserCreationService {
             subscriptionUrl: testUserData.subscription_url
           });
           
-          const { data: insertedData, error: insertError } = await supabase
-            .from('test_users')
-            .insert([testUserData])
-            .select()
-            .single();
-            
-          if (insertError) {
-            console.error('PANEL_USER_CREATION: CRITICAL DATABASE ERROR - Failed to store test user data:', insertError);
-            console.error('PANEL_USER_CREATION: Insert error details:', {
-              code: insertError.code,
-              message: insertError.message,
-              details: insertError.details,
-              hint: insertError.hint,
-              testUserData
-            });
-          } else {
-            console.log('PANEL_USER_CREATION: ✅ SUCCESS - Test user data stored successfully in database:', {
-              id: insertedData.id,
-              username: insertedData.username,
-              email: insertedData.email,
-              createdAt: insertedData.created_at
-            });
-          }
+           // Use upsert with unique constraint to prevent duplicates
+           const { data: insertedData, error: insertError } = await supabase
+             .from('test_users')
+             .upsert([testUserData], {
+               onConflict: 'email,phone_number',
+               ignoreDuplicates: false
+             })
+             .select()
+             .maybeSingle();
+             
+           if (insertError) {
+             console.error('PANEL_USER_CREATION: CRITICAL DATABASE ERROR - Failed to store test user data:', insertError);
+             console.error('PANEL_USER_CREATION: Insert error details:', {
+               code: insertError.code,
+               message: insertError.message,
+               details: insertError.details,
+               hint: insertError.hint,
+               testUserData
+             });
+             
+             // Check if this is a duplicate constraint violation
+             if (insertError.code === '23505' || insertError.message?.includes('duplicate') || insertError.message?.includes('unique')) {
+               console.error('PANEL_USER_CREATION: DUPLICATE DETECTED - User already exists in database');
+               // Continue with success since the user was created on the panel
+               // but notify about the duplicate
+             } else {
+               // For other errors, this is a critical failure
+               console.error('PANEL_USER_CREATION: NON-DUPLICATE DATABASE ERROR - This is critical');
+             }
+           } else if (insertedData) {
+             console.log('PANEL_USER_CREATION: ✅ SUCCESS - Test user data stored successfully in database:', {
+               id: insertedData.id,
+               username: insertedData.username,
+               email: insertedData.email,
+               createdAt: insertedData.created_at
+             });
+           } else {
+             console.log('PANEL_USER_CREATION: ⚠️ DUPLICATE IGNORED - Test user already exists in database');
+           }
         } catch (error) {
           console.error('PANEL_USER_CREATION: CRITICAL ERROR - Exception during test user storage:', error);
           console.error('PANEL_USER_CREATION: Exception details:', {
