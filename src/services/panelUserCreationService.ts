@@ -425,6 +425,17 @@ export class PanelUserCreationService {
           const expireDate = new Date();
           expireDate.setDate(expireDate.getDate() + durationDays);
           
+          // Get client IP address for the test user record
+          let clientIP = null;
+          try {
+            const ipResponse = await fetch('https://ipapi.co/ip/');
+            if (ipResponse.ok) {
+              clientIP = await ipResponse.text();
+            }
+          } catch (ipError) {
+            console.warn('PANEL_USER_CREATION: Could not get client IP:', ipError);
+          }
+          
           // Get plan details for the test user data
           const { data: planData } = await supabase
             .from('subscription_plans')
@@ -441,9 +452,16 @@ export class PanelUserCreationService {
             subscription_url: result.data.subscription_url,
             expire_date: expireDate.toISOString(),
             data_limit_bytes: Math.round(dataLimitGB * 1024 * 1024 * 1024), // Convert GB to bytes
-            ip_address: null,
+            ip_address: clientIP, // Use detected IP address
+            user_ip_address: clientIP, // Also set this field for compatibility
             user_device_fingerprint: deviceFingerprint,
-            device_info: {}
+            device_info: {
+              userAgent: navigator?.userAgent || 'unknown',
+              language: navigator?.language || 'unknown',
+              platform: navigator?.platform || 'unknown',
+              timestamp: new Date().toISOString(),
+              fingerprint: deviceFingerprint
+            }
           };
           
           console.log('PANEL_USER_CREATION: Inserting test user data:', {
@@ -454,24 +472,23 @@ export class PanelUserCreationService {
             subscriptionUrl: testUserData.subscription_url
           });
           
-           // Use upsert with unique constraint to prevent duplicates
+           // Insert test user data with proper error handling
            const { data: insertedData, error: insertError } = await supabase
              .from('test_users')
-             .upsert([testUserData], {
-               onConflict: 'email,phone_number',
-               ignoreDuplicates: false
-             })
+             .insert([testUserData])
              .select()
              .maybeSingle();
              
-           if (insertError) {
-             console.error('PANEL_USER_CREATION: CRITICAL DATABASE ERROR - Failed to store test user data:', insertError);
+             if (insertError) {
+             console.error('PANEL_USER_CREATION: Failed to store test user data:', insertError);
              console.error('PANEL_USER_CREATION: Insert error details:', {
                code: insertError.code,
                message: insertError.message,
                details: insertError.details,
                hint: insertError.hint,
-               testUserData
+               username: testUserData.username,
+               email: testUserData.email,
+               phone: testUserData.phone_number
              });
              
              // Check if this is a duplicate constraint violation
