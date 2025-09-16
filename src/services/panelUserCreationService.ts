@@ -356,7 +356,7 @@ export class PanelUserCreationService {
   static async createFreeTrial(
     username: string, 
     planIdOrUuid: string,  // Can be UUID or plan_id text
-    dataLimitGB: number = 1,
+    dataLimitGB: number = 0.5, // Default changed to 500MB
     durationDays: number = 7,
     email?: string,
     phone?: string
@@ -421,7 +421,7 @@ export class PanelUserCreationService {
             panel_name: result.data.panel_name || planData?.panel_servers?.name || 'Unknown Panel',
             subscription_url: result.data.subscription_url,
             expire_date: expireDate.toISOString(),
-            data_limit_bytes: dataLimitGB * 1024 * 1024 * 1024, // Convert GB to bytes
+            data_limit_bytes: Math.round(dataLimitGB * 1024 * 1024 * 1024), // Convert GB to bytes
             ip_address: null, // Will be set by the client
             device_info: {}
           };

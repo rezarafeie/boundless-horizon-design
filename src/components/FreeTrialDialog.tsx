@@ -242,11 +242,43 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       const randomDigits = Math.floor(Math.random() * (999999 - 100000 + 1)) + 100000;
       const uniqueUsername = `bnets_test_${randomDigits}`;
       
+      // Check if user can create free trial (3-day limit)
+      const { data: canCreate, error: limitError } = await supabase
+        .rpc('can_create_free_trial', {
+          user_email: formData.email,
+          user_phone: formData.phone,
+          user_ip: null // Could be added later for IP-based limiting
+        });
+
+      if (limitError) {
+        console.error('FREE_TRIAL: Error checking trial limit:', limitError);
+        toast({
+          title: language === 'fa' ? 'خطا' : 'Error',
+          description: language === 'fa' ? 
+            'خطا در بررسی محدودیت تست رایگان' : 
+            'Error checking free trial limit',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (!canCreate) {
+        console.log('FREE_TRIAL: User cannot create trial due to 3-day limit');
+        toast({
+          title: language === 'fa' ? 'محدودیت زمانی' : 'Time Limit',
+          description: language === 'fa' ? 
+            'شما در ۳ روز گذشته تست رایگان دریافت کرده‌اید. لطفاً پس از ۳ روز مجدداً تلاش کنید.' : 
+            'You have received a free trial in the past 3 days. Please try again after 3 days.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       // Use STRICT plan-to-panel binding with email and phone
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
         selectedPlan, // UUID with STRICT panel assignment
-        1, // 1 GB for free trial
+        0.5, // 500MB for free trial (reduced from 1GB)
         7, // 7 days for free trial
         formData.email,
         formData.phone
@@ -402,8 +434,14 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
             <div className="bg-blue-50 p-3 rounded-lg text-sm">
               <p className="text-blue-800">
                 {language === 'fa' ? 
-                  '🎉 تست رایگان: ۱ گیگابایت برای ۷ روز' : 
-                  '🎉 Free Trial: 1 GB for 7 days'
+                  '🎉 تست رایگان: ۵۰۰ مگابایت برای ۷ روز' : 
+                  '🎉 Free Trial: 500 MB for 7 days'
+                }
+              </p>
+              <p className="text-blue-600 text-xs mt-1">
+                {language === 'fa' ? 
+                  'محدودیت: یک تست رایگان در هر ۳ روز' : 
+                  'Limit: One free trial every 3 days'
                 }
               </p>
             </div>
