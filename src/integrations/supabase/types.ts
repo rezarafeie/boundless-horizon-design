@@ -1035,11 +1035,7 @@ export type Database = {
     Functions: {
       can_create_free_trial: {
         Args:
-          | {
-              user_device_fingerprint?: string
-              user_email: string
-              user_phone: string
-            }
+          | { p_device_fingerprint?: string; p_email: string; p_phone: string }
           | { user_email: string; user_ip?: unknown; user_phone: string }
         Returns: boolean
       }

@@ -277,9 +277,9 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       // Check if user can create free trial (3-day limit with fingerprint)
       const { data: canCreate, error: limitError } = await supabase
         .rpc('can_create_free_trial', {
-          user_email: formData.email,
-          user_phone: formData.phone,
-          user_device_fingerprint: deviceFingerprint
+          p_email: formData.email,
+          p_phone: formData.phone,
+          p_device_fingerprint: deviceFingerprint
         });
 
       if (limitError) {
