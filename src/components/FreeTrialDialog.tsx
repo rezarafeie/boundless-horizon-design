@@ -244,26 +244,31 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       
       // Generate device fingerprint for better user limiting
       const generateDeviceFingerprint = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.textBaseline = 'top';
-          ctx.font = '14px Arial';
-          ctx.fillText('Device fingerprint', 2, 2);
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillText('Device fingerprint', 2, 2);
+          }
+          const canvasFingerprint = canvas.toDataURL();
+          
+          const fingerprint = btoa([
+            navigator.userAgent || 'unknown',
+            navigator.language || 'unknown',
+            navigator.platform || 'unknown',
+            (navigator.hardwareConcurrency || 'unknown').toString(),
+            `${screen.width}x${screen.height}`,
+            new Date().getTimezoneOffset().toString(),
+            canvasFingerprint.slice(-50) // Last 50 chars of canvas fingerprint
+          ].join('|'));
+          
+          return fingerprint;
+        } catch (error) {
+          console.warn('Device fingerprint generation failed:', error);
+          return 'fallback_fingerprint_' + Date.now();
         }
-        const canvasFingerprint = canvas.toDataURL();
-        
-        const fingerprint = btoa([
-          navigator.userAgent,
-          navigator.language,
-          navigator.platform,
-          navigator.hardwareConcurrency || 'unknown',
-          screen.width + 'x' + screen.height,
-          new Date().getTimezoneOffset(),
-          canvasFingerprint.slice(-50) // Last 50 chars of canvas fingerprint
-        ].join('|'));
-        
-        return fingerprint;
       };
 
       // Get user's IP address (approximate)
@@ -272,13 +277,20 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           const response = await fetch('https://api.ipify.org?format=json');
           const data = await response.json();
           return data.ip;
-        } catch {
+        } catch (error) {
+          console.warn('IP address fetch failed:', error);
           return null;
         }
       };
 
       const deviceFingerprint = generateDeviceFingerprint();
-      const userIP = await getUserIP();
+      let userIP = null;
+      
+      try {
+        userIP = await getUserIP();
+      } catch (error) {
+        console.warn('Failed to get user IP:', error);
+      }
 
       // Check if user can create free trial (3-day limit with IP and fingerprint)
       const { data: canCreate, error: limitError } = await supabase
