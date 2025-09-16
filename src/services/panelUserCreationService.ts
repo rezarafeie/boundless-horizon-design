@@ -409,9 +409,19 @@ export class PanelUserCreationService {
         isFreeTriaL: true
       });
 
-      // Store test user data in the database and send webhook if email and phone are provided
+      // CRITICAL FIX: Store test user data in the database whenever email and phone are provided
+      console.log('PANEL_USER_CREATION: Checking test user storage conditions:', {
+        resultSuccess: result.success,
+        hasResultData: !!result.data,
+        hasEmail: !!email,
+        hasPhone: !!phone,
+        username: result.data?.username
+      });
+
       if (result.success && result.data && email && phone) {
         try {
+          console.log('PANEL_USER_CREATION: Creating test user database record...');
+          
           const expireDate = new Date();
           expireDate.setDate(expireDate.getDate() + durationDays);
           
@@ -436,54 +446,56 @@ export class PanelUserCreationService {
             device_info: {}
           };
           
-          const { error: insertError } = await supabase
+          console.log('PANEL_USER_CREATION: Inserting test user data:', {
+            username: testUserData.username,
+            email: testUserData.email,
+            phone: testUserData.phone_number,
+            panelName: testUserData.panel_name,
+            subscriptionUrl: testUserData.subscription_url
+          });
+          
+          const { data: insertedData, error: insertError } = await supabase
             .from('test_users')
-            .insert([testUserData]);
+            .insert([testUserData])
+            .select()
+            .single();
             
           if (insertError) {
-            console.error('PANEL_USER_CREATION: Failed to store test user data:', insertError);
+            console.error('PANEL_USER_CREATION: CRITICAL DATABASE ERROR - Failed to store test user data:', insertError);
+            console.error('PANEL_USER_CREATION: Insert error details:', {
+              code: insertError.code,
+              message: insertError.message,
+              details: insertError.details,
+              hint: insertError.hint,
+              testUserData
+            });
           } else {
-            console.log('PANEL_USER_CREATION: Test user data stored successfully');
-            
-            // Send webhook notification for new test user with complete data
-            try {
-              // Get plan details for webhook
-              const { data: planDetails } = await supabase
-                .from('subscription_plans')
-                .select('name_en, plan_id')
-                .eq('id', actualPlanId)
-                .single();
-
-              await supabase.functions.invoke('send-webhook-notification', {
-                body: {
-                  type: 'new_test_user',
-                  webhook_type: 'test_account_creation',
-                  test_user_id: result.data.username,
-                  username: result.data.username,
-                  email: email,
-                  mobile: phone,
-                  subscription_url: result.data.subscription_url,
-                  panel_name: result.data.panel_name,
-                  panel_type: result.data.panel_type,
-                  panel_url: result.data.panel_url,
-                  plan_name: planDetails?.name_en || planDetails?.plan_id || 'Unknown Plan',
-                  plan_id: planDetails?.plan_id || 'unknown',
-                  data_limit_gb: dataLimitGB,
-                  duration_days: durationDays,
-                  expire_date: expireDate.toISOString(),
-                  is_free_trial: true,
-                  created_at: new Date().toISOString()
-                }
-              });
-              console.log('PANEL_USER_CREATION: Complete webhook notification sent for test user');
-            } catch (webhookError) {
-              console.error('PANEL_USER_CREATION: Failed to send webhook notification:', webhookError);
-              // Don't fail the trial creation for webhook issues
-            }
+            console.log('PANEL_USER_CREATION: ✅ SUCCESS - Test user data stored successfully in database:', {
+              id: insertedData.id,
+              username: insertedData.username,
+              email: insertedData.email,
+              createdAt: insertedData.created_at
+            });
           }
         } catch (error) {
-          console.error('PANEL_USER_CREATION: Error storing test user data:', error);
+          console.error('PANEL_USER_CREATION: CRITICAL ERROR - Exception during test user storage:', error);
+          console.error('PANEL_USER_CREATION: Exception details:', {
+            name: error instanceof Error ? error.name : 'Unknown',
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : 'No stack trace'
+          });
         }
+      } else {
+        console.warn('PANEL_USER_CREATION: ⚠️ SKIPPING test user database storage - missing conditions:', {
+          resultSuccess: result.success,
+          hasResultData: !!result.data,
+          hasEmail: !!email,
+          hasPhone: !!phone,
+          reason: !result.success ? 'Panel creation failed' : 
+                  !result.data ? 'No result data' :
+                  !email ? 'No email provided' :
+                  !phone ? 'No phone provided' : 'Unknown reason'
+        });
       }
 
       return result;

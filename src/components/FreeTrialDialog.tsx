@@ -307,6 +307,16 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       }
 
       // Use STRICT plan-to-panel binding with email, phone, and device fingerprint
+      console.log('FREE_TRIAL: About to call createFreeTrial with params:', {
+        username: uniqueUsername,
+        planId: selectedPlan,
+        dataLimit: 0.5,
+        duration: 7,
+        email: formData.email,
+        phone: formData.phone,
+        hasDeviceFingerprint: !!deviceFingerprint
+      });
+      
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
         selectedPlan, // UUID with STRICT panel assignment
