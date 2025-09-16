@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
@@ -613,6 +613,8 @@ export type Database = {
           status: string | null
           subscription_url: string | null
           updated_at: string
+          user_device_fingerprint: string | null
+          user_ip_address: unknown | null
           username: string
         }
         Insert: {
@@ -629,6 +631,8 @@ export type Database = {
           status?: string | null
           subscription_url?: string | null
           updated_at?: string
+          user_device_fingerprint?: string | null
+          user_ip_address?: unknown | null
           username: string
         }
         Update: {
@@ -645,6 +649,8 @@ export type Database = {
           status?: string | null
           subscription_url?: string | null
           updated_at?: string
+          user_device_fingerprint?: string | null
+          user_ip_address?: unknown | null
           username?: string
         }
         Relationships: [
@@ -1027,6 +1033,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_create_free_trial: {
+        Args: { user_email: string; user_ip?: unknown; user_phone: string }
+        Returns: boolean
+      }
       check_session_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
