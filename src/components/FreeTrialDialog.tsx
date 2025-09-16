@@ -242,12 +242,51 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
       const randomDigits = Math.floor(Math.random() * (999999 - 100000 + 1)) + 100000;
       const uniqueUsername = `bnets_test_${randomDigits}`;
       
-      // Check if user can create free trial (3-day limit)
+      // Generate device fingerprint for better user limiting
+      const generateDeviceFingerprint = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.textBaseline = 'top';
+          ctx.font = '14px Arial';
+          ctx.fillText('Device fingerprint', 2, 2);
+        }
+        const canvasFingerprint = canvas.toDataURL();
+        
+        const fingerprint = btoa([
+          navigator.userAgent,
+          navigator.language,
+          navigator.platform,
+          navigator.hardwareConcurrency || 'unknown',
+          screen.width + 'x' + screen.height,
+          new Date().getTimezoneOffset(),
+          canvasFingerprint.slice(-50) // Last 50 chars of canvas fingerprint
+        ].join('|'));
+        
+        return fingerprint;
+      };
+
+      // Get user's IP address (approximate)
+      const getUserIP = async () => {
+        try {
+          const response = await fetch('https://api.ipify.org?format=json');
+          const data = await response.json();
+          return data.ip;
+        } catch {
+          return null;
+        }
+      };
+
+      const deviceFingerprint = generateDeviceFingerprint();
+      const userIP = await getUserIP();
+
+      // Check if user can create free trial (3-day limit with IP and fingerprint)
       const { data: canCreate, error: limitError } = await supabase
         .rpc('can_create_free_trial', {
           user_email: formData.email,
           user_phone: formData.phone,
-          user_ip: null // Could be added later for IP-based limiting
+          user_ip: userIP,
+          user_device_fingerprint: deviceFingerprint
         });
 
       if (limitError) {
@@ -274,14 +313,16 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         return;
       }
 
-      // Use STRICT plan-to-panel binding with email and phone
+      // Use STRICT plan-to-panel binding with email, phone, IP, and device fingerprint
       const result = await PanelUserCreationService.createFreeTrial(
         uniqueUsername,
         selectedPlan, // UUID with STRICT panel assignment
         0.5, // 500MB for free trial (reduced from 1GB)
         7, // 7 days for free trial
         formData.email,
-        formData.phone
+        formData.phone,
+        userIP,
+        deviceFingerprint
       );
 
       console.log('FREE_TRIAL: STRICT creation result:', result);

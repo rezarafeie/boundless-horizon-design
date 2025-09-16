@@ -359,9 +359,20 @@ export class PanelUserCreationService {
     dataLimitGB: number = 0.5, // Default changed to 500MB
     durationDays: number = 7,
     email?: string,
-    phone?: string
+    phone?: string,
+    userIP?: string,
+    deviceFingerprint?: string
   ): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { username, planIdOrUuid, dataLimitGB, durationDays, email: email ? 'provided' : 'not provided', phone: phone ? 'provided' : 'not provided' });
+    console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { 
+      username, 
+      planIdOrUuid, 
+      dataLimitGB, 
+      durationDays, 
+      email: email ? 'provided' : 'not provided', 
+      phone: phone ? 'provided' : 'not provided',
+      userIP: userIP ? 'provided' : 'not provided',
+      deviceFingerprint: deviceFingerprint ? 'provided' : 'not provided'
+    });
     
     try {
       // Resolve to actual UUID if needed
@@ -422,7 +433,8 @@ export class PanelUserCreationService {
             subscription_url: result.data.subscription_url,
             expire_date: expireDate.toISOString(),
             data_limit_bytes: Math.round(dataLimitGB * 1024 * 1024 * 1024), // Convert GB to bytes
-            ip_address: null, // Will be set by the client
+            ip_address: userIP,
+            user_device_fingerprint: deviceFingerprint,
             device_info: {}
           };
           
