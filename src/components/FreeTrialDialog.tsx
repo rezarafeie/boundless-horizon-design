@@ -58,7 +58,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         .from('subscription_plans')
         .select(`
           *,
-          panel_servers!inner(
+          assigned_panel:panel_servers!assigned_panel_id(
             id,
             name,
             type,
@@ -78,9 +78,9 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           id: p.id,
           plan_id: p.plan_id,
           name: p.name_en,
-          hasAssignedPanel: !!p.panel_servers,
-          panelName: p.panel_servers?.name,
-          panelHealth: p.panel_servers?.health_status
+          hasAssignedPanel: !!p.assigned_panel,
+          panelName: p.assigned_panel?.name,
+          panelHealth: p.assigned_panel?.health_status
         }))
       });
 
@@ -97,13 +97,13 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
       // STRICT FILTERING: Only plans with active assigned panels
       const validPlans = (plans || []).filter(plan => {
-        const hasActivePanel = plan.panel_servers && plan.panel_servers.is_active;
+        const hasActivePanel = plan.assigned_panel && plan.assigned_panel.is_active;
         if (!hasActivePanel) {
           console.warn('FREE_TRIAL: STRICT FILTER - Excluding plan without active panel:', {
             planId: plan.plan_id,
             planName: plan.name_en,
-            hasPanel: !!plan.panel_servers,
-            panelActive: plan.panel_servers?.is_active
+            hasPanel: !!plan.assigned_panel,
+            panelActive: plan.assigned_panel?.is_active
           });
         }
         return hasActivePanel;
@@ -116,9 +116,9 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           id: p.id,
           plan_id: p.plan_id,
           name: p.name_en,
-          panelName: p.panel_servers.name,
-          panelType: p.panel_servers.type,
-          panelHealth: p.panel_servers.health_status
+          panelName: p.assigned_panel.name,
+          panelType: p.assigned_panel.type,
+          panelHealth: p.assigned_panel.health_status
         }))
       });
 
@@ -135,7 +135,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
           uuid: validPlans[0].id, 
           plan_id: validPlans[0].plan_id,
           name: validPlans[0].name_en,
-          assignedPanel: validPlans[0].panel_servers.name
+          assignedPanel: validPlans[0].assigned_panel.name
         });
       } else {
         console.warn('FREE_TRIAL: STRICT VALIDATION - No valid plans found');
