@@ -58,7 +58,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         .from('subscription_plans')
         .select(`
           *,
-          assigned_panel:panel_servers!assigned_panel_id(
+          assigned_panel:panel_servers(
             id,
             name,
             type,
