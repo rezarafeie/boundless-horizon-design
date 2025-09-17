@@ -274,7 +274,13 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
 
       const deviceFingerprint = generateDeviceFingerprint();
 
-      // Check if user can create free trial (3-day limit with fingerprint and locking)
+      // CRITICAL: Check trial eligibility FIRST before any user creation attempts
+      console.log('FREE_TRIAL: Checking eligibility BEFORE user creation...', {
+        email: formData.email,
+        phone: formData.phone,
+        hasFingerprint: !!deviceFingerprint
+      });
+
       const { data: canCreate, error: limitError } = await supabase
         .rpc('can_create_free_trial', {
           p_email: formData.email,
@@ -294,8 +300,10 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         return;
       }
 
+      console.log('FREE_TRIAL: Eligibility check result:', { canCreate });
+
       if (!canCreate) {
-        console.log('FREE_TRIAL: User cannot create trial due to 3-day limit or concurrent request');
+        console.log('FREE_TRIAL: User blocked - cannot create trial due to 3-day limit or concurrent request');
         toast({
           title: language === 'fa' ? 'محدودیت تست رایگان' : 'Free Trial Limitation',
           description: language === 'fa' ? 
@@ -305,6 +313,8 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         });
         return;
       }
+
+      console.log('FREE_TRIAL: ✅ Eligibility check passed - proceeding with user creation');
 
       // Use STRICT plan-to-panel binding with email, phone, and device fingerprint
       console.log('FREE_TRIAL: About to call createFreeTrial with params:', {

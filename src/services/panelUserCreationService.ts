@@ -352,7 +352,7 @@ export class PanelUserCreationService {
     }
   }
 
-  // Create free trial with STRICT plan-to-panel binding
+  // Create free trial with STRICT plan-to-panel binding and ENHANCED duplicate prevention
   static async createFreeTrial(
     username: string, 
     planIdOrUuid: string,  // Can be UUID or plan_id text
@@ -362,7 +362,7 @@ export class PanelUserCreationService {
     phone?: string,
     deviceFingerprint?: string
   ): Promise<PanelUserCreationResponse> {
-    console.log('PANEL_USER_CREATION: Creating free trial with STRICT binding:', { 
+    console.log('PANEL_USER_CREATION: Creating free trial with ENHANCED duplicate prevention:', { 
       username, 
       planIdOrUuid, 
       dataLimitGB, 
@@ -373,7 +373,37 @@ export class PanelUserCreationService {
     });
     
     try {
-      // Resolve to actual UUID if needed
+      // STEP 1: CRITICAL - Double-check eligibility at service level as additional safety
+      if (email && phone) {
+        console.log('PANEL_USER_CREATION: Performing service-level eligibility check...');
+        
+        const { data: canCreateAtService, error: serviceLimitError } = await supabase
+          .rpc('can_create_free_trial', {
+            p_email: email,
+            p_phone: phone,
+            p_device_fingerprint: deviceFingerprint
+          });
+
+        if (serviceLimitError) {
+          console.error('PANEL_USER_CREATION: Service-level eligibility check failed:', serviceLimitError);
+          return {
+            success: false,
+            error: `Service eligibility check failed: ${serviceLimitError.message}`
+          };
+        }
+
+        if (!canCreateAtService) {
+          console.log('PANEL_USER_CREATION: BLOCKED at service level - user not eligible for free trial');
+          return {
+            success: false,
+            error: 'Free trial limit exceeded. You can only create one free trial every 3 days.'
+          };
+        }
+
+        console.log('PANEL_USER_CREATION: ✅ Service-level eligibility check passed');
+      }
+
+      // STEP 2: Resolve to actual UUID if needed
       let actualPlanId = planIdOrUuid;
       
       // Check if it looks like a UUID (has dashes)
@@ -472,44 +502,46 @@ export class PanelUserCreationService {
             subscriptionUrl: testUserData.subscription_url
           });
           
-           // Insert test user data with proper error handling
-           const { data: insertedData, error: insertError } = await supabase
-             .from('test_users')
-             .insert([testUserData])
-             .select()
-             .maybeSingle();
+          // ENHANCED: Insert test user data with upsert for better duplicate handling
+          const { data: insertedData, error: insertError } = await supabase
+            .from('test_users')
+            .upsert([testUserData], {
+              onConflict: 'username,email,phone_number',
+              ignoreDuplicates: false
+            })
+            .select()
+            .maybeSingle();
              
-             if (insertError) {
-             console.error('PANEL_USER_CREATION: Failed to store test user data:', insertError);
-             console.error('PANEL_USER_CREATION: Insert error details:', {
-               code: insertError.code,
-               message: insertError.message,
-               details: insertError.details,
-               hint: insertError.hint,
-               username: testUserData.username,
-               email: testUserData.email,
-               phone: testUserData.phone_number
-             });
-             
-             // Check if this is a duplicate constraint violation
-             if (insertError.code === '23505' || insertError.message?.includes('duplicate') || insertError.message?.includes('unique')) {
-               console.error('PANEL_USER_CREATION: DUPLICATE DETECTED - User already exists in database');
-               // Continue with success since the user was created on the panel
-               // but notify about the duplicate
-             } else {
-               // For other errors, this is a critical failure
-               console.error('PANEL_USER_CREATION: NON-DUPLICATE DATABASE ERROR - This is critical');
-             }
-           } else if (insertedData) {
-             console.log('PANEL_USER_CREATION: ✅ SUCCESS - Test user data stored successfully in database:', {
-               id: insertedData.id,
-               username: insertedData.username,
-               email: insertedData.email,
-               createdAt: insertedData.created_at
-             });
-           } else {
-             console.log('PANEL_USER_CREATION: ⚠️ DUPLICATE IGNORED - Test user already exists in database');
-           }
+          if (insertError) {
+            console.error('PANEL_USER_CREATION: Failed to store test user data:', insertError);
+            console.error('PANEL_USER_CREATION: Insert error details:', {
+              code: insertError.code,
+              message: insertError.message,
+              details: insertError.details,
+              hint: insertError.hint,
+              username: testUserData.username,
+              email: testUserData.email,
+              phone: testUserData.phone_number
+            });
+            
+            // Check if this is a duplicate constraint violation
+            if (insertError.code === '23505' || insertError.message?.includes('duplicate') || insertError.message?.includes('unique')) {
+              console.log('PANEL_USER_CREATION: DUPLICATE DETECTED - User already exists in database, continuing');
+              // Continue with success since the user was created on the panel
+            } else {
+              // For other errors, this is a critical failure
+              console.error('PANEL_USER_CREATION: NON-DUPLICATE DATABASE ERROR - This is critical');
+            }
+          } else if (insertedData) {
+            console.log('PANEL_USER_CREATION: ✅ SUCCESS - Test user data stored successfully in database:', {
+              id: insertedData.id,
+              username: insertedData.username,
+              email: insertedData.email,
+              createdAt: insertedData.created_at
+            });
+          } else {
+            console.log('PANEL_USER_CREATION: ⚠️ UPSERT COMPLETED - Test user data handled');
+          }
         } catch (error) {
           console.error('PANEL_USER_CREATION: CRITICAL ERROR - Exception during test user storage:', error);
           console.error('PANEL_USER_CREATION: Exception details:', {
