@@ -58,7 +58,7 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
         .from('subscription_plans')
         .select(`
           *,
-          assigned_panel:panel_servers(
+          assigned_panel:panel_servers!assigned_panel_id(
             id,
             name,
             type,
@@ -568,21 +568,21 @@ const FreeTrialDialog: React.FC<FreeTrialDialogProps> = ({ isOpen, onClose, onSu
                               {language === 'fa' ? plan.name_fa : plan.name_en}
                             </h3>
                             <div className={`w-3 h-3 rounded-full ${
-                              plan.panel_servers.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
-                            }`} />
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                            <span>🌍 {plan.panel_servers.name}</span>
-                            <span>•</span>
-                            <span className={`font-medium ${
-                              plan.panel_servers.health_status === 'online' 
-                                ? 'text-green-600 dark:text-green-400' 
-                                : 'text-red-600 dark:text-red-400'
-                            }`}>
-                              {plan.panel_servers.health_status === 'online' 
-                                ? (language === 'fa' ? 'آنلاین' : 'Online')
-                                : (language === 'fa' ? 'آفلاین' : 'Offline')
-                              }
+                               plan.assigned_panel?.health_status === 'online' ? 'bg-green-500' : 'bg-red-500'
+                             }`} />
+                           </div>
+                           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                             <span>🌍 {plan.assigned_panel?.name}</span>
+                             <span>•</span>
+                             <span className={`font-medium ${
+                               plan.assigned_panel?.health_status === 'online' 
+                                 ? 'text-green-600 dark:text-green-400' 
+                                 : 'text-red-600 dark:text-red-400'
+                             }`}>
+                               {plan.assigned_panel?.health_status === 'online' 
+                                 ? (language === 'fa' ? 'آنلاین' : 'Online')
+                                 : (language === 'fa' ? 'آفلاین' : 'Offline')
+                               }
                             </span>
                           </div>
                         </div>
