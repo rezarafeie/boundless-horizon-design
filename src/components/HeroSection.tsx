@@ -78,9 +78,7 @@ const HeroSection = () => {
               </Link>
             </Button>
 
-            <div className="w-full sm:w-auto">
-              <FreeTrialWrapper />
-            </div>
+            {/* Free trial disabled */}
 
             <Button asChild variant="hero-accent" size="xl" className="w-full sm:w-auto group">
               <Link to="/renewal">
