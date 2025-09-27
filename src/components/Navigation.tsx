@@ -86,11 +86,6 @@ const Navigation = () => {
                   </Link>
                 </DropdownMenuItem>
                 
-                <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 mb-3 border-0">
-                  <div className="w-full p-2">
-                    <FreeTrialWrapper />
-                  </div>
-                </DropdownMenuItem>
                 
                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl p-0 border-0">
                   <Link to="/renewal" className="w-full">
@@ -137,9 +132,6 @@ const Navigation = () => {
               </Button>
             </Link>
             
-            <div className="px-2">
-              <FreeTrialWrapper />
-            </div>
             
             <Link to="/renewal">
               <Button 
