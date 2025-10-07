@@ -353,6 +353,7 @@ export class PanelUserCreationService {
   }
 
   // Create free trial with STRICT plan-to-panel binding and ENHANCED duplicate prevention
+  // TEMPORARILY DISABLED - Free trial creation is currently deactivated
   static async createFreeTrial(
     username: string, 
     planIdOrUuid: string,  // Can be UUID or plan_id text
@@ -362,6 +363,15 @@ export class PanelUserCreationService {
     phone?: string,
     deviceFingerprint?: string
   ): Promise<PanelUserCreationResponse> {
+    console.log('PANEL_USER_CREATION: Free trial creation is DISABLED');
+    
+    // ⛔ DEACTIVATED: Free trial functionality is temporarily disabled
+    return {
+      success: false,
+      error: 'Free trial service is temporarily unavailable. Please try again later.'
+    };
+    
+    /* COMMENTED OUT - Original functionality preserved for future reactivation
     console.log('PANEL_USER_CREATION: Creating free trial with ENHANCED duplicate prevention:', { 
       username, 
       planIdOrUuid, 
@@ -571,6 +581,7 @@ export class PanelUserCreationService {
         error: error instanceof Error ? `Free trial creation failed: ${error.message}` : 'Unknown error in free trial creation'
       };
     }
+    */ // END OF COMMENTED OUT CODE - Free trial functionality can be reactivated by uncommenting
   }
 
   // Create paid subscription with STRICT plan-to-panel binding
