@@ -17,13 +17,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { username, password, allowedSections, role } = await req.json()
+    const { email, password, username, allowedSections, role } = await req.json()
 
-    console.log(`Creating admin user for username: ${username}`)
+    console.log(`Creating admin user for email: ${email}`)
 
     // Create auth user first
     const { data: authUser, error: authError } = await supabaseClient.auth.admin.createUser({
-      email: `${username}@admin.boundless.network`,
+      email: email,
       password: password,
       email_confirm: true
     })
@@ -40,8 +40,7 @@ serve(async (req) => {
       .from('admin_users')
       .insert({
         user_id: authUser.user.id,
-        username: username,
-        password_hash: password, // Store plaintext for simplicity
+        username: username || email.split('@')[0],
         role: role || 'editor',
         is_active: true,
         allowed_sections: allowedSections || []
