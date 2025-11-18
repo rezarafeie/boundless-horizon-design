@@ -22,49 +22,35 @@ export const useAdminAuth = () => {
     try {
       console.log('=== ADMIN AUTH: Checking admin status ===');
       
-      // Check if user is logged in via session
-      const adminSession = localStorage.getItem('admin_session');
-      if (!adminSession) {
-        console.log('ADMIN AUTH: No session found');
-        setAdminUser(null);
-        setIsAuthenticated(false);
-        setLoading(false);
-        return;
-      }
-
-      // Parse session data
-      const sessionData = JSON.parse(adminSession);
-      if (!sessionData.isLoggedIn || !sessionData.username) {
-        console.log('ADMIN AUTH: Invalid session data');
-        localStorage.removeItem('admin_session');
-        setAdminUser(null);
-        setIsAuthenticated(false);
-        setLoading(false);
-        return;
-      }
-
-      // Create service client for admin operations (bypasses RLS)
-      console.log('ADMIN AUTH: Setting up admin database access');
+      // Check Supabase session
+      const { data: { session: authSession } } = await supabase.auth.getSession();
       
-      const { createClient } = await import('@supabase/supabase-js');
-      const adminClient = createClient(
-        'https://feamvyruipxtafzhptkh.supabase.co',
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlYW12eXJ1aXB4dGFmemhwdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwODE0MzIsImV4cCI6MjA2NTY1NzQzMn0.OcYM5_AGC6CGNgzM_TwrjpcB1PYBiHmUbeuYe9LQJQg'
-      );
+      if (!authSession?.user) {
+        console.log('ADMIN AUTH: No Supabase session found');
+        setAdminUser(null);
+        setIsAuthenticated(false);
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
 
-      // Verify admin user exists in database by username
-      const { data: adminData, error } = await adminClient
+      console.log('ADMIN AUTH: Supabase session found for user:', authSession.user.id);
+      setSession(authSession);
+      setUser(authSession.user);
+
+      // Check if user is an admin
+      const { data: adminData, error } = await supabase
         .from('admin_users')
         .select('*')
-        .eq('username', sessionData.username)
+        .eq('user_id', authSession.user.id)
         .eq('is_active', true)
         .maybeSingle();
       
       console.log('ADMIN AUTH: Admin query result:', { adminData, error });
       
       if (error || !adminData) {
-        console.log('ADMIN AUTH: No admin user found in database');
-        localStorage.removeItem('admin_session');
+        console.log('ADMIN AUTH: User is not an admin');
         setAdminUser(null);
         setIsAuthenticated(false);
         setLoading(false);
@@ -79,7 +65,9 @@ export const useAdminAuth = () => {
         role: adminData.role as 'superadmin' | 'editor',
         is_active: adminData.is_active,
         username: adminData.username,
-        allowed_sections: adminData.allowed_sections || []
+        allowed_sections: Array.isArray(adminData.allowed_sections) 
+          ? (adminData.allowed_sections as string[])
+          : []
       };
       
       setAdminUser(typedAdminData);
@@ -87,9 +75,10 @@ export const useAdminAuth = () => {
       setLoading(false);
     } catch (error) {
       console.log('ADMIN AUTH: Exception checking admin status:', error);
-      localStorage.removeItem('admin_session');
       setAdminUser(null);
       setIsAuthenticated(false);
+      setSession(null);
+      setUser(null);
       setLoading(false);
     }
   };
@@ -100,7 +89,7 @@ export const useAdminAuth = () => {
 
   const signOut = async () => {
     console.log('ADMIN AUTH: Signing out');
-    localStorage.removeItem('admin_session');
+    await supabase.auth.signOut();
     
     setAdminUser(null);
     setIsAuthenticated(false);

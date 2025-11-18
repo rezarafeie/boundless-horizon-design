@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 export const AdminLogin = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,51 +37,38 @@ export const AdminLogin = () => {
     setError('');
 
     try {
-      console.log('Admin login attempt for username:', username);
+      console.log('Admin login attempt for email:', email);
       
-      // Query admin_users table by username and password
-      const { data: adminUser, error: adminError } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('username', username)
-        .eq('password_hash', password)
-        .eq('is_active', true)
-        .single();
+      // Sign in with Supabase authentication
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
-      if (adminError || !adminUser) {
-        console.error('Invalid credentials or admin user not found:', adminError);
-        setError('Invalid credentials');
+      if (authError || !authData.user) {
+        console.error('Authentication failed:', authError);
+        setError('Invalid email or password');
         setLoading(false);
         return;
       }
 
-      console.log('Admin login successful for user:', adminUser.username);
-      
-      // Set session in localStorage with user details
-      localStorage.setItem('admin_session', JSON.stringify({
-        isLoggedIn: true,
-        username: adminUser.username,
-        userId: adminUser.user_id,
-        role: adminUser.role,
-        allowedSections: adminUser.allowed_sections || [],
-        loginTime: new Date().toISOString()
-      }));
+      // Check if user is an admin
+      const { data: adminUser, error: adminError } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('user_id', authData.user.id)
+        .eq('is_active', true)
+        .single();
 
-      // Try to establish Supabase auth session for admin
-      try {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: 'admin@boundless.network',
-          password: 'admin_temp_password_12345'
-        });
-        
-        if (authData?.session) {
-          console.log('Admin Supabase auth session established');
-        } else {
-          console.log('Could not establish Supabase auth session, but admin login successful');
-        }
-      } catch (authErr) {
-        console.log('Auth session setup failed, but admin login successful');
+      if (adminError || !adminUser) {
+        console.error('User is not an admin:', adminError);
+        await supabase.auth.signOut();
+        setError('You do not have admin access');
+        setLoading(false);
+        return;
       }
+
+      console.log('Admin login successful:', adminUser.username);
       
       toast.success('Login successful');
       
@@ -119,15 +106,15 @@ export const AdminLogin = () => {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your admin email"
                 required
-                autoComplete="username"
+                autoComplete="email"
               />
             </div>
             
@@ -138,7 +125,7 @@ export const AdminLogin = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
+                placeholder="Enter your password"
                 required
                 autoComplete="current-password"
               />
