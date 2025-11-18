@@ -530,12 +530,24 @@ serve(async (req) => {
 
     const createdUser = await createUserResponse.json();
     
+    // ✅ CRITICAL FIX: Convert relative subscription URL to full URL
+    let subscriptionUrl = createdUser.subscription_url;
+    if (subscriptionUrl && subscriptionUrl.startsWith('/')) {
+      // Remove trailing slashes from panel URL and combine with relative path
+      const baseUrl = panelConfig.panel_url.replace(/\/+$/, '');
+      subscriptionUrl = `${baseUrl}${subscriptionUrl}`;
+      console.log('🔧 [MARZBAN-CREATE-USER] Converted relative URL to full URL:', {
+        original: createdUser.subscription_url,
+        converted: subscriptionUrl
+      });
+    }
+    
     // ✅ CRITICAL VERIFICATION: Log the subscription URL domain
-    const subscriptionDomain = createdUser.subscription_url?.split('/')[2] || 'unknown';
+    const subscriptionDomain = subscriptionUrl?.split('/')[2] || 'unknown';
     
     console.log('🟢 [MARZBAN-CREATE-USER] User created successfully:', {
       username: createdUser.username,
-      subscriptionUrl: createdUser.subscription_url,
+      subscriptionUrl: subscriptionUrl,
       subscriptionDomain,
       panelUsed: panelConfig.name,
       panelUrl: panelConfig.panel_url,
@@ -545,7 +557,7 @@ serve(async (req) => {
 
     const responseData = {
       username: createdUser.username,
-      subscription_url: createdUser.subscription_url,
+      subscription_url: subscriptionUrl,
       expire: createdUser.expire,
       data_limit: createdUser.data_limit,
       status: createdUser.status,
