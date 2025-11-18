@@ -375,8 +375,85 @@ serve(async (req) => {
         inboundsCount: Object.keys(templateUser.inbounds || {}).length
       });
       
+    } else if (panelConfig.panel_config_data?.inbounds) {
+      // ✅ PRIORITY: Use stored panel inbound configuration
+      const configData = panelConfig.panel_config_data;
+      const proxies: Record<string, {}> = {};
+      
+      console.log('🔵 [MARZBAN-CREATE-USER] Panel config structure:', {
+        hasInbounds: !!configData.inbounds,
+        configType: configData.type,
+        inboundKeys: Object.keys(configData.inbounds || {})
+      });
+      
+      // Handle new structure: { vless: [...], vmess: [...] }
+      if (configData.inbounds.vless || configData.inbounds.vmess) {
+        // Build proxies from protocol-based inbound structure
+        if (configData.inbounds.vless && Array.isArray(configData.inbounds.vless)) {
+          configData.inbounds.vless.forEach((inbound: any) => {
+            if (inbound.tag) {
+              proxies[inbound.tag] = {
+                type: 'vless'
+              };
+            }
+          });
+        }
+        
+        if (configData.inbounds.vmess && Array.isArray(configData.inbounds.vmess)) {
+          configData.inbounds.vmess.forEach((inbound: any) => {
+            if (inbound.tag) {
+              proxies[inbound.tag] = {
+                type: 'vmess'
+              };
+            }
+          });
+        }
+
+        newUserData = {
+          username: username,
+          proxies: proxies,
+          expire: expireTimestamp,
+          data_limit: dataLimitBytes,
+          data_limit_reset_strategy: "no_reset",
+          note: notes || `Created via bnets.co - Subscription`,
+          status: "active"
+        };
+
+        console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbound configuration:', {
+          totalProxies: Object.keys(proxies).length,
+          vlessCount: configData.inbounds.vless?.length || 0,
+          vmessCount: configData.inbounds.vmess?.length || 0,
+          proxyTags: Object.keys(proxies).slice(0, 5).join(', ') + '...'
+        });
+        
+      } else if (Array.isArray(configData.inbounds)) {
+        // Handle legacy array structure: [{ tag: '...', protocol: '...' }]
+        configData.inbounds.forEach((inbound: any) => {
+          if (inbound.tag) {
+            proxies[inbound.tag] = {};
+          }
+        });
+
+        newUserData = {
+          username: username,
+          proxies: proxies,
+          expire: expireTimestamp,
+          data_limit: dataLimitBytes,
+          data_limit_reset_strategy: "no_reset",
+          note: notes || `Created via bnets.co - Subscription`,
+          status: "active"
+        };
+
+        console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbounds (legacy array):', {
+          proxiesCount: Object.keys(proxies).length
+        });
+      } else {
+        // Fallback if structure is unexpected
+        throw new Error('Unexpected panel inbound configuration structure');
+      }
+      
     } else if (enabledProtocols && Array.isArray(enabledProtocols) && enabledProtocols.length > 0) {
-      // Use dynamic proxies from enabled protocols (legacy fallback)
+      // Use dynamic proxies from enabled protocols (last resort)
       const proxies: Record<string, {}> = {};
       enabledProtocols.forEach(protocol => {
         proxies[protocol] = {};
@@ -392,36 +469,9 @@ serve(async (req) => {
         status: "active"
       };
 
-      console.log('🟢 [MARZBAN-CREATE-USER] Using dynamic proxies from enabled protocols (legacy):', {
+      console.log('⚠️ [MARZBAN-CREATE-USER] Using basic protocol fallback (no panel config available):', {
         enabledProtocols: enabledProtocols,
         proxiesCount: Object.keys(proxies).length
-      });
-      
-    } else if (panelConfig.panel_config_data?.inbounds) {
-      // Use stored panel inbound data (legacy fallback)
-      const storedInbounds = panelConfig.panel_config_data.inbounds;
-      const inbounds: Record<string, {}> = {};
-      
-      storedInbounds.forEach((inbound: any) => {
-        if (inbound.tag) {
-          inbounds[inbound.tag] = {};
-        }
-      });
-
-      newUserData = {
-        username: username,
-        proxies: {},
-        inbounds: inbounds,
-        expire: expireTimestamp,
-        data_limit: dataLimitBytes,
-        data_limit_reset_strategy: "no_reset",
-        note: notes || `Created via bnets.co - Subscription`,
-        status: "active"
-      };
-
-      console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbound data (legacy):', {
-        inboundsCount: Object.keys(inbounds).length,
-        storedInboundsCount: storedInbounds.length
       });
       
     } else {
