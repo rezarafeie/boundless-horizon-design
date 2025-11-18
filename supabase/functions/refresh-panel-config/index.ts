@@ -175,9 +175,44 @@ serve(async (req) => {
           
           configsFetched = 1
         } else {
+          // Template user not accessible - try to get basic config without it
           const errorText = await userResponse.text()
-          console.error('❌ Failed to fetch user template:', errorText)
-          throw new Error(`Failed to fetch user template: ${userResponse.status} - ${errorText}`)
+          console.warn(`⚠️ Template user not accessible (${userResponse.status}), trying alternative method: ${errorText}`)
+          
+          // Try to fetch inbounds directly to determine panel type
+          console.log('📋 Attempting to fetch inbounds without template user...')
+          
+          try {
+            const inboundsResponse = await fetch(`${panel.panel_url}/api/inbounds`, {
+              headers: { 'Authorization': `Bearer ${token}` },
+              signal: AbortSignal.timeout(30000)
+            })
+            
+            if (inboundsResponse.ok) {
+              const inbounds = await inboundsResponse.json()
+              configData = {
+                type: 'marzban_no_template',
+                inbounds: inbounds || [],
+                note: 'No template user available - basic config only'
+              }
+              configsFetched = 1
+              console.log(`✅ Fallback: Fetched ${inbounds?.length || 0} inbounds without template`)
+            } else {
+              console.warn('⚠️ Could not fetch inbounds either, storing minimal config')
+              configData = {
+                type: 'marzban_minimal',
+                note: 'Panel accessible but no configuration data available'
+              }
+              configsFetched = 0
+            }
+          } catch (fallbackError) {
+            console.warn('⚠️ Fallback method failed:', fallbackError)
+            configData = {
+              type: 'marzban_minimal',
+              note: 'Panel accessible but no configuration data available'
+            }
+            configsFetched = 0
+          }
         }
       }
 
