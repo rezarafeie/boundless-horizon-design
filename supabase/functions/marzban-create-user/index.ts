@@ -379,6 +379,7 @@ serve(async (req) => {
       // ✅ PRIORITY: Use stored panel inbound configuration
       const configData = panelConfig.panel_config_data;
       const proxies: Record<string, {}> = {};
+      const inbounds: Record<string, {}> = {};
       
       console.log('🔵 [MARZBAN-CREATE-USER] Panel config structure:', {
         hasInbounds: !!configData.inbounds,
@@ -388,23 +389,21 @@ serve(async (req) => {
       
       // Handle new structure: { vless: [...], vmess: [...] }
       if (configData.inbounds.vless || configData.inbounds.vmess) {
-        // Build proxies from protocol-based inbound structure
+        // Build protocol-based proxies and tag-based inbounds
         if (configData.inbounds.vless && Array.isArray(configData.inbounds.vless)) {
+          proxies['vless'] = {}; // Protocol-level proxy
           configData.inbounds.vless.forEach((inbound: any) => {
             if (inbound.tag) {
-              proxies[inbound.tag] = {
-                type: 'vless'
-              };
+              inbounds[inbound.tag] = {}; // Individual inbound tags
             }
           });
         }
         
         if (configData.inbounds.vmess && Array.isArray(configData.inbounds.vmess)) {
+          proxies['vmess'] = {}; // Protocol-level proxy
           configData.inbounds.vmess.forEach((inbound: any) => {
             if (inbound.tag) {
-              proxies[inbound.tag] = {
-                type: 'vmess'
-              };
+              inbounds[inbound.tag] = {}; // Individual inbound tags
             }
           });
         }
@@ -412,6 +411,7 @@ serve(async (req) => {
         newUserData = {
           username: username,
           proxies: proxies,
+          inbounds: inbounds,
           expire: expireTimestamp,
           data_limit: dataLimitBytes,
           data_limit_reset_strategy: "no_reset",
@@ -419,24 +419,29 @@ serve(async (req) => {
           status: "active"
         };
 
-        console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbound configuration:', {
-          totalProxies: Object.keys(proxies).length,
-          vlessCount: configData.inbounds.vless?.length || 0,
-          vmessCount: configData.inbounds.vmess?.length || 0,
-          proxyTags: Object.keys(proxies).slice(0, 5).join(', ') + '...'
+        console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel configuration:', {
+          protocolCount: Object.keys(proxies).length,
+          inboundTagsCount: Object.keys(inbounds).length,
+          vlessInbounds: configData.inbounds.vless?.length || 0,
+          vmessInbounds: configData.inbounds.vmess?.length || 0,
+          inboundTags: Object.keys(inbounds).slice(0, 5).join(', ') + '...'
         });
         
       } else if (Array.isArray(configData.inbounds)) {
         // Handle legacy array structure: [{ tag: '...', protocol: '...' }]
         configData.inbounds.forEach((inbound: any) => {
+          if (inbound.protocol) {
+            proxies[inbound.protocol] = {};
+          }
           if (inbound.tag) {
-            proxies[inbound.tag] = {};
+            inbounds[inbound.tag] = {};
           }
         });
 
         newUserData = {
           username: username,
           proxies: proxies,
+          inbounds: inbounds,
           expire: expireTimestamp,
           data_limit: dataLimitBytes,
           data_limit_reset_strategy: "no_reset",
@@ -445,11 +450,12 @@ serve(async (req) => {
         };
 
         console.log('🟢 [MARZBAN-CREATE-USER] Using stored panel inbounds (legacy array):', {
-          proxiesCount: Object.keys(proxies).length
+          protocolCount: Object.keys(proxies).length,
+          inboundCount: Object.keys(inbounds).length
         });
       } else {
-        // Fallback if structure is unexpected
-        throw new Error('Unexpected panel inbound configuration structure');
+        // Fallback to next option instead of throwing
+        console.warn('⚠️ [MARZBAN-CREATE-USER] Unexpected panel config structure, falling back to protocol-based');
       }
       
     } else if (enabledProtocols && Array.isArray(enabledProtocols) && enabledProtocols.length > 0) {
