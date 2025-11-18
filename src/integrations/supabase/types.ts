@@ -20,7 +20,7 @@ export type Database = {
           admin_user_id: string | null
           created_at: string
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           new_values: Json | null
           old_values: Json | null
           record_id: string | null
@@ -32,7 +32,7 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           new_values?: Json | null
           old_values?: Json | null
           record_id?: string | null
@@ -44,7 +44,7 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           new_values?: Json | null
           old_values?: Json | null
           record_id?: string | null
@@ -606,7 +606,7 @@ export type Database = {
           email: string
           expire_date: string
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           panel_id: string | null
           panel_name: string
           phone_number: string
@@ -614,7 +614,7 @@ export type Database = {
           subscription_url: string | null
           updated_at: string
           user_device_fingerprint: string | null
-          user_ip_address: unknown | null
+          user_ip_address: unknown
           username: string
         }
         Insert: {
@@ -624,7 +624,7 @@ export type Database = {
           email: string
           expire_date: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           panel_id?: string | null
           panel_name: string
           phone_number: string
@@ -632,7 +632,7 @@ export type Database = {
           subscription_url?: string | null
           updated_at?: string
           user_device_fingerprint?: string | null
-          user_ip_address?: unknown | null
+          user_ip_address?: unknown
           username: string
         }
         Update: {
@@ -642,7 +642,7 @@ export type Database = {
           email?: string
           expire_date?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           panel_id?: string | null
           panel_name?: string
           phone_number?: string
@@ -650,7 +650,7 @@ export type Database = {
           subscription_url?: string | null
           updated_at?: string
           user_device_fingerprint?: string | null
-          user_ip_address?: unknown | null
+          user_ip_address?: unknown
           username?: string
         }
         Relationships: [
@@ -1033,16 +1033,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      can_create_free_trial: {
-        Args:
-          | { p_device_fingerprint?: string; p_email: string; p_phone: string }
-          | { user_email: string; user_ip?: unknown; user_phone: string }
-        Returns: boolean
-      }
-      check_session_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      can_create_free_trial:
+        | {
+            Args: { user_email: string; user_ip?: unknown; user_phone: string }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_device_fingerprint?: string
+              p_email: string
+              p_phone: string
+            }
+            Returns: boolean
+          }
+      check_session_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
