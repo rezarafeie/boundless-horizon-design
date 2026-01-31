@@ -29,6 +29,9 @@ import DeliveryPage from "./pages/DeliveryPage";
 import SubscriptionDelivery from "./pages/SubscriptionDelivery";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import NotFound from "./pages/NotFound";
+import MobileApp from "./pages/MobileApp";
+import MobileSubscriptions from "./pages/MobileSubscriptions";
+import InstallApp from "./pages/InstallApp";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +48,11 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/subscription" element={<Subscription />} />
               <Route path="/renewal" element={<Renewal />} />
+              {/* Mobile App Routes */}
+              <Route path="/app" element={<MobileApp />} />
+              <Route path="/app/subscriptions" element={<MobileSubscriptions />} />
+              <Route path="/install" element={<InstallApp />} />
+              {/* Admin Routes */}
               <Route path="/admin" element={<AdminLogin />} />
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<AdminUsers />} />
