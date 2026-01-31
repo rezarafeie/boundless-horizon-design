@@ -1035,15 +1035,15 @@ export type Database = {
     Functions: {
       can_create_free_trial:
         | {
-            Args: { user_email: string; user_ip?: unknown; user_phone: string }
-            Returns: boolean
-          }
-        | {
             Args: {
               p_device_fingerprint?: string
               p_email: string
               p_phone: string
             }
+            Returns: boolean
+          }
+        | {
+            Args: { user_email: string; user_ip?: unknown; user_phone: string }
             Returns: boolean
           }
       check_session_admin: { Args: never; Returns: boolean }
