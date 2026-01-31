@@ -66,18 +66,21 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
             });
             
             if (data?.success && data?.systemInfo) {
-              const totalPanelUsers = data.systemInfo.total_user || 0;
-              const activePanelUsers = data.systemInfo.users_active || data.systemInfo.active_users || 0;
-              const onlinePanelUsers = data.systemInfo.online_users || 0;
-              const incomingBandwidth = data.systemInfo.incoming_bandwidth || 0;
-              const outgoingBandwidth = data.systemInfo.outgoing_bandwidth || 0;
+              const info = data.systemInfo;
+              // Marzban uses: total_user, users_active, online_users
+              // Marzneshin uses: total, active, online
+              const totalPanelUsers = info.total_user ?? info.total ?? 0;
+              const activePanelUsers = info.users_active ?? info.active_users ?? info.active ?? 0;
+              const onlinePanelUsers = info.online_users ?? info.online ?? 0;
+              const incomingBandwidth = info.incoming_bandwidth ?? 0;
+              const outgoingBandwidth = info.outgoing_bandwidth ?? 0;
               
               panelUsers += totalPanelUsers;
               realActiveUsersFromPanels += activePanelUsers;
               onlineUsersFromPanels += onlinePanelUsers;
               totalBandwidth += incomingBandwidth + outgoingBandwidth;
               
-              console.log(`GLOBAL_SUMMARY: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}, Online: ${onlinePanelUsers}`);
+              console.log(`GLOBAL_SUMMARY: Panel ${panel.name} - Total: ${totalPanelUsers}, Active: ${activePanelUsers}, Online: ${onlinePanelUsers}`, info);
             } else {
               console.log(`GLOBAL_SUMMARY: Failed to get data from panel ${panel.name}:`, data?.error);
             }
