@@ -71,7 +71,15 @@ export const GlobalSummary = ({ refreshTrigger, dateRange }: GlobalSummaryProps)
               // Marzneshin uses: total, active, online
               const totalPanelUsers = info.total_user ?? info.total ?? 0;
               const activePanelUsers = info.users_active ?? info.active_users ?? info.active ?? 0;
-              const onlinePanelUsers = info.online_users ?? info.online ?? 0;
+              let onlinePanelUsers = info.online_users ?? info.online ?? 0;
+              
+              // Sanity check: online users can't exceed total users
+              // Some Marzban versions (0.8.x) return connection count instead of unique users
+              if (onlinePanelUsers > totalPanelUsers && totalPanelUsers > 0) {
+                console.log(`GLOBAL_SUMMARY: Panel ${panel.name} has invalid online_users (${onlinePanelUsers} > ${totalPanelUsers}), capping to active users`);
+                onlinePanelUsers = activePanelUsers; // Use active as fallback
+              }
+              
               const incomingBandwidth = info.incoming_bandwidth ?? 0;
               const outgoingBandwidth = info.outgoing_bandwidth ?? 0;
               

@@ -148,6 +148,17 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
     return num ? num.toLocaleString() : '0';
   };
 
+  // Sanity check: online users can't exceed total users (Marzban 0.8.x bug returns connection count)
+  const getSafeOnlineUsers = (info: any) => {
+    const total = info?.total_user ?? info?.total ?? 0;
+    const active = info?.users_active ?? info?.active_users ?? info?.active ?? 0;
+    let online = info?.online_users ?? info?.online ?? 0;
+    
+    if (online > total && total > 0) {
+      return active; // Use active as fallback when online is unrealistic
+    }
+    return online;
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -273,7 +284,7 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                           
                           <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                             <p className="text-lg font-bold text-green-700 dark:text-green-300">
-                              {formatNumber(panel.systemInfo.online_users ?? panel.systemInfo.online ?? 0)}
+                              {formatNumber(getSafeOnlineUsers(panel.systemInfo))}
                             </p>
                             <p className="text-xs text-green-600 dark:text-green-400">Online</p>
                           </div>
@@ -327,7 +338,7 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                               <PieChart>
                                 <Pie
                                   data={[
-                                    { name: 'Online', value: panel.systemInfo.online_users ?? panel.systemInfo.online ?? 0, color: COLORS[0] },
+                                    { name: 'Online', value: getSafeOnlineUsers(panel.systemInfo), color: COLORS[0] },
                                     { name: 'Active', value: panel.systemInfo.users_active ?? panel.systemInfo.active_users ?? panel.systemInfo.active ?? 0, color: COLORS[1] },
                                     { name: 'On Hold', value: panel.systemInfo.on_hold_users ?? panel.systemInfo.on_hold ?? 0, color: COLORS[2] },
                                     { name: 'Disabled', value: panel.systemInfo.disabled_users ?? 0, color: COLORS[3] },
@@ -343,7 +354,7 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                                   dataKey="value"
                                 >
                                   {[
-                                    { name: 'Online', value: panel.systemInfo.online_users ?? panel.systemInfo.online ?? 0, color: COLORS[0] },
+                                    { name: 'Online', value: getSafeOnlineUsers(panel.systemInfo), color: COLORS[0] },
                                     { name: 'Active', value: panel.systemInfo.users_active ?? panel.systemInfo.active_users ?? panel.systemInfo.active ?? 0, color: COLORS[1] },
                                     { name: 'On Hold', value: panel.systemInfo.on_hold_users ?? panel.systemInfo.on_hold ?? 0, color: COLORS[2] },
                                     { name: 'Disabled', value: panel.systemInfo.disabled_users ?? 0, color: COLORS[3] },
