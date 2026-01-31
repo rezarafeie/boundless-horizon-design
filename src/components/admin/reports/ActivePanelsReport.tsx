@@ -273,14 +273,14 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                           
                           <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                             <p className="text-lg font-bold text-green-700 dark:text-green-300">
-                              {formatNumber(panel.systemInfo.online_users || panel.systemInfo.online)}
+                              {formatNumber(panel.systemInfo.online_users ?? panel.systemInfo.online ?? 0)}
                             </p>
                             <p className="text-xs text-green-600 dark:text-green-400">Online</p>
                           </div>
                           
                           <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
                             <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
-                              {formatNumber(panel.systemInfo.active_users || panel.systemInfo.active)}
+                              {formatNumber(panel.systemInfo.users_active ?? panel.systemInfo.active_users ?? panel.systemInfo.active ?? 0)}
                             </p>
                             <p className="text-xs text-emerald-600 dark:text-emerald-400">Active</p>
                           </div>
@@ -327,12 +327,12 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                               <PieChart>
                                 <Pie
                                   data={[
-                                    { name: 'Online', value: panel.systemInfo.online_users || panel.systemInfo.online, color: COLORS[0] },
-                                    { name: 'Active', value: panel.systemInfo.active_users || panel.systemInfo.active, color: COLORS[1] },
-                                    { name: 'On Hold', value: panel.systemInfo.on_hold_users || panel.systemInfo.on_hold, color: COLORS[2] },
-                                    { name: 'Disabled', value: panel.systemInfo.disabled_users || 0, color: COLORS[3] },
-                                    { name: 'Expired', value: panel.systemInfo.expired_users || panel.systemInfo.expired, color: COLORS[4] },
-                                    { name: 'Limited', value: panel.systemInfo.limited_users || panel.systemInfo.limited, color: '#FF6B6B' }
+                                    { name: 'Online', value: panel.systemInfo.online_users ?? panel.systemInfo.online ?? 0, color: COLORS[0] },
+                                    { name: 'Active', value: panel.systemInfo.users_active ?? panel.systemInfo.active_users ?? panel.systemInfo.active ?? 0, color: COLORS[1] },
+                                    { name: 'On Hold', value: panel.systemInfo.on_hold_users ?? panel.systemInfo.on_hold ?? 0, color: COLORS[2] },
+                                    { name: 'Disabled', value: panel.systemInfo.disabled_users ?? 0, color: COLORS[3] },
+                                    { name: 'Expired', value: panel.systemInfo.expired_users ?? panel.systemInfo.expired ?? 0, color: COLORS[4] },
+                                    { name: 'Limited', value: panel.systemInfo.limited_users ?? panel.systemInfo.limited ?? 0, color: '#FF6B6B' }
                                   ].filter(item => item.value > 0)}
                                   cx="50%"
                                   cy="50%"
@@ -343,12 +343,12 @@ export const ActivePanelsReport = ({ refreshTrigger, dateRange }: ActivePanelsRe
                                   dataKey="value"
                                 >
                                   {[
-                                    { name: 'Online', value: panel.systemInfo.online_users || panel.systemInfo.online, color: COLORS[0] },
-                                    { name: 'Active', value: panel.systemInfo.active_users || panel.systemInfo.active, color: COLORS[1] },
-                                    { name: 'On Hold', value: panel.systemInfo.on_hold_users || panel.systemInfo.on_hold, color: COLORS[2] },
-                                    { name: 'Disabled', value: panel.systemInfo.disabled_users || 0, color: COLORS[3] },
-                                    { name: 'Expired', value: panel.systemInfo.expired_users || panel.systemInfo.expired, color: COLORS[4] },
-                                    { name: 'Limited', value: panel.systemInfo.limited_users || panel.systemInfo.limited, color: '#FF6B6B' }
+                                    { name: 'Online', value: panel.systemInfo.online_users ?? panel.systemInfo.online ?? 0, color: COLORS[0] },
+                                    { name: 'Active', value: panel.systemInfo.users_active ?? panel.systemInfo.active_users ?? panel.systemInfo.active ?? 0, color: COLORS[1] },
+                                    { name: 'On Hold', value: panel.systemInfo.on_hold_users ?? panel.systemInfo.on_hold ?? 0, color: COLORS[2] },
+                                    { name: 'Disabled', value: panel.systemInfo.disabled_users ?? 0, color: COLORS[3] },
+                                    { name: 'Expired', value: panel.systemInfo.expired_users ?? panel.systemInfo.expired ?? 0, color: COLORS[4] },
+                                    { name: 'Limited', value: panel.systemInfo.limited_users ?? panel.systemInfo.limited ?? 0, color: '#FF6B6B' }
                                   ].filter(item => item.value > 0).map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                   ))}
